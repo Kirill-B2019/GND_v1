@@ -305,12 +305,12 @@ text
 
 ## 9. Дополнительные ресурсы
 
-- [architecture.md](architecture.md) - описание архитектуры блокчейна
-- [contracts.md](contracts.md) - руководство по работе со смарт-контрактами
-- [tokens.md](tokens.md) - описание стандартов токенов
-- [consensus.md](consensus.md) - инструкции по переключению алгоритмов консенсуса
-- [integration.md](integration.md) - интеграция с мостами, оракулами, IPFS
-
+- [api.md](api.md) - описание API для работы с токенами
+- [contracts.md](contracts.md) - описание работы со смарт-контрактами
+- [architecture.md](architecture.md) - архитектура блокчейна
+- [consensus.md](consensus.md) - алгоритмы консенсуса
+- [contracts.md](contracts.md) - работа со смарт-контрактами
+- [integration.md](integration.md) - интеграция с GND
 ---
 
 **API блокчейна «ГАНИМЕД» поддерживает все современные сценарии работы с токенами, смарт-контрактами и внешними сервисами. 
