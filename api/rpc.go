@@ -1,186 +1,186 @@
 package api
 
 import (
+	"GND/utils"
 	"encoding/json"
-	"io/ioutil"
-	"log"
+	"fmt"
 	"net/http"
-	_ "reflect"
-	_ "strings"
+	"strconv"
 
-	"GND/core"
 	"GND/tokens"
 	"GND/vm"
-	// другие импорты по мере необходимости
 )
 
-// JSON-RPC 2.0 структура запроса
-type rpcRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params"`
-	ID      interface{}     `json:"id"`
+// Глобальный реестр токенов (можно сделать синглтоном в tokens/registry.go)
+var tokenReg = tokens.NewTokenRegistry()
+
+// Глобальный экземпляр виртуальной машины (пример, настройте под свою архитектуру)
+var evm = vm.NewEVM(vm.EVMConfig{GasLimit: 10000000}, nil) // передайте нужный ContractRegistry
+
+// --- Примеры структур для запросов ---
+
+type DeployContractParams struct {
+	From        string                 `json:"from"`
+	Bytecode    []byte                 `json:"bytecode"`
+	Name        string                 `json:"name"`
+	Standard    string                 `json:"standard"`
+	Owner       string                 `json:"owner"`
+	Compiler    string                 `json:"compiler"`
+	Version     string                 `json:"version"`
+	Params      map[string]interface{} `json:"params"`
+	Description string                 `json:"description"`
+	GasLimit    uint64                 `json:"gas_limit"`
+	GasPrice    uint64                 `json:"gas_price"`
+	Nonce       uint64                 `json:"nonce"`
+	Signature   string                 `json:"signature"`
 }
 
-// JSON-RPC 2.0 структура ответа
-type rpcResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *rpcError   `json:"error,omitempty"`
-	ID      interface{} `json:"id"`
-}
+// --- RPC Handlers ---
 
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// RPC-сервер: принимает запросы и маршрутизирует по методам
-func StartRPCServer(bc *core.Blockchain, mempool *core.Mempool, vm *vm.EVM, tokenReg *tokens.Registry) {
-	http.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			writeRPCError(w, nil, -32700, "Parse error: "+err.Error())
-			return
-		}
-		var req rpcRequest
-		if err := json.Unmarshal(body, &req); err != nil {
-			writeRPCError(w, nil, -32700, "Parse error: "+err.Error())
-			return
-		}
-		// Маршрутизация методов
-		switch req.Method {
-		case "blockchain_latestBlock":
-			block := bc.LatestBlock()
-			writeRPCResult(w, req.ID, block)
-		case "blockchain_getBlockByHash":
-			var params struct{ Hash string }
-			json.Unmarshal(req.Params, &params)
-			block := bc.GetBlockByHash(params.Hash)
-			writeRPCResult(w, req.ID, block)
-		case "blockchain_getBlockByIndex":
-			var params struct{ Index uint64 }
-			json.Unmarshal(req.Params, &params)
-			block := bc.GetBlockByIndex(params.Index)
-			writeRPCResult(w, req.ID, block)
-		case "blockchain_sendTx":
-			var tx core.Transaction
-			json.Unmarshal(req.Params, &tx)
-			mempool.Add(&tx)
-			writeRPCResult(w, req.ID, map[string]string{"txHash": tx.Hash})
-		case "blockchain_getTx":
-			var params struct{ Hash string }
-			json.Unmarshal(req.Params, &params)
-			// Поиск по всем блокам (оптимизировать индексом)
-			var tx *core.Transaction
-			for _, block := range bc.AllBlocks() {
-				for _, t := range block.Transactions {
-					if t.Hash == params.Hash {
-						tx = t
-						break
-					}
-				}
-			}
-			writeRPCResult(w, req.ID, tx)
-		case "state_getBalance":
-			var params struct{ Address string }
-			json.Unmarshal(req.Params, &params)
-			balance := bc.State.BalanceOf(params.Address)
-			writeRPCResult(w, req.ID, balance)
-		case "state_getNonce":
-			var params struct{ Address string }
-			json.Unmarshal(req.Params, &params)
-			nonce := bc.State.NonceOf(params.Address)
-			writeRPCResult(w, req.ID, nonce)
-		// ===== Методы для смарт-контрактов и токенов =====
-		case "contract_deploy":
-			var params struct {
-				From      string
-				Bytecode  []byte
-				GasLimit  uint64
-				GasPrice  uint64
-				Nonce     uint64
-				Metadata  map[string]interface{}
-				Signature string
-			}
-			json.Unmarshal(req.Params, &params)
-			// Пример: деплой контракта через VM
-			address, err := vm.DeployContract(params.From, params.Bytecode, params.GasLimit, params.GasPrice, params.Nonce, params.Metadata, params.Signature)
-			if err != nil {
-				writeRPCError(w, req.ID, -32000, err.Error())
-				return
-			}
-			writeRPCResult(w, req.ID, map[string]string{"contractAddress": address})
-		case "contract_call":
-			var params struct {
-				From      string
-				To        string
-				Data      []byte
-				GasLimit  uint64
-				GasPrice  uint64
-				Nonce     uint64
-				Signature string
-			}
-			json.Unmarshal(req.Params, &params)
-			// Вызов функции контракта через VM
-			result, err := vm.CallContract(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Nonce, params.Signature)
-			if err != nil {
-				writeRPCError(w, req.ID, -32000, err.Error())
-				return
-			}
-			writeRPCResult(w, req.ID, result)
-		case "token_getInfo":
-			var params struct{ Address string }
-			json.Unmarshal(req.Params, &params)
-			info := tokenReg.GetInfo(params.Address)
-			writeRPCResult(w, req.ID, info)
-		case "token_call":
-			var params struct {
-				TokenAddress string
-				Method       string
-				Args         []interface{}
-			}
-			json.Unmarshal(req.Params, &params)
-			result, err := tokenReg.Call(params.TokenAddress, params.Method, params.Args...)
-			if err != nil {
-				writeRPCError(w, req.ID, -32000, err.Error())
-				return
-			}
-			writeRPCResult(w, req.ID, result)
-		// ====== Системные методы ======
-		case "system_ping":
-			writeRPCResult(w, req.ID, "pong")
-		default:
-			writeRPCError(w, req.ID, -32601, "Method not found: "+req.Method)
-		}
-	})
-
-	log.Println("JSON-RPC сервер запущен на /rpc")
-	http.ListenAndServe(":8545", nil) // порт можно вынести в конфиг
-}
-
-// Вспомогательные функции для ответа
-
-func writeRPCResult(w http.ResponseWriter, id interface{}, result interface{}) {
-	resp := rpcResponse{
-		JSONRPC: "2.0",
-		Result:  result,
-		ID:      id,
+// Handler для деплоя смарт-контракта
+func DeployContractHandler(w http.ResponseWriter, r *http.Request) {
+	var params DeployContractParams
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+
+	meta := vm.ContractMeta{
+		Name:        params.Name,
+		Standard:    vm.ContractStandard(params.Standard),
+		Owner:       params.Owner,
+		Params:      toStringMap(params.Params),
+		Description: params.Description,
+	}
+
+	addr, err := evm.DeployContract(
+		params.From,
+		params.Bytecode,
+		meta,
+		params.GasLimit,
+		params.GasPrice,
+		params.Nonce,
+		params.Signature,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp := map[string]interface{}{
+		"address": utils.AddPrefix(addr), // добавляем префикс GN
+	}
 	json.NewEncoder(w).Encode(resp)
 }
 
-func writeRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
-	resp := rpcResponse{
-		JSONRPC: "2.0",
-		Error:   &rpcError{Code: code, Message: message},
-		ID:      id,
+// Handler для получения информации о токене
+func TokenInfoHandler(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("address")
+	address = utils.RemovePrefix(address) // убираем префикс, если пришёл
+	token, err := tokenReg.GetToken(address)
+	if err != nil {
+		http.Error(w, "token not found", http.StatusNotFound)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	meta := token.Meta()
+	meta.Address = utils.AddPrefix(meta.Address) // добавляем префикс для отображения
+	json.NewEncoder(w).Encode(meta)
+}
+
+// Handler для баланса токена
+func TokenBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("token")
+	user := r.URL.Query().Get("user")
+	token, err := tokenReg.GetToken(address)
+	if err != nil {
+		http.Error(w, "token not found", http.StatusNotFound)
+		return
+	}
+	balance := token.BalanceOf(user)
+	resp := map[string]interface{}{
+		"user":    user,
+		"token":   address,
+		"balance": balance,
+	}
 	json.NewEncoder(w).Encode(resp)
 }
+
+// Handler для трансфера токена
+func TokenTransferHandler(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("token")
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	amountStr := r.URL.Query().Get("amount")
+	amount, err := strconv.ParseUint(amountStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid amount", http.StatusBadRequest)
+		return
+	}
+	token, err := tokenReg.GetToken(address)
+	if err != nil {
+		http.Error(w, "token not found", http.StatusNotFound)
+		return
+	}
+	if err := token.Transfer(from, to, amount); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp := map[string]interface{}{
+		"from":   from,
+		"to":     to,
+		"amount": amount,
+		"token":  address,
+		"status": "ok",
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+// Универсальный вызов метода токена
+func TokenCallHandler(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("token")
+	method := r.URL.Query().Get("method")
+	args := r.URL.Query()["arg"] // можно передавать несколько arg=...
+	_, err := tokenReg.GetToken(address)
+	if err != nil {
+		http.Error(w, "token not found", http.StatusNotFound)
+		return
+	}
+	result, err := tokenReg.CallTokenMethod(address, method, toInterfaceSlice(args)...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp := map[string]interface{}{
+		"result": result,
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+// Вспомогательная функция для преобразования []string в []interface{}
+func toInterfaceSlice(args []string) []interface{} {
+	out := make([]interface{}, len(args))
+	for i, v := range args {
+		out[i] = v
+	}
+	return out
+}
+
+func toStringMap(m map[string]interface{}) map[string]string {
+	res := make(map[string]string)
+	for k, v := range m {
+		res[k] = fmt.Sprintf("%v", v)
+	}
+	return res
+}
+
+// Пример регистрации маршрутов (в main.go или router.go)
+/*
+import "net/http"
+
+func RegisterRoutes() {
+	http.HandleFunc("/api/contract/deploy", DeployContractHandler)
+	http.HandleFunc("/api/token/info", TokenInfoHandler)
+	http.HandleFunc("/api/token/balance", TokenBalanceHandler)
+	http.HandleFunc("/api/token/transfer", TokenTransferHandler)
+	http.HandleFunc("/api/token/call", TokenCallHandler)
+}
+*/

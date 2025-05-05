@@ -1,6 +1,7 @@
 package main
 
 import (
+	"GND/utils"
 	"fmt"
 	"log"
 	"os"
@@ -25,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
-	fmt.Printf("Адрес валидатора/майнера: %s\n", minerWallet.Address)
+	fmt.Printf("Адрес валидатора/майнера: %s\n", utils.AddPrefix(minerWallet.Address))
 
 	// 3. Создание генезис-блока
 	genesisBlock := core.NewBlock(
