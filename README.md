@@ -1,5 +1,7 @@
 # Архитектура блокчейна «ГАНИМЕД»
 
+![Старт Node 1](https://github.com/user-attachments/assets/1c8103ae-d5e4-4d2f-bba8-6886e023725f)
+
 ## Общая структура
 
 Блокчейн «ГАНИМЕД» построен по модульному принципу с разделением на следующие ключевые компоненты:
@@ -126,3 +128,5 @@
 - [consensus.md](docs/consensus.md) - алгоритмы консенсуса
 - [contracts.md](docs/contracts.md) - работа со смарт-контрактами
 - [integration.md](docs/integration.md) - интеграция с GND
+## Контракты
+- [README.md](contracts/README.md) -документация по смарт-контрактам блокчейна «ГАНИМЕД»
