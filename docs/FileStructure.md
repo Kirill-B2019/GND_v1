@@ -3,7 +3,88 @@
 
 ## Общая структура проекта
 
+## Структура файлов блокчейна «ГАНИМЕД»
 
+```
+
+GND/
+│--- go.mod
+│--- go.sum
+│--- main.go
+│--- README.md
+│--- config/
+│    └── config.json
+│--- core/
+│    ├── block.go
+│    ├── blockchain.go
+│    ├── config.go
+│    ├── fees.go
+│    ├── logger.go
+│    ├── mempool.go
+│    ├── state.go
+│    ├── transaction.go
+│    ├── utils.go
+│    └── wallet.go
+│--- consensus/
+│    ├── consensus.go
+│    ├── manager.go
+│    ├── poa.go
+│    └── pos.go
+│--- api/
+│    ├── middleware.go
+│    ├── rest.go
+│    ├── rpc.go
+│    └── websocket.go
+│--- tokens/
+│    ├── custom.go
+│    ├── erc20.go
+│    ├── registry.go
+│    ├── token.go
+│    └── trc20.go
+│--- contracts/
+│    ├── README.md
+│    ├── gndtoken/
+│    │    ├── OracleExample.sol
+│    │    └── SimpleGNDToken.sol
+│    ├── interfaces/
+│    │    └── ISimpleGNDToken.sol
+│    └── ...
+│--- integration/
+│    ├── address.go
+│    ├── bridges.go
+│    ├── ipfs.go
+│    └── oracles.go
+│--- monitoring/
+│    ├── alerts.go
+│    ├── events.go
+│    └── metrics.go
+│--- docs/
+│    ├── api.md
+│    ├── architecture.md
+│    ├── consensus.md
+│    ├── contracts.md
+│    ├── integration.md
+│    └── tokens.md
+│--- ui/
+│    ├── devpanel/
+│    ├── explorer/
+│    └── wallet/
+│--- tests/
+│    ├── integration/
+│    ├── load/
+│    ├── security/
+│    └── unit/
+│--- audit/
+│--- utils/
+│    └── address.go
+│--- vm/
+│    ├── compiler.go
+│    ├── contracts.go
+│    ├── evm.go
+│    ├── interface.go
+│    └── sandbox.go
+
+```
 
 ---
 
