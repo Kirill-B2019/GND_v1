@@ -64,7 +64,8 @@ func main() {
 	// 8. Грейсфул-шатдаун (Ctrl+C)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	fmt.Println("Нода ГАНИМЕД запущена. Для остановки нажмите Ctrl+C.")
+	fmt.Println("Нода gN_0x0001 запущен. ")
+	fmt.Println("Блокчейн ГАНИМЕД запущен. Для остановки нажмите Ctrl+C.")
 	<-sigs
 
 	// 9. Остановка консенсуса и сервисов

@@ -1,33 +1,32 @@
 package core
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"strings"
 
 	"github.com/btcsuite/btcutil/base58"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/ripemd160"
 )
 
 // Wallet хранит приватный ключ и адрес
 type Wallet struct {
-	PrivateKey *ecdsa.PrivateKey
+	PrivateKey *secp256k1.PrivateKey
 	Address    string
 }
 
-// NewWallet генерирует новый кошелек с адресом, начинающимся с GND или GN
+// NewWallet генерирует новый кошелек с адресом, начинающимся с GND или GN (только верхний регистр)
 func NewWallet() (*Wallet, error) {
-	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privKey, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	pubKey := append(privKey.PublicKey.X.Bytes(), privKey.PublicKey.Y.Bytes()...)
-	// Хешируем публичный ключ: SHA256 + RIPEMD160 (как в Bitcoin/Ethereum)
-	shaHash := sha256.Sum256(pubKey)
+	pubKey := privKey.PubKey().SerializeUncompressed()
+
+	// Хешируем публичный ключ: SHA256 + RIPEMD160
+	shaHash := sha256.Sum256(pubKey[1:]) // пропускаем первый байт 0x04
 	ripemdHasher := ripemd160.New()
 	_, err = ripemdHasher.Write(shaHash[:])
 	if err != nil {
@@ -35,14 +34,11 @@ func NewWallet() (*Wallet, error) {
 	}
 	pubKeyHash := ripemdHasher.Sum(nil)
 
-	// Создаем адрес с префиксом GND или GN
-	// Можно случайно выбирать префикс или по условию
+	// Префикс "GND" или "GN" (строго верхний регистр)
 	prefix := randomPrefix()
 
-	// Адрес = prefix + base58(pubKeyHash + checksum)
+	// Адрес = prefix + pubKeyHash + checksum
 	payload := append([]byte(prefix), pubKeyHash...)
-
-	// Добавляем контрольную сумму (первые 4 байта SHA256(SHA256(payload)))
 	checksum := checksum(payload)
 	fullPayload := append(payload, checksum...)
 
@@ -54,36 +50,15 @@ func NewWallet() (*Wallet, error) {
 	}, nil
 }
 
-// randomPrefix возвращает "GND" или "GN" с разным регистром букв
+// randomPrefix возвращает "GND" или "GN" (только верхний регистр)
 func randomPrefix() []byte {
-	// Для примера: чередуем варианты
-	// Можно улучшить генерацию для большего разнообразия
-	prefixes := []string{
-		"GND",
-		"gnd",
-		"GnD",
-		"gNd",
-		"GN",
-		"gn",
-		"Gn",
-		"gN",
-	}
-	// Выбор случайного префикса
-	idx, err := randInt(len(prefixes))
-	if err != nil {
-		return []byte("GND")
-	}
-	return []byte(prefixes[idx])
-}
-
-// randInt возвращает случайное число в [0, max)
-func randInt(max int) (int, error) {
+	prefixes := [][]byte{[]byte("GND"), []byte("GN")}
 	b := make([]byte, 1)
 	_, err := rand.Read(b)
 	if err != nil {
-		return 0, err
+		return []byte("GND")
 	}
-	return int(b[0]) % max, nil
+	return prefixes[int(b[0])%len(prefixes)]
 }
 
 // checksum вычисляет первые 4 байта двойного SHA256
@@ -93,24 +68,14 @@ func checksum(payload []byte) []byte {
 	return second[:4]
 }
 
-// ValidateAddress проверяет корректность адреса (префикс + base58 + checksum)
+// ValidateAddress проверяет корректность адреса (строго GND или GN в верхнем регистре)
 func ValidateAddress(address string) bool {
 	decoded := base58.Decode(address)
-	if len(decoded) < 7 { // минимум: префикс(2-3) + hash(20) + checksum(4)
-		return false
-	}
-	// Проверяем префикс
-	prefix := decoded[:3]
-	prefixStr := string(prefix)
-	validPrefixes := []string{"GND", "gnd", "GnD", "gNd", "GN", "gn", "Gn", "gN"}
-	found := false
-	for _, p := range validPrefixes {
-		if strings.EqualFold(prefixStr, p) {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if len(decoded) == 27 && string(decoded[:3]) == "GND" {
+		// ok
+	} else if len(decoded) == 26 && string(decoded[:2]) == "GN" {
+		// ok
+	} else {
 		return false
 	}
 	// Проверяем контрольную сумму
@@ -127,5 +92,10 @@ func ValidateAddress(address string) bool {
 
 // PrivateKeyHex возвращает приватный ключ в hex формате
 func (w *Wallet) PrivateKeyHex() string {
-	return hex.EncodeToString(w.PrivateKey.D.Bytes())
+	return hex.EncodeToString(w.PrivateKey.Serialize())
+}
+
+// PublicKeyHex возвращает публичный ключ в hex формате
+func (w *Wallet) PublicKeyHex() string {
+	return hex.EncodeToString(w.PrivateKey.PubKey().SerializeUncompressed())
 }
