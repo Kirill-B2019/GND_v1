@@ -1,93 +1,9 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" class="logo" width="120"/>
 
-# предоставить все в md формате
-
-```markdown
 # Архитектура и структура файлов блокчейна «ГАНИМЕД»
 
 ## Общая структура проекта
 
-```
 
-C:\xampp\htdocs\GO\GND\
-|--- go.mod
-|--- go.sum
-|--- main.go
-|--- README.md
-|--- config/
-|    └── config.json
-|--- core/
-|    |--- block.go
-|    |--- blockchain.go
-|    |--- config.go
-|    |--- fees.go
-|    |--- logger.go
-|    |--- mempool.go
-|    |--- state.go
-|    |--- transaction.go
-|    |--- utils.go
-|    |--- wallet.go
-|--- consensus/
-|    |--- consensus.go
-|    |--- manager.go
-|    |--- poa.go
-|    |--- pos.go
-|--- api/
-|    |--- middleware.go
-|    |--- rest.go
-|    |--- rpc.go
-|    |--- websocket.go
-|--- tokens/
-|    |--- custom.go
-|    |--- erc20.go
-|    |--- registry.go
-|    |--- token.go
-|    |--- trc20.go
-|--- contracts/
-|    |--- gndtoken/
-|    |    |--- OracleExample.sol
-|    |    |--- SimpleGNDToken.sol
-|    |--- interfaces/
-|    |    |--- ISimpleGNDToken.sol
-|    |--- README.md
-|    |--- ...
-|--- integration/
-|    |--- address.go
-|    |--- bridges.go
-|    |--- ipfs.go
-|    |--- oracles.go
-|--- monitoring/
-|    |--- alerts.go
-|    |--- events.go
-|    |--- metrics.go
-|--- docs/
-|    |--- api.md
-|    |--- architecture.md
-|    |--- consensus.md
-|    |--- contracts.md
-|    |--- integration.md
-|    |--- tokens.md
-|--- ui/
-|    |--- devpanel/
-|    |--- explorer/
-|    |--- wallet/
-|--- tests/
-|    |--- integration/
-|    |--- load/
-|    |--- security/
-|    |--- unit/
-|--- audit/
-|--- utils/
-|    |--- address.go
-|--- vm/
-|    |--- compiler.go
-|    |--- contracts.go
-|    |--- evm.go
-|    |--- interface.go
-|    |--- sandbox.go
-
-```
-[Источник: FileTree.txt][^1]
 
 ---
 
@@ -251,41 +167,4 @@ UI взаимодействует с REST, RPC и WebSocket API для полу�
 [^7]: websocket.go  
 [^8]: https://www.gate.io/ru/learn/course/introduction-to-celestia-and-modular-blockchain-design/the-evolution-of-blockchain-architecture  
 [^14]: https://icoda.io/ru/all-you-need-to-know-about-blockchain-architecture/
-```
-
-<div style="text-align: center">⁂</div>
-
-[^1]: ../FileTree.txt
-
-[^2]: ../main.go
-
-[^3]: ../README.md
-
-[^4]: middleware.go
-
-[^5]: rest.go
-
-[^6]: rpc.go
-
-[^7]: websocket.go
-
-[^8]: https://www.gate.io/ru/learn/course/introduction-to-celestia-and-modular-blockchain-design/the-evolution-of-blockchain-architecture
-
-[^9]: https://habr.com/ru/companies/piter/articles/520152/
-
-[^10]: https://github.com/romanovichim/TonFunClessons_ru/blob/main/lessons/golang/14lesson/wallet.md
-
-[^11]: https://www.binance.com/ru/square/post/5792044284602
-
-[^12]: https://fastercapital.com/ru/content/Сравнение-POA-и-POS--глубокое-погружение-в-консенсус.html
-
-[^13]: https://besu.hyperledger.org/stable/public-networks/how-to/use-besu-api/json-rpc
-
-[^14]: https://icoda.io/ru/all-you-need-to-know-about-blockchain-architecture/
-
-[^15]: https://skale.space/blog/introducing-the-levitation-protocol-skales-solution-for-decentralized-zero-knowledge-proofs
-
-[^16]: https://thespaceway.info/space/11083-10-interesnyh-faktov-o-ganimede.html
-
-[^17]: https://thealphacentauri.net/114496-termodinamika-jizn-bitkoin-i-roy-daysona/?lang=ru
 
