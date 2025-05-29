@@ -1,0 +1,291 @@
+<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" class="logo" width="120"/>
+
+# предоставить все в md формате
+
+```markdown
+# Архитектура и структура файлов блокчейна «ГАНИМЕД»
+
+## Общая структура проекта
+
+```
+
+C:\xampp\htdocs\GO\GND\
+|--- go.mod
+|--- go.sum
+|--- main.go
+|--- README.md
+|--- config/
+|    └── config.json
+|--- core/
+|    |--- block.go
+|    |--- blockchain.go
+|    |--- config.go
+|    |--- fees.go
+|    |--- logger.go
+|    |--- mempool.go
+|    |--- state.go
+|    |--- transaction.go
+|    |--- utils.go
+|    |--- wallet.go
+|--- consensus/
+|    |--- consensus.go
+|    |--- manager.go
+|    |--- poa.go
+|    |--- pos.go
+|--- api/
+|    |--- middleware.go
+|    |--- rest.go
+|    |--- rpc.go
+|    |--- websocket.go
+|--- tokens/
+|    |--- custom.go
+|    |--- erc20.go
+|    |--- registry.go
+|    |--- token.go
+|    |--- trc20.go
+|--- contracts/
+|    |--- gndtoken/
+|    |    |--- OracleExample.sol
+|    |    |--- SimpleGNDToken.sol
+|    |--- interfaces/
+|    |    |--- ISimpleGNDToken.sol
+|    |--- README.md
+|    |--- ...
+|--- integration/
+|    |--- address.go
+|    |--- bridges.go
+|    |--- ipfs.go
+|    |--- oracles.go
+|--- monitoring/
+|    |--- alerts.go
+|    |--- events.go
+|    |--- metrics.go
+|--- docs/
+|    |--- api.md
+|    |--- architecture.md
+|    |--- consensus.md
+|    |--- contracts.md
+|    |--- integration.md
+|    |--- tokens.md
+|--- ui/
+|    |--- devpanel/
+|    |--- explorer/
+|    |--- wallet/
+|--- tests/
+|    |--- integration/
+|    |--- load/
+|    |--- security/
+|    |--- unit/
+|--- audit/
+|--- utils/
+|    |--- address.go
+|--- vm/
+|    |--- compiler.go
+|    |--- contracts.go
+|    |--- evm.go
+|    |--- interface.go
+|    |--- sandbox.go
+
+```
+[Источник: FileTree.txt][^1]
+
+---
+
+## Описание основных модулей и их взаимодействия
+
+### **main.go**
+- Точка входа. Инициализирует конфиг, кошелек, генезис-блок, блокчейн, консенсус, mempool, API и сервисы.
+- Управляет graceful shutdown (корректное завершение работы узла).
+- Запускает REST и WebSocket серверы, консенсусный механизм.
+[Источник: main.go][^2]
+
+---
+
+### **core/**
+- **block.go, blockchain.go** — структуры блоков, логика построения цепи, добавление и валидация блоков.
+- **state.go** — текущее состояние сети (балансы, nonce, стейкинг).
+- **wallet.go** — генерация кошельков, работа с приватными ключами, формирование адресов.
+- **transaction.go, mempool.go** — обработка транзакций, хранение неподтверждённых транзакций.
+- **config.go** — загрузка и парсинг конфигурации.
+- **fees.go** — расчет и применение комиссий.
+- **logger.go, utils.go** — вспомогательные функции, логирование.
+
+**Взаимодействие:**  
+`main.go` использует методы из `core` для создания блокчейна, управления кошельками, обработки транзакций и состояния.
+
+---
+
+### **consensus/**
+- **consensus.go** — базовые интерфейсы консенсуса.
+- **pos.go, poa.go** — реализация Proof-of-Stake и Proof-of-Authority.
+- **manager.go** — управление валидаторами, переключение алгоритмов.
+
+**Взаимодействие:**  
+Использует данные из `core` для финализации блоков, выбора валидаторов, работы с транзакциями.
+
+---
+
+### **api/**
+- **rest.go** — REST API для доступа к блокам, отправки транзакций, получения информации.
+- **rpc.go** — JSON-RPC API для работы с контрактами и токенами.
+- **websocket.go** — WebSocket сервер для real-time событий (новые блоки, транзакции).
+- **middleware.go** — аутентификация, лимитирование, аудит.
+
+**Взаимодействие:**  
+API обращается к методам `core` и консенсуса, предоставляет внешний интерфейс для пользователей, кошельков, dApp.
+[Источник: rest.go][^5], [rpc.go][^6], [websocket.go][^7], [middleware.go][^4]
+
+---
+
+### **tokens/**
+- **erc20.go, trc20.go, custom.go** — поддержка стандартных и кастомных токенов.
+- **registry.go** — реестр токенов.
+- **token.go** — универсальный интерфейс токенов.
+
+**Взаимодействие:**  
+Токены регистрируются и управляются через API и ядро, используются в смарт-контрактах и пользовательских операциях.
+
+---
+
+### **contracts/**
+- **gndtoken/** — примеры и шаблоны смарт-контрактов GND (Solidity).
+- **interfaces/** — интерфейсы для контрактов.
+- **README.md** — документация по работе с контрактами.
+
+**Взаимодействие:**  
+Контракты деплоятся и вызываются через виртуальную машину (vm/), взаимодействуют с токенами и ядром.
+
+---
+
+### **integration/**
+- **bridges.go, oracles.go** — кроссчейн-мосты и оракулы для обмена с другими сетями.
+- **ipfs.go** — интеграция с IPFS для хранения данных.
+- **address.go** — стандартизация адресов для внешних интеграций.
+
+**Взаимодействие:**  
+Обеспечивает взаимодействие с внешними блокчейнами, хранение и верификацию данных вне сети.
+
+---
+
+### **monitoring/** и **audit/**
+- **metrics.go, events.go, alerts.go** — сбор метрик, событий, алерты.
+- **audit/** — аудит безопасности, логи, отчеты.
+
+**Взаимодействие:**  
+Модули мониторинга интегрируются с ядром и API, фиксируют события для анализа и безопасности.
+
+---
+
+### **ui/**
+- **explorer/** — обозреватель блоков и транзакций.
+- **wallet/** — веб-кошелек для управления адресами и токенами.
+- **devpanel/** — панель разработчика для работы с контрактами.
+
+**Взаимодействие:**  
+UI взаимодействует с REST, RPC и WebSocket API для получения данных и управления кошельками.
+
+---
+
+### **docs/**
+- Документация по архитектуре, API, контрактам, токенам, консенсусу и интеграциям.
+
+---
+
+### **tests/**
+- **integration/** — интеграционные тесты.
+- **load/** — нагрузочные тесты.
+- **security/** — тесты безопасности.
+- **unit/** — юнит-тесты.
+
+---
+
+## Взаимосвязь компонентов
+
+- **main.go** — точка входа, инициализация всех ключевых модулей, запуск сервисов.
+- **core ↔ consensus** — ядро предоставляет данные для консенсуса, консенсус финализирует блоки.
+- **core, consensus ↔ api** — API обращается к методам ядра и консенсуса для выполнения внешних запросов.
+- **core, vm, tokens ↔ contracts** — ядро и VM обеспечивают исполнение и регистрацию смарт-контрактов.
+- **integration ↔ core, api** — интеграционные сервисы используют ядро и API для кроссчейн-операций.
+- **monitoring, audit ↔ все модули** — собирают метрики, логи, аудит действий для анализа и безопасности.
+
+---
+
+## Принципы модульной архитектуры
+
+> Модульная архитектура позволяет разделить обязанности между слоями и модулями: выполнение транзакций, консенсус, хранение данных, интеграция, мониторинг и пользовательские интерфейсы. Это обеспечивает масштабируемость, гибкость и безопасность сети[^8][^14].
+
+---
+
+## Рекомендации для новых разработчиков
+
+- Начинайте с **README.md** и документации в **docs/** — там описаны архитектура, API, принципы работы.
+- Изучите **main.go** для понимания порядка инициализации и запуска системы.
+- Для разработки смарт-контрактов — используйте шаблоны и тесты в **contracts/**.
+- Для интеграции с внешними системами — смотрите **integration/** и соответствующие разделы документации.
+- Для UI и пользовательских сценариев — используйте REST и WebSocket API, описанные в **api/** и **docs/api.md**.
+
+---
+
+## Итог
+
+Структура проекта и взаимодействие модулей в «ГАНИМЕД» организованы по лучшим практикам современной блокчейн-разработки, что обеспечивает удобство масштабирования, тестирования и поддержки.  
+[Подробнее в README.md][^3]
+
+---
+
+**Ссылки на ключевые документы:**
+- [api.md](docs/api.md) — описание API для работы с токенами
+- [contracts.md](docs/contracts.md) — описание работы со смарт-контрактами
+- [architecture.md](docs/architecture.md) — архитектура блокчейна
+- [consensus.md](docs/consensus.md) — алгоритмы консенсуса
+- [integration.md](docs/integration.md) — интеграция с GND
+
+---
+
+[^1]: FileTree.txt  
+[^2]: main.go  
+[^3]: README.md  
+[^4]: middleware.go  
+[^5]: rest.go  
+[^6]: rpc.go  
+[^7]: websocket.go  
+[^8]: https://www.gate.io/ru/learn/course/introduction-to-celestia-and-modular-blockchain-design/the-evolution-of-blockchain-architecture  
+[^14]: https://icoda.io/ru/all-you-need-to-know-about-blockchain-architecture/
+```
+
+<div style="text-align: center">⁂</div>
+
+[^1]: ../FileTree.txt
+
+[^2]: ../main.go
+
+[^3]: ../README.md
+
+[^4]: middleware.go
+
+[^5]: rest.go
+
+[^6]: rpc.go
+
+[^7]: websocket.go
+
+[^8]: https://www.gate.io/ru/learn/course/introduction-to-celestia-and-modular-blockchain-design/the-evolution-of-blockchain-architecture
+
+[^9]: https://habr.com/ru/companies/piter/articles/520152/
+
+[^10]: https://github.com/romanovichim/TonFunClessons_ru/blob/main/lessons/golang/14lesson/wallet.md
+
+[^11]: https://www.binance.com/ru/square/post/5792044284602
+
+[^12]: https://fastercapital.com/ru/content/Сравнение-POA-и-POS--глубокое-погружение-в-консенсус.html
+
+[^13]: https://besu.hyperledger.org/stable/public-networks/how-to/use-besu-api/json-rpc
+
+[^14]: https://icoda.io/ru/all-you-need-to-know-about-blockchain-architecture/
+
+[^15]: https://skale.space/blog/introducing-the-levitation-protocol-skales-solution-for-decentralized-zero-knowledge-proofs
+
+[^16]: https://thespaceway.info/space/11083-10-interesnyh-faktov-o-ganimede.html
+
+[^17]: https://thealphacentauri.net/114496-termodinamika-jizn-bitkoin-i-roy-daysona/?lang=ru
+

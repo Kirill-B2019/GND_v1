@@ -130,3 +130,5 @@
 - [integration.md](docs/integration.md) - интеграция с GND
 ## Контракты
 - [README.md](contracts/README.md) -документация по смарт-контрактам блокчейна «ГАНИМЕД»
+## Подробнее
+- [FileStructure.md](docs/FileStructure.md) - Структура файлов блокчейна «ГАНИМЕД»
