@@ -42,9 +42,13 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 			return
 		}
 		balance := bc.State.BalanceOf(address)
+
 		resp := map[string]interface{}{
-			"address": address,
-			"balance": balance,
+			"address":  address,
+			"balance":  balance,
+			"name":     config.Coin.Name,
+			"symbol":   config.Coin.Symbol,
+			"decimals": config.Coin.Decimals,
 		}
 		json.NewEncoder(w).Encode(resp)
 	})
