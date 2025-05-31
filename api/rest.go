@@ -1,13 +1,13 @@
 package api
 
 import (
-	"GND/core" // Импортируйте свой пакет core
+	"GND/core"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
-// Экспортируемая функция с большой буквы!
-func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool) {
+func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Config) {
 	http.HandleFunc("/block/latest", func(w http.ResponseWriter, r *http.Request) {
 		block := bc.LatestBlock()
 		json.NewEncoder(w).Encode(block)
@@ -19,11 +19,15 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if !core.ValidateAddress(tx.From) || !core.ValidateAddress(tx.To) {
+			http.Error(w, "invalid address", http.StatusBadRequest)
+			return
+		}
 		mempool.Add(&tx)
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]string{"txHash": tx.Hash})
 	})
 
-	// Порт можно взять из конфига, здесь для примера 8080
-	http.ListenAndServe(":8080", nil)
+	addr := fmt.Sprintf(":%d", config.RestPort)
+	http.ListenAndServe(addr, nil)
 }

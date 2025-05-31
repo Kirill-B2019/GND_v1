@@ -59,14 +59,14 @@ func main() {
 	fmt.Printf("Консенсус %s запущен\n", consensusEngine.Type())
 
 	// 7. Запуск REST API (асинхронно)
-	go api.StartRESTServer(blockchain, mempool)
+	go api.StartRESTServer(blockchain, mempool, cfg)
 	// Запуск WebSocket-сервера
 	go api.StartWebSocketServer(blockchain, cfg)
 
 	// 8. Грейсфул-шатдаун (Ctrl+C)
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	fmt.Println("Нода gN_0x0001 запущен. ")
+	fmt.Println("Нода GND_0x0001 запущен. ")
 	fmt.Println("Блокчейн ГАНИМЕД запущен. Для остановки нажмите Ctrl+C.")
 	<-sigs
 

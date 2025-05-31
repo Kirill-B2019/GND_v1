@@ -1,34 +1,28 @@
 package api
 
 import (
-	"GND/utils"
+	"GND/core"
+	_ "GND/tokens"
+	"GND/vm"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-
-	"GND/tokens"
-	"GND/vm"
+	_ "strconv"
 )
 
-// Глобальный реестр токенов (можно сделать синглтоном в tokens/registry.go)
-var tokenReg = tokens.NewTokenRegistry()
-
-// Глобальный экземпляр виртуальной машины (пример, настройте под свою архитектуру)
-var evm = vm.NewEVM(vm.EVMConfig{GasLimit: 10000000}, nil) // передайте нужный ContractRegistry
-
-// --- Примеры структур для запросов ---
-
+// --- Расширенная структура параметров деплоя контракта ---
 type DeployContractParams struct {
-	From        string                 `json:"from"`
-	Bytecode    []byte                 `json:"bytecode"`
-	Name        string                 `json:"name"`
-	Standard    string                 `json:"standard"`
-	Owner       string                 `json:"owner"`
-	Compiler    string                 `json:"compiler"`
-	Version     string                 `json:"version"`
-	Params      map[string]interface{} `json:"params"`
-	Description string                 `json:"description"`
+	From        string                 `json:"from"`         // Адрес отправителя (с префиксом)
+	Bytecode    []byte                 `json:"bytecode"`     // Байткод контракта (raw)
+	Name        string                 `json:"name"`         // Имя контракта
+	Standard    string                 `json:"standard"`     // Стандарт (например, ERC20)
+	Owner       string                 `json:"owner"`        // Владелец (с префиксом)
+	Compiler    string                 `json:"compiler"`     // Версия компилятора
+	Version     string                 `json:"version"`      // Версия контракта
+	Params      map[string]interface{} `json:"params"`       // Параметры конструктора (любые)
+	Description string                 `json:"description"`  // Описание
+	MetadataCID string                 `json:"metadata_cid"` // CID в IPFS для метаданных (если есть)
+	SourceCode  string                 `json:"source_code"`  // Исходный код (опционально)
 	GasLimit    uint64                 `json:"gas_limit"`
 	GasPrice    uint64                 `json:"gas_price"`
 	Nonce       uint64                 `json:"nonce"`
@@ -37,11 +31,15 @@ type DeployContractParams struct {
 
 // --- RPC Handlers ---
 
-// Handler для деплоя смарт-контракта
 func DeployContractHandler(w http.ResponseWriter, r *http.Request) {
 	var params DeployContractParams
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	// Проверка адресов с префиксом
+	if !core.ValidateAddress(params.From) || !core.ValidateAddress(params.Owner) {
+		http.Error(w, "invalid address", http.StatusBadRequest)
 		return
 	}
 
@@ -51,6 +49,10 @@ func DeployContractHandler(w http.ResponseWriter, r *http.Request) {
 		Owner:       params.Owner,
 		Params:      toStringMap(params.Params),
 		Description: params.Description,
+		MetadataCID: params.MetadataCID,
+		SourceCode:  params.SourceCode,
+		Version:     params.Version,
+		Compiler:    params.Compiler,
 	}
 
 	addr, err := evm.DeployContract(
@@ -66,104 +68,14 @@ func DeployContractHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	resp := map[string]interface{}{
-		"address": utils.AddPrefix(addr), // добавляем префикс GN
+		"address": core.AddPrefix(addr),
 	}
 	json.NewEncoder(w).Encode(resp)
 }
 
-// Handler для получения информации о токене
-func TokenInfoHandler(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("address")
-	address = utils.RemovePrefix(address) // убираем префикс, если пришёл
-	token, err := tokenReg.GetToken(address)
-	if err != nil {
-		http.Error(w, "token not found", http.StatusNotFound)
-		return
-	}
-	meta := token.Meta()
-	meta.Address = utils.AddPrefix(meta.Address) // добавляем префикс для отображения
-	json.NewEncoder(w).Encode(meta)
-}
-
-// Handler для баланса токена
-func TokenBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("token")
-	user := r.URL.Query().Get("user")
-	token, err := tokenReg.GetToken(address)
-	if err != nil {
-		http.Error(w, "token not found", http.StatusNotFound)
-		return
-	}
-	balance := token.BalanceOf(user)
-	resp := map[string]interface{}{
-		"user":    user,
-		"token":   address,
-		"balance": balance,
-	}
-	json.NewEncoder(w).Encode(resp)
-}
-
-// Handler для трансфера токена
-func TokenTransferHandler(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("token")
-	from := r.URL.Query().Get("from")
-	to := r.URL.Query().Get("to")
-	amountStr := r.URL.Query().Get("amount")
-	amount, err := strconv.ParseUint(amountStr, 10, 64)
-	if err != nil {
-		http.Error(w, "invalid amount", http.StatusBadRequest)
-		return
-	}
-	token, err := tokenReg.GetToken(address)
-	if err != nil {
-		http.Error(w, "token not found", http.StatusNotFound)
-		return
-	}
-	if err := token.Transfer(from, to, amount); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	resp := map[string]interface{}{
-		"from":   from,
-		"to":     to,
-		"amount": amount,
-		"token":  address,
-		"status": "ok",
-	}
-	json.NewEncoder(w).Encode(resp)
-}
-
-// Универсальный вызов метода токена
-func TokenCallHandler(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("token")
-	method := r.URL.Query().Get("method")
-	args := r.URL.Query()["arg"] // можно передавать несколько arg=...
-	_, err := tokenReg.GetToken(address)
-	if err != nil {
-		http.Error(w, "token not found", http.StatusNotFound)
-		return
-	}
-	result, err := tokenReg.CallTokenMethod(address, method, toInterfaceSlice(args)...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	resp := map[string]interface{}{
-		"result": result,
-	}
-	json.NewEncoder(w).Encode(resp)
-}
-
-// Вспомогательная функция для преобразования []string в []interface{}
-func toInterfaceSlice(args []string) []interface{} {
-	out := make([]interface{}, len(args))
-	for i, v := range args {
-		out[i] = v
-	}
-	return out
-}
-
+// Вспомогательные функции
 func toStringMap(m map[string]interface{}) map[string]string {
 	res := make(map[string]string)
 	for k, v := range m {
@@ -171,16 +83,3 @@ func toStringMap(m map[string]interface{}) map[string]string {
 	}
 	return res
 }
-
-// Пример регистрации маршрутов (в main.go или router.go)
-/*
-import "net/http"
-
-func RegisterRoutes() {
-	http.HandleFunc("/api/contract/deploy", DeployContractHandler)
-	http.HandleFunc("/api/token/info", TokenInfoHandler)
-	http.HandleFunc("/api/token/balance", TokenBalanceHandler)
-	http.HandleFunc("/api/token/transfer", TokenTransferHandler)
-	http.HandleFunc("/api/token/call", TokenCallHandler)
-}
-*/

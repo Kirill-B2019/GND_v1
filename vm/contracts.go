@@ -19,16 +19,15 @@ const (
 
 // ContractMeta - метаданные смарт-контракта
 type ContractMeta struct {
-	Address     string            // Уникальный адрес контракта
-	Owner       string            // Владелец контракта
-	Standard    ContractStandard  // Стандарт: erc20, trc20, custom
-	Name        string            // Название токена/контракта
-	Symbol      string            // Символ токена
-	Decimals    uint8             // Количество знаков после запятой
-	Params      map[string]string // Дополнительные параметры
-	Description string            // Описание
-	ABI         string            // ABI контракта (JSON)
-	Bytecode    string            // hex-код байткода
+	Name        string            `json:"name"`
+	Standard    ContractStandard  `json:"standard"`
+	Owner       string            `json:"owner"`
+	Params      map[string]string `json:"params"`
+	Description string            `json:"description"`
+	MetadataCID string            `json:"metadata_cid"`
+	SourceCode  string            `json:"source_code"`
+	Version     string            `json:"version"`
+	Compiler    string            `json:"compiler"`
 }
 
 // Contract - структура смарт-контракта
