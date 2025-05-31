@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Config) {
@@ -26,6 +27,26 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		mempool.Add(&tx)
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]string{"txHash": tx.Hash})
+	})
+
+	http.HandleFunc("/api/wallet/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path[len("/api/wallet/"):]
+		parts := strings.Split(path, "/")
+		if len(parts) != 2 || parts[1] != "balance" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		address := parts[0]
+		if !core.ValidateAddress(address) {
+			http.Error(w, "invalid address", http.StatusBadRequest)
+			return
+		}
+		balance := bc.State.BalanceOf(address)
+		resp := map[string]interface{}{
+			"address": address,
+			"balance": balance,
+		}
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	addr := fmt.Sprintf(":%d", config.RestPort)

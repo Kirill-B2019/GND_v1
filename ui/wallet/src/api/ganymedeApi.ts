@@ -46,7 +46,7 @@ export interface Token {
 export class GanymedeApi {
     api: AxiosInstance;
 
-    constructor(baseURL: string = "http://localhost:8080") {
+    constructor(baseURL: string = "http://45.12.72.15:8080") {
         this.api = axios.create({
             baseURL,
             timeout: 10_000,
