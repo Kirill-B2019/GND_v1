@@ -27,6 +27,19 @@ type TokenContract struct {
 	balances map[core.Address]uint64
 }
 
+type ContractMeta struct {
+	Name        string
+	Symbol      string
+	Standard    string
+	Owner       core.Address
+	Description string
+	Version     string
+	Compiler    string
+	Params      map[string]string
+	MetadataCID string
+	SourceCode  string
+}
+
 func NewTokenContract(address core.Address, bytecode Bytecode, owner core.Address, name, symbol string, decimals uint8) *TokenContract {
 	return &TokenContract{
 		address:  address,
@@ -83,7 +96,7 @@ func DeployContract(
 
 	// Пример реализации:
 	if len(bytecode) < 20 {
-		return core.Address{}, errors.New("invalid bytecode")
+		return core.Address(""), errors.New("invalid bytecode")
 	}
 
 	// Генерация адреса контракта (упрощенно)
