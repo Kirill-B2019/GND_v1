@@ -1,12 +1,22 @@
 package vm
 
 import (
+	"GND/core"
 	"GND/utils"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
 )
+
+// Глобальный реестр контрактов
+
+type ContractRegistryType map[core.Address]Contract
+
+func GetContract(addr core.Address) (Contract, bool) {
+	c, ok := ContractRegistry[addr]
+	return c, ok
+}
 
 // EVMConfig определяет параметры виртуальной машины
 type EVMConfig struct {
@@ -15,23 +25,27 @@ type EVMConfig struct {
 
 // EVM реализует изолированную виртуальную машину для исполнения байткода контрактов
 type EVM struct {
-	config    EVMConfig
-	contracts *ContractRegistry // глобальный реестр контрактов
-	state     map[string]uint64 // простейшее состояние для счетчиков газа и балансов
-	mutex     sync.RWMutex
+	config EVMConfig
+	state  map[string]uint64 // простейшее состояние для счетчиков газа и балансов
+	mutex  sync.RWMutex
 }
 
 // NewEVM создает новый экземпляр EVM
-func NewEVM(config EVMConfig, contracts *ContractRegistry) *EVM {
+func NewEVM(config EVMConfig) *EVM {
 	return &EVM{
-		config:    config,
-		contracts: contracts,
-		state:     make(map[string]uint64),
+		config: config,
+		state:  make(map[string]uint64),
 	}
 }
 
 // DeployContract деплоит байткод контракта, регистрирует его и списывает комиссию в GND
-func (evm *EVM) DeployContract(from string, bytecode []byte, meta ContractMeta, gasLimit, gasPrice, nonce uint64, signature string) (string, error) {
+func (evm *EVM) DeployContract(
+	from string,
+	bytecode []byte,
+	meta ContractMeta,
+	gasLimit, gasPrice, nonce uint64,
+	signature string,
+) (string, error) {
 	evm.mutex.Lock()
 	defer evm.mutex.Unlock()
 
@@ -47,10 +61,17 @@ func (evm *EVM) DeployContract(from string, bytecode []byte, meta ContractMeta, 
 	meta.Address = addr
 	meta.Bytecode = hex.EncodeToString(bytecode)
 
-	_, err := evm.contracts.RegisterContract(meta)
-	if err != nil {
-		return "", err
-	}
+	// Регистрация в глобальном реестре
+	contract := NewTokenContract(
+		core.Address(addr),
+		bytecode,
+		core.Address(from),
+		meta.Name,
+		meta.Symbol,
+		18,
+	)
+	ContractRegistry[core.Address(addr)] = contract
+
 	return addr, nil
 }
 
@@ -67,14 +88,20 @@ func (evm *EVM) CallContract(from, to string, data []byte, gasLimit, gasPrice, n
 	}
 	evm.state[from] -= requiredFee
 
+	// Получаем контракт из глобального реестра
+	contract, exists := GetContract(core.Address(to))
+	if !exists {
+		return nil, errors.New("contract not found")
+	}
+
 	// Эмуляция вызова: определяем метод и аргументы из data (упрощенно)
 	method, args, err := decodeCallData(data)
 	if err != nil {
 		return nil, err
 	}
 
-	// Вызов универсального обработчика
-	result, err := evm.contracts.CallContract(from, to, method, args, gasLimit, gasPrice, nonce, signature)
+	// Вызов метода контракта
+	result, err := contract.Execute(method, args)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@
   "gas_limit": 1000000,
   "network_id": "ganymede-testnet",
   "rpc_port": 8545,
-  "rest_port": 8090,
+  "rest_port": 8099,
   "ws_port": 8090,
   "coin": {
     "name": "GANYMED Coin",

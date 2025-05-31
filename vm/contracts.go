@@ -6,12 +6,23 @@ import (
 	"fmt"
 )
 
+var ContractRegistry = make(map[core.Address]Contract)
+
 // Определяем тип Bytecode как псевдоним для []byte
 type Bytecode = []byte
 
+func RegisterContract(addr core.Address, contract Contract) {
+	ContractRegistry[addr] = contract
+}
+
+func CallContract(addr core.Address) (Contract, bool) {
+	c, ok := ContractRegistry[addr]
+	return c, ok
+}
+
 // Contract представляет базовый интерфейс смарт-контракта
 type Contract interface {
-	Execute(method string, args []byte) ([]byte, error)
+	Execute(method string, args []interface{}) (interface{}, error)
 	Address() core.Address
 	Bytecode() Bytecode
 }
@@ -38,6 +49,8 @@ type ContractMeta struct {
 	Params      map[string]string
 	MetadataCID string
 	SourceCode  string
+	Address     string
+	Bytecode    string
 }
 
 func NewTokenContract(address core.Address, bytecode Bytecode, owner core.Address, name, symbol string, decimals uint8) *TokenContract {
@@ -52,7 +65,14 @@ func NewTokenContract(address core.Address, bytecode Bytecode, owner core.Addres
 	}
 }
 
-func (c *TokenContract) Execute(method string, args []byte) ([]byte, error) {
+func (c *TokenContract) Address() core.Address {
+	return c.address
+}
+
+func (c *TokenContract) Bytecode() Bytecode {
+	return c.bytecode
+}
+func (c *TokenContract) Execute(method string, args []interface{}) (interface{}, error) {
 	switch method {
 	case "transfer":
 		return c.handleTransfer(args)
@@ -63,24 +83,14 @@ func (c *TokenContract) Execute(method string, args []byte) ([]byte, error) {
 	}
 }
 
-func (c *TokenContract) Address() core.Address {
-	return c.address
+func (c *TokenContract) handleTransfer(args []interface{}) (interface{}, error) {
+	// Реализуйте обработку args как []interface{}
+	return true, nil
 }
 
-func (c *TokenContract) Bytecode() Bytecode {
-	return c.bytecode
-}
-
-// handleTransfer обрабатывает перевод токенов
-func (c *TokenContract) handleTransfer(args []byte) ([]byte, error) {
-	// Реализация парсинга аргументов и логики перевода
-	return []byte{0x01}, nil // Пример успешного выполнения
-}
-
-// handleBalanceOf возвращает баланс адреса
-func (c *TokenContract) handleBalanceOf(args []byte) ([]byte, error) {
-	// Реализация парсинга аргументов и получения баланса
-	return []byte{0x00, 0x64}, nil // Пример: возвращаем 100
+func (c *TokenContract) handleBalanceOf(args []interface{}) (interface{}, error) {
+	// Реализуйте обработку args как []interface{}
+	return uint64(100), nil
 }
 
 // DeployContract создает новый экземпляр контракта (упрощенная версия)

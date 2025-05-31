@@ -29,50 +29,54 @@ type DeployContractParams struct {
 	Signature   string                 `json:"signature"`
 }
 
+func StartRPCServer(evm *vm.EVM, addr string) error {
+	http.HandleFunc("/contract/deploy", DeployContractHandler(evm))
+	// добавьте другие обработчики по необходимости
+
+	return http.ListenAndServe(addr, nil)
+}
+
 // --- RPC Handlers ---
 
-func DeployContractHandler(w http.ResponseWriter, r *http.Request) {
-	var params DeployContractParams
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-	// Проверка адресов с префиксом
-	if !core.ValidateAddress(params.From) || !core.ValidateAddress(params.Owner) {
-		http.Error(w, "invalid address", http.StatusBadRequest)
-		return
-	}
+func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params DeployContractParams
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
 
-	meta := vm.ContractMeta{
-		Name:        params.Name,
-		Standard:    vm.ContractStandard(params.Standard),
-		Owner:       params.Owner,
-		Params:      toStringMap(params.Params),
-		Description: params.Description,
-		MetadataCID: params.MetadataCID,
-		SourceCode:  params.SourceCode,
-		Version:     params.Version,
-		Compiler:    params.Compiler,
-	}
+		// ... валидация ...
 
-	addr, err := evm.DeployContract(
-		params.From,
-		params.Bytecode,
-		meta,
-		params.GasLimit,
-		params.GasPrice,
-		params.Nonce,
-		params.Signature,
-	)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+		meta := vm.ContractMeta{
+			Name:        params.Name,
+			Standard:    params.Standard,
+			Owner:       core.Address(params.Owner),
+			Params:      toStringMap(params.Params),
+			Description: params.Description,
+			MetadataCID: params.MetadataCID,
+			SourceCode:  params.SourceCode,
+			Version:     params.Version,
+			Compiler:    params.Compiler,
+		}
 
-	resp := map[string]interface{}{
-		"address": core.AddPrefix(addr),
+		addr, err := evm.DeployContract(
+			params.From,
+			params.Bytecode,
+			meta,
+			params.GasLimit,
+			params.GasPrice,
+			params.Nonce,
+			params.Signature,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		resp := map[string]interface{}{"address": core.AddPrefix(addr)}
+		json.NewEncoder(w).Encode(resp)
 	}
-	json.NewEncoder(w).Encode(resp)
 }
 
 // Вспомогательные функции

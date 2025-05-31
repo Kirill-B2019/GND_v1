@@ -2,6 +2,7 @@ package main
 
 import (
 	"GND/utils"
+	"GND/vm"
 	"fmt"
 	"log"
 	"os"
@@ -26,21 +27,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
-	fmt.Printf("Адрес валидатора/майнера: %s\n", utils.AddPrefix(minerWallet.Address))
+	fmt.Printf("Адрес валидатора/майнера: %s\n", utils.AddPrefix(string(minerWallet.Address)))
 
 	// 3. Создание генезис-блока
 	genesisBlock := core.NewBlock(
-		0,                     // index
-		"",                    // prevHash
-		minerWallet.Address,   // miner
-		[]*core.Transaction{}, // пустой список транзакций
-		cfg.GasLimit,          // gasLimit
-		cfg.ConsensusType,     // consensus
+		0,                           // index
+		"",                          // prevHash
+		string(minerWallet.Address), // miner
+		[]*core.Transaction{},       // пустой список транзакций
+		cfg.GasLimit,                // gasLimit
+		cfg.ConsensusType,           // consensus
 	)
 
 	// 4. Инициализация блокчейна
 	blockchain := core.NewBlockchain(genesisBlock)
-	blockchain.State.Credit(minerWallet.Address, 1_000_000_000) // начальный баланс GND
+	blockchain.State.Credit(string(minerWallet.Address), 1_000_000_000) // начальный баланс GND
 
 	// 5. Инициализация мемпула транзакций
 	mempool := core.NewMempool()
@@ -59,6 +60,8 @@ func main() {
 	fmt.Printf("Консенсус %s запущен\n", consensusEngine.Type())
 
 	// 7. Запуск REST API (асинхронно)
+	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: 10000000}) //
+	api.StartRPCServer(evmInstance, ":8081")
 	go api.StartRESTServer(blockchain, mempool, cfg)
 	// Запуск WebSocket-сервера
 	go api.StartWebSocketServer(blockchain, cfg)
