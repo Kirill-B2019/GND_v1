@@ -26,6 +26,7 @@ const WalletCreate: React.FC<{ onCreate: (wallet: WalletData) => void }> = ({ on
             onCreate(newWallet);
         } catch (e) {
             setError("Не удалось создать кошелек");
+            console.error(e);
         }
     };
 
