@@ -1,6 +1,7 @@
 package main
 
 import (
+	"GND/api"
 	"GND/utils"
 	"GND/vm"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"GND/api"
 	"GND/consensus"
 	"GND/core"
 )
@@ -59,12 +59,17 @@ func main() {
 	consensusEngine.Start(blockchain, mempool)
 	fmt.Printf("Консенсус %s запущен\n", consensusEngine.Type())
 
-	// 7. Запуск REST API (асинхронно)
+	// 7. Запуск API (асинхронно)
+
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: 10000000}) //
-	api.StartRPCServer(evmInstance, ":8081")
+	go api.StartRPCServer(evmInstance, ":8081")
+	fmt.Println("RPCServer запущен.")
 	go api.StartRESTServer(blockchain, mempool, cfg)
+	fmt.Println("RESTServer запущен.")
 	// Запуск WebSocket-сервера
 	go api.StartWebSocketServer(blockchain, cfg)
+	fmt.Println("WebSocketServer запущен.")
+	fmt.Println("Все серверы запущены")
 
 	// 8. Грейсфул-шатдаун (Ctrl+C)
 	sigs := make(chan os.Signal, 1)
