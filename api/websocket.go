@@ -92,8 +92,8 @@ func wsBroadcast(msg WSMessage) {
 	for conn := range wsManager.clients {
 		if err := conn.WriteJSON(msg); err != nil {
 			log.Println("WS: ошибка отправки:", err)
-			if cerr := conn.Close(); cerr != nil {
-				log.Println("WS: ошибка при закрытии соединения:", cerr)
+			if err := conn.Close(); err != nil {
+				log.Println("WS: ошибка при закрытии соединения:", err)
 			}
 			delete(wsManager.clients, conn)
 		}
