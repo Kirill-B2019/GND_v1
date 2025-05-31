@@ -1,15 +1,13 @@
 package api
 
 import (
-	_ "encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"GND/core"
-	// "ganymede/vm" // если нужно слать события контрактов
-	// "ganymede/tokens"
 	"github.com/gorilla/websocket"
 )
 
@@ -34,17 +32,20 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Для продакшена - добавить проверку домена!
+		// В продакшене реализуйте строгую проверку домена!
+		return true
 	},
 }
 
-// Запуск WebSocket-сервера
-func StartWebSocketServer(bc *core.Blockchain /*, другие модули */) {
+// Запуск WebSocket-сервера с портом из конфига
+func StartWebSocketServer(bc *core.Blockchain, config *core.Config) {
 	http.HandleFunc("/ws", wsHandler)
-	log.Println("WebSocket сервер запущен на /ws")
+	log.Printf("WebSocket сервер запущен на /ws (порт %d)", config.WsPort)
 	go broadcastBlocks(bc)
-	// Можно добавить broadcastTxs, broadcastEvents и т.д.
-	http.ListenAndServe(":8090", nil) // порт вынести в конфиг
+	addr := fmt.Sprintf(":%d", config.WsPort)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Fatalf("Ошибка запуска WebSocket сервера: %v", err)
+	}
 }
 
 // Обработчик подключения клиента
@@ -58,7 +59,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	wsManager.clients[conn] = true
 	wsManager.lock.Unlock()
 	log.Println("WS: новое подключение")
-	// Можно обрабатывать входящие сообщения клиента (например, подписки)
 	go wsReadLoop(conn)
 }
 
@@ -68,12 +68,17 @@ func wsReadLoop(conn *websocket.Conn) {
 		wsManager.lock.Lock()
 		delete(wsManager.clients, conn)
 		wsManager.lock.Unlock()
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("WS: ошибка при закрытии соединения: %v", err)
+		}
 		log.Println("WS: отключение клиента")
 	}()
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("WS: ошибка чтения сообщения: %v", err)
+			}
 			break
 		}
 		// Здесь можно обработать команды подписки/фильтрации
@@ -87,13 +92,15 @@ func wsBroadcast(msg WSMessage) {
 	for conn := range wsManager.clients {
 		if err := conn.WriteJSON(msg); err != nil {
 			log.Println("WS: ошибка отправки:", err)
-			conn.Close()
+			if cerr := conn.Close(); cerr != nil {
+				log.Println("WS: ошибка при закрытии соединения:", cerr)
+			}
 			delete(wsManager.clients, conn)
 		}
 	}
 }
 
-// Пример: периодически слать последний блок (или по событию)
+// Периодически слать последний блок (или по событию)
 func broadcastBlocks(bc *core.Blockchain) {
 	lastHash := ""
 	for {
@@ -106,8 +113,6 @@ func broadcastBlocks(bc *core.Blockchain) {
 		time.Sleep(2 * time.Second)
 	}
 }
-
-// Можно реализовать broadcastTxs, broadcastEvents и подписки по фильтрам
 
 // Пример отправки новой транзакции в WebSocket
 func NotifyNewTx(tx *core.Transaction) {

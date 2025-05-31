@@ -14,6 +14,7 @@ type Config struct {
 	NetworkID     string `json:"network_id"`     // идентификатор сети
 	RpcPort       int    `json:"rpc_port"`       // порт для RPC API
 	RestPort      int    `json:"rest_port"`      // порт для REST API
+	WsPort        int    `json:"ws_port"`        // порт для WebSocket
 	// Можно добавить другие параметры: комиссия, минимальный стейк, список авторитетов и т.д.
 }
 

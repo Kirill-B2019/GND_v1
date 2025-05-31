@@ -60,6 +60,8 @@ func main() {
 
 	// 7. Запуск REST API (асинхронно)
 	go api.StartRESTServer(blockchain, mempool)
+	// Запуск WebSocket-сервера
+	go api.StartWebSocketServer(blockchain, cfg)
 
 	// 8. Грейсфул-шатдаун (Ctrl+C)
 	sigs := make(chan os.Signal, 1)
@@ -71,4 +73,6 @@ func main() {
 	// 9. Остановка консенсуса и сервисов
 	consensusEngine.Stop()
 	fmt.Println("Нода ГАНИМЕД остановлена.")
+
+	select {}
 }
