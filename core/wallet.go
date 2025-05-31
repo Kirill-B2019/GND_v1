@@ -1,20 +1,28 @@
 package core
 
 import (
-	"crypto/rand"
+	"crypto/rand" // Импорт для rand.Int
 	"crypto/sha256"
 	"encoding/hex"
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/ripemd160"
+	"math/big" // Добавляем импорт math/big
 )
 
-// Допустимые префиксы
-var validPrefixes = []string{"GND", "GND_", "GN", "GN_"}
+// Допустимые префиксы в байтовом представлении
+var validPrefixes = [][]byte{
+	[]byte("GND"),
+	[]byte("GND_"),
+	[]byte("GN"),
+	[]byte("GN_"),
+}
+
+type Address string
 
 type Wallet struct {
 	PrivateKey *secp256k1.PrivateKey
-	Address    string
+	Address    Address
 }
 
 func NewWallet() (*Wallet, error) {
@@ -22,32 +30,44 @@ func NewWallet() (*Wallet, error) {
 	if err != nil {
 		return nil, err
 	}
-	pubKey := privKey.PubKey().SerializeUncompressed()
-	shaHash := sha256.Sum256(pubKey[1:])
+
+	// Генерация публичного ключа (сжатый формат)
+	pubKey := privKey.PubKey().SerializeCompressed()
+
+	// SHA-256 + RIPEMD-160
+	shaHash := sha256.Sum256(pubKey)
 	ripemdHasher := ripemd160.New()
-	_, err = ripemdHasher.Write(shaHash[:])
-	if err != nil {
+	if _, err := ripemdHasher.Write(shaHash[:]); err != nil {
 		return nil, err
 	}
 	pubKeyHash := ripemdHasher.Sum(nil)
-	prefix := randomPrefix()
+
+	// Выбор префикса
+	prefix, err := randomPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	// Формирование адреса
 	payload := append(prefix, pubKeyHash...)
 	checksum := checksum(payload)
 	fullPayload := append(payload, checksum...)
 	address := base58.Encode(fullPayload)
+
 	return &Wallet{
 		PrivateKey: privKey,
-		Address:    address,
+		Address:    Address(address),
 	}, nil
 }
 
-func randomPrefix() []byte {
-	b := make([]byte, 1)
-	_, err := rand.Read(b)
+func randomPrefix() ([]byte, error) {
+	// Используем math/big для работы с большими числами
+	max := big.NewInt(int64(len(validPrefixes)))
+	n, err := rand.Int(rand.Reader, max)
 	if err != nil {
-		return []byte(validPrefixes[0])
+		return nil, err
 	}
-	return []byte(validPrefixes[int(b[0])%len(validPrefixes)])
+	return validPrefixes[n.Int64()], nil
 }
 
 func checksum(payload []byte) []byte {
@@ -58,24 +78,37 @@ func checksum(payload []byte) []byte {
 
 func ValidateAddress(address string) bool {
 	decoded := base58.Decode(address)
-	if len(decoded) < 8 {
+
+	// Минимальная длина: префикс(3-4) + хеш(20) + checksum(4)
+	if len(decoded) < 8 || len(decoded) > 28 {
 		return false
 	}
-	var matchedPrefix []byte
-	for _, prefix := range validPrefixes {
-		if len(decoded) > len(prefix) && string(decoded[:len(prefix)]) == string(prefix) {
-			matchedPrefix = prefix
+
+	// Поиск совпадения префикса
+	var prefix []byte
+	for _, p := range validPrefixes {
+		if len(decoded) >= len(p) && bytesEqual(decoded[:len(p)], p) {
+			prefix = p
 			break
 		}
 	}
-	if matchedPrefix == nil {
+	if prefix == nil {
 		return false
 	}
+
+	// Проверка контрольной суммы
 	payload := decoded[:len(decoded)-4]
 	checksumBytes := decoded[len(decoded)-4:]
-	calcChecksum := checksum(payload)
-	for i := 0; i < 4; i++ {
-		if checksumBytes[i] != calcChecksum[i] {
+	return bytesEqual(checksum(payload), checksumBytes)
+}
+
+// Безопасное сравнение байтовых срезов
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
@@ -87,5 +120,5 @@ func (w *Wallet) PrivateKeyHex() string {
 }
 
 func (w *Wallet) PublicKeyHex() string {
-	return hex.EncodeToString(w.PrivateKey.PubKey().SerializeUncompressed())
+	return hex.EncodeToString(w.PrivateKey.PubKey().SerializeCompressed())
 }
