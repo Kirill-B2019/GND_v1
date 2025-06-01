@@ -76,15 +76,19 @@ func checksum(payload []byte) []byte {
 
 func ValidateAddress(address string) bool {
 	// Проверяем префикс
-	if !strings.HasPrefix(address, "GND") && !strings.HasPrefix(address, "GN_") {
+
+	var prefixLen int
+	switch {
+	case strings.HasPrefix(address, "GNDct"):
+		prefixLen = 5
+	case strings.HasPrefix(address, "GND"):
+		prefixLen = 3
+	case strings.HasPrefix(address, "GN_"):
+		prefixLen = 3
+	default:
 		return false
 	}
 
-	// Определяем длину префикса
-	prefixLen := 3
-	if strings.HasPrefix(address, "GN_") {
-		prefixLen = 4
-	}
 	if len(address) <= prefixLen {
 		return false
 	}
@@ -98,7 +102,7 @@ func ValidateAddress(address string) bool {
 		return false
 	}
 
-	// Проверяем контрольную сумму
+	// Проверяем контрольную сумму (Base58Check)
 	payload := decoded[:20]
 	checksumBytes := decoded[20:]
 	return bytesEqual(checksum(payload), checksumBytes)
