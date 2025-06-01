@@ -31,26 +31,3 @@ export function ValidateAddress(address: string): boolean {
         return false;
     }
 }
-
-/**
- * Добавляет префикс "GND" к адресу без префикса (для совместимости)
- */
-export function AddPrefix(address: string): string {
-    if (address.startsWith("GND") || address.startsWith("GN")) {
-        return address;
-    }
-    return "GND" + address;
-}
-
-/**
- * Удаляет префикс "GND" или "GN" из адреса (для внутреннего использования)
- */
-export function RemovePrefix(address: string): string {
-    if (address.startsWith("GND")) {
-        return address.slice(3);
-    }
-    if (address.startsWith("GN")) {
-        return address.slice(2);
-    }
-    return address;
-}

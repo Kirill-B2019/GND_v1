@@ -1,7 +1,6 @@
 package tokens
 
 import (
-	"GND/utils"
 	"errors"
 	"fmt"
 	"sync"
@@ -34,7 +33,6 @@ func (tr *TokenRegistry) RegisterToken(token TokenInterface) error {
 
 // GetToken возвращает токен по адресу
 func (tr *TokenRegistry) GetToken(address string) (TokenInterface, error) {
-	address = utils.RemovePrefix(address)
 	tr.mutex.RLock()
 	defer tr.mutex.RUnlock()
 	token, ok := tr.tokens[address]

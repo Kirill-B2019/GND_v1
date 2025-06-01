@@ -22,7 +22,7 @@ func NewAddress(pubKey []byte) (string, error) {
 	ripemdHasher := ripemd160.New()
 	ripemdHasher.Write(shaHash[:])
 	ripemdHash := ripemdHasher.Sum(nil)
-	prefix := []byte("GND_")
+	prefix := []byte("")
 	payload := append(prefix, ripemdHash...)
 	checksum := core.Checksum(payload) // используем функцию из core
 	fullPayload := append(payload, checksum...)

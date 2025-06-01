@@ -4,15 +4,22 @@ import (
 	"GND/core"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
 
 func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Config) {
-	http.HandleFunc("/block/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/block/latest", func(w http.ResponseWriter, r *http.Request) {
 		block := bc.LatestBlock()
 		json.NewEncoder(w).Encode(block)
 	})
+	addr := config.Server.RESTAddr // ← используйте это поле
+	log.Printf("REST сервер запущен на %s\n", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Fatalf("Ошибка запуска REST сервера: %v", err)
+	}
 
 	http.HandleFunc("/tx/send", func(w http.ResponseWriter, r *http.Request) {
 		var tx core.Transaction
@@ -41,7 +48,7 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 			http.Error(w, "invalid address", http.StatusBadRequest)
 			return
 		}
-		balance := bc.State.BalanceOf(address)
+		balance := bc.State.GetBalance(core.Address(address))
 
 		resp := map[string]interface{}{
 			"address":  address,
@@ -53,6 +60,6 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	addr := fmt.Sprintf(":%d", config.RestPort)
+	fmt.Sprintf(":%d", config.Server.RESTAddr)
 	http.ListenAndServe(addr, nil)
 }

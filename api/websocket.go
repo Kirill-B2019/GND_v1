@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -38,11 +37,10 @@ var upgrader = websocket.Upgrader{
 }
 
 // Запуск WebSocket-сервера с портом из конфига
-func StartWebSocketServer(bc *core.Blockchain, config *core.Config) {
+func StartWebSocketServer(blockchain *core.Blockchain, addr string) {
 	http.HandleFunc("/ws", wsHandler)
-	log.Printf("WebSocket сервер запущен на /ws (порт %d)", config.WsPort)
-	go broadcastBlocks(bc)
-	addr := fmt.Sprintf(":%d", config.WsPort)
+	log.Printf("WebSocket сервер запущен на %s", addr)
+	go broadcastBlocks(blockchain)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Ошибка запуска WebSocket сервера: %v", err)
 	}

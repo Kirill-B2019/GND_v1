@@ -8,17 +8,14 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/ripemd160"
 	"math/big" // Добавляем импорт math/big
+	"strings"
 )
 
 // Допустимые префиксы в байтовом представлении
 var validPrefixes = [][]byte{
 	[]byte("GND"),
-	[]byte("GND_"),
-	[]byte("GN"),
 	[]byte("GN_"),
 }
-
-type Address string
 
 type Wallet struct {
 	PrivateKey *secp256k1.PrivateKey
@@ -49,10 +46,11 @@ func NewWallet() (*Wallet, error) {
 	}
 
 	// Формирование адреса
-	payload := append(prefix, pubKeyHash...)
-	checksum := checksum(payload)
-	fullPayload := append(payload, checksum...)
-	address := base58.Encode(fullPayload)
+	checksum := checksum(pubKeyHash)
+	fullPayload := append(pubKeyHash, checksum...)
+	encoded := base58.Encode(fullPayload)
+
+	address := prefix + encoded
 
 	return &Wallet{
 		PrivateKey: privKey,
@@ -60,12 +58,12 @@ func NewWallet() (*Wallet, error) {
 	}, nil
 }
 
-func randomPrefix() ([]byte, error) {
-	// Используем math/big для работы с большими числами
+func randomPrefix() (string, error) {
+	validPrefixes := []string{"GND", "GN_"}
 	max := big.NewInt(int64(len(validPrefixes)))
 	n, err := rand.Int(rand.Reader, max)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	return validPrefixes[n.Int64()], nil
 }
@@ -77,28 +75,32 @@ func checksum(payload []byte) []byte {
 }
 
 func ValidateAddress(address string) bool {
-	decoded := base58.Decode(address)
-
-	// Минимальная длина: префикс(3-4) + хеш(20) + checksum(4)
-	if len(decoded) < 8 || len(decoded) > 28 {
+	// Проверяем префикс
+	if !strings.HasPrefix(address, "GND") && !strings.HasPrefix(address, "GN_") {
 		return false
 	}
 
-	// Поиск совпадения префикса
-	var prefix []byte
-	for _, p := range validPrefixes {
-		if len(decoded) >= len(p) && bytesEqual(decoded[:len(p)], p) {
-			prefix = p
-			break
-		}
+	// Определяем длину префикса
+	prefixLen := 3
+	if strings.HasPrefix(address, "GN_") {
+		prefixLen = 4
 	}
-	if prefix == nil {
+	if len(address) <= prefixLen {
 		return false
 	}
 
-	// Проверка контрольной суммы
-	payload := decoded[:len(decoded)-4]
-	checksumBytes := decoded[len(decoded)-4:]
+	// Отделяем base58-часть
+	encoded := address[prefixLen:]
+
+	// Декодируем base58-часть
+	decoded := base58.Decode(encoded)
+	if len(decoded) != 24 { // 20 байт хеша + 4 байта checksum
+		return false
+	}
+
+	// Проверяем контрольную сумму
+	payload := decoded[:20]
+	checksumBytes := decoded[20:]
 	return bytesEqual(checksum(payload), checksumBytes)
 }
 

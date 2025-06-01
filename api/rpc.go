@@ -6,6 +6,7 @@ import (
 	"GND/vm"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	_ "strconv"
 )
@@ -30,14 +31,20 @@ type DeployContractParams struct {
 }
 
 func StartRPCServer(evm *vm.EVM, addr string) error {
-	http.HandleFunc("/contract/deploy", DeployContractHandler(evm))
-	// добавьте другие обработчики по необходимости
-
-	return http.ListenAndServe(addr, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/block/latest", LatestBlockHandler(evm))
+	mux.HandleFunc("/contract/deploy", DeployContractHandler(evm))
+	mux.HandleFunc("/contract/call", CallContractHandler(evm))
+	mux.HandleFunc("/contract/send", SendContractTxHandler(evm))
+	mux.HandleFunc("/account/balance", AccountBalanceHandler(evm))
+	mux.HandleFunc("/block/by-number", BlockByNumberHandler(evm))
+	mux.HandleFunc("/tx/send", SendTxHandler(evm))
+	mux.HandleFunc("/tx/status", TxStatusHandler(evm))
+	log.Printf("RPC Server сервер запущен на %s", addr)
+	return http.ListenAndServe(addr, mux)
 }
 
 // --- RPC Handlers ---
-
 func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var params DeployContractParams
@@ -74,8 +81,129 @@ func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
 			return
 		}
 
-		resp := map[string]interface{}{"address": core.AddPrefix(addr)}
+		resp := map[string]interface{}{"address": addr}
 		json.NewEncoder(w).Encode(resp)
+	}
+}
+func CallContractHandler(evm *vm.EVM) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			From      string `json:"from"`
+			To        string `json:"to"`
+			Data      []byte `json:"data"` // ABI-encoded вызов
+			GasLimit  uint64 `json:"gas_limit"`
+			GasPrice  uint64 `json:"gas_price"`
+			Value     uint64 `json:"value"`
+			Signature string `json:"signature"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		result, err := evm.CallContract(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value, params.Signature)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"result": result})
+	}
+}
+func SendContractTxHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			From      string `json:"from"`
+			To        string `json:"to"`
+			Data      []byte `json:"data"`
+			GasLimit  uint64 `json:"gas_limit"`
+			GasPrice  uint64 `json:"gas_price"`
+			Value     uint64 `json:"value"`
+			Nonce     uint64 `json:"nonce"`
+			Signature string `json:"signature"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		txHash, err := evm.SendContractTx(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value, params.Nonce, params.Signature)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"txHash": txHash})
+	}
+}
+func AccountBalanceHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		address := r.URL.Query().Get("address")
+		if address == "" {
+			http.Error(w, "address required", http.StatusBadRequest)
+			return
+		}
+		balance, err := evm.GetBalance(address)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"address": address, "balance": balance})
+	}
+}
+func LatestBlockHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		block := evm.LatestBlock()
+		if block == nil {
+			http.Error(w, "block not found", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(block)
+	}
+}
+func BlockByNumberHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			Number uint64 `json:"number"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		block := evm.BlockByNumber(params.Number)
+		if block == nil {
+			http.Error(w, "block not found", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(block)
+	}
+}
+func SendTxHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			RawTx []byte `json:"raw_tx"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		txHash, err := evm.SendRawTransaction(params.RawTx)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"txHash": txHash})
+	}
+}
+func TxStatusHandler(evm *vm.EVM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txHash := r.URL.Query().Get("hash")
+		if txHash == "" {
+			http.Error(w, "hash required", http.StatusBadRequest)
+			return
+		}
+		status, err := evm.GetTxStatus(txHash)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": status})
 	}
 }
 

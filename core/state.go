@@ -1,90 +1,153 @@
 package core
 
 import (
+	"errors"
 	"fmt"
+	"math/big"
 	"sync"
+	"time"
 )
 
-// State хранит состояние блокчейна: балансы, nonce и другую информацию
+type Address string
+
+// Account — структура аккаунта (кошелька/контракта)
+type Account struct {
+	Address      Address
+	Balance      *big.Int
+	Nonce        uint64
+	Storage      map[string]*big.Int // Состояние контракта
+	Code         []byte              // Байткод контракта
+	IsContract   bool                // Флаг: контракт или обычный аккаунт
+	Owner        Address             // Владелец контракта
+	ABI          string              // ABI контракта (JSON-строка)
+	MetadataCID  string              // CID метаданных (например, IPFS CID)
+	Description  string              // Описание контракта или токена
+	Version      string              // Версия контракта
+	Compiler     string              // Версия компилятора
+	SourceCode   string              // Исходный код контракта
+	License      string              // Лицензия исходного кода (например, MIT, GPL)
+	Tags         []string            // Теги или ключевые слова (например, ["DeFi", "NFT"])
+	CreationTime time.Time           // Дата и время создания аккаунта/контракта
+	// Можно добавить любые другие поля по необходимости
+}
+
+// State — хранит все аккаунты и их состояние
 type State struct {
-	balances map[string]uint64 // Балансы адресов (с префиксом GND/GN)
-	nonces   map[string]uint64 // Нонсы (адреса с префиксом)
+	accounts map[Address]*Account
 	mutex    sync.RWMutex
 }
 
 // NewState создает новое пустое состояние
 func NewState() *State {
 	return &State{
-		balances: make(map[string]uint64),
-		nonces:   make(map[string]uint64),
+		accounts: make(map[Address]*Account),
 	}
 }
 
-// BalanceOf возвращает баланс по адресу (адрес ДОЛЖЕН содержать префикс)
-func (s *State) BalanceOf(addr string) uint64 {
+// Получить баланс
+func (s *State) GetBalance(addr Address) *big.Int {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	return s.balances[addr]
-}
-
-// NonceOf возвращает текущий nonce по адресу (адрес ДОЛЖЕН содержать префикс)
-func (s *State) NonceOf(addr string) uint64 {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.nonces[addr]
-}
-
-// Credit увеличивает баланс адреса на amount (адрес ДОЛЖЕН содержать префикс)
-func (s *State) Credit(addr string, amount uint64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.balances[addr] += amount
-}
-
-// Debit уменьшает баланс адреса на amount (адрес ДОЛЖЕН содержать префикс)
-func (s *State) Debit(addr string, amount uint64) bool {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if s.balances[addr] < amount {
-		return false
+	if acc, ok := s.accounts[addr]; ok {
+		return acc.Balance
 	}
-	s.balances[addr] -= amount
-	return true
+	return big.NewInt(0)
 }
 
-// ApplyTransaction применяет транзакцию к состоянию (адреса ДОЛЖНЫ содержать префикс)
+// Списать баланс
+func (s *State) SubBalance(addr Address, amount *big.Int) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if acc, ok := s.accounts[addr]; ok {
+		if acc.Balance.Cmp(amount) >= 0 {
+			acc.Balance.Sub(acc.Balance, amount)
+			return true
+		}
+	}
+	return false
+}
+
+// Начислить баланс
+func (s *State) Credit(addr Address, amount *big.Int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	acc, ok := s.accounts[addr]
+	if !ok {
+		acc = &Account{
+			Address: addr,
+			Balance: big.NewInt(0),
+			Storage: make(map[string]*big.Int),
+		}
+		s.accounts[addr] = acc
+	}
+	acc.Balance.Add(acc.Balance, amount)
+}
+
+// Получить nonce
+func (s *State) GetNonce(addr Address) uint64 {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	if acc, ok := s.accounts[addr]; ok {
+		return acc.Nonce
+	}
+	return 0
+}
+
+// Инкрементировать nonce
+func (s *State) IncNonce(addr Address) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if acc, ok := s.accounts[addr]; ok {
+		acc.Nonce++
+	}
+}
+
+func (s *State) CallStatic(from, to Address, data []byte, gasLimit, gasPrice, value uint64) ([]byte, error) {
+	// Здесь должна быть логика вызова контракта "на чтение".
+	// Пока можно вернуть ошибку или пустой результат.
+	return nil, errors.New("CallStatic не реализован")
+}
+
+// ApplyTransaction применяет транзакцию к состоянию
 func (s *State) ApplyTransaction(tx *Transaction) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Валидация адресов (префиксы уже должны быть проверены)
+	from := Address(tx.From)
+	to := Address(tx.To)
+
 	if !ValidateAddress(tx.From) || !ValidateAddress(tx.To) {
-		fmt.Printf("Некорректные адреса в транзакции: from=%s, to=%s\n", tx.From, tx.To)
+		fmt.Printf("Некорректные адреса: from=%s, to=%s\n", tx.From, tx.To)
 		return false
 	}
 
-	// Проверка nonce
-	expectedNonce := s.nonces[tx.From]
-	if tx.Nonce != expectedNonce {
-		fmt.Printf("Неверный nonce для %s: ожидается %d, получен %d\n", tx.From, expectedNonce, tx.Nonce)
+	accFrom, ok := s.accounts[from]
+	if !ok {
+		fmt.Printf("Отправитель не найден: %s\n", tx.From)
 		return false
 	}
-
-	// Вычисление полной стоимости (value + комиссия)
-	totalCost := tx.Value + tx.GasPrice*tx.GasLimit
-	if s.balances[tx.From] < totalCost {
-		fmt.Printf("Недостаточно средств у %s: требуется %d, доступно %d\n", tx.From, totalCost, s.balances[tx.From])
+	if tx.Nonce != accFrom.Nonce {
+		fmt.Printf("Неверный nonce: ожидается %d, получен %d\n", accFrom.Nonce, tx.Nonce)
 		return false
 	}
+	totalCost := new(big.Int).Add(big.NewInt(int64(tx.Value)), new(big.Int).Mul(big.NewInt(int64(tx.GasPrice)), big.NewInt(int64(tx.GasLimit))))
+	if accFrom.Balance.Cmp(totalCost) < 0 {
+		fmt.Printf("Недостаточно средств: требуется %s, доступно %s\n", totalCost.String(), accFrom.Balance.String())
+		return false
+	}
+	accFrom.Balance.Sub(accFrom.Balance, totalCost)
+	accFrom.Nonce++
 
-	// Списание средств с отправителя
-	s.balances[tx.From] -= totalCost
-
-	// Начисление получателю
-	s.balances[tx.To] += tx.Value
-
-	// Увеличение nonce отправителя
-	s.nonces[tx.From]++
+	accTo, ok := s.accounts[to]
+	if !ok {
+		accTo = &Account{
+			Address: to,
+			Balance: big.NewInt(0),
+			Storage: make(map[string]*big.Int),
+		}
+		s.accounts[to] = accTo
+	}
+	accTo.Balance.Add(accTo.Balance, big.NewInt(int64(tx.Value)))
 
 	return true
 }

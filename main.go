@@ -2,10 +2,10 @@ package main
 
 import (
 	"GND/api"
-	"GND/utils"
 	"GND/vm"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
-	fmt.Printf("Адрес валидатора/майнера: %s\n", utils.AddPrefix(string(minerWallet.Address)))
+	fmt.Printf("Адрес валидатора/майнера: %s\n", string(minerWallet.Address))
 
 	// 3. Создание генезис-блока
 	genesisBlock := core.NewBlock(
@@ -41,7 +41,7 @@ func main() {
 
 	// 4. Инициализация блокчейна
 	blockchain := core.NewBlockchain(genesisBlock)
-	blockchain.State.Credit(string(minerWallet.Address), 1_000_000_000) // начальный баланс GND
+	blockchain.State.Credit(minerWallet.Address, big.NewInt(1_000_000_000)) // начальный баланс GND
 
 	// 5. Инициализация мемпула транзакций
 	mempool := core.NewMempool()
@@ -61,13 +61,16 @@ func main() {
 
 	// 7. Запуск API (асинхронно)
 
-	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: 10000000}) //
-	go api.StartRPCServer(evmInstance, ":8081")
+	// Инициализация EVM с лимитом газа из конфига
+	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: cfg.EVM.GasLimit})
+	// Запуск RPC сервера
+	go api.StartRPCServer(evmInstance, cfg.Server.RPCAddr)
 	fmt.Println("RPCServer запущен.")
 	go api.StartRESTServer(blockchain, mempool, cfg)
 	fmt.Println("RESTServer запущен.")
-	// Запуск WebSocket-сервера
-	go api.StartWebSocketServer(blockchain, cfg)
+	// Запуск WebSocket сервера
+	fmt.Println("Пытаюсь запустить WebSocket сервер на адресе:", cfg.Server.WebSocketAddr)
+	go api.StartWebSocketServer(blockchain, cfg.Server.WebSocketAddr)
 	fmt.Println("WebSocketServer запущен.")
 	fmt.Println("Все серверы запущены")
 

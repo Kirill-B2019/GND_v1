@@ -11,6 +11,7 @@ import (
 type TxType string
 
 const (
+	TxNormal         TxType = "normal"
 	TxTransfer       TxType = "transfer"        // Обычный перевод GND
 	TxContractDeploy TxType = "contract_deploy" // Деплой смарт-контракта
 	TxContractCall   TxType = "contract_call"   // Вызов функции смарт-контракта
@@ -71,4 +72,8 @@ func (tx *Transaction) CalculateHash() string {
 // HashString возвращает хеш транзакции (для совместимости)
 func (tx *Transaction) HashString() string {
 	return tx.Hash
+}
+func DecodeRawTransaction(data []byte) (*Transaction, error) {
+	// Реализуйте декодирование транзакции из байтов (например, через gob, json, hex)
+	return nil, errors.New("DecodeRawTransaction не реализован")
 }

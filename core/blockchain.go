@@ -8,16 +8,18 @@ import (
 
 // Blockchain - основная структура цепочки блоков
 type Blockchain struct {
-	blocks []*Block
-	State  *State
-	mutex  sync.RWMutex
+	blocks  []*Block
+	State   *State
+	mempool *Mempool
+	mutex   sync.RWMutex
 }
 
 // NewBlockchain создает новую цепочку с генезис-блоком
 func NewBlockchain(genesis *Block) *Blockchain {
 	bc := &Blockchain{
-		blocks: []*Block{genesis},
-		State:  NewState(),
+		blocks:  []*Block{genesis},
+		State:   NewState(),
+		mempool: NewMempool(),
 	}
 	// Применяем генезис-блок к состоянию
 	bc.applyBlock(genesis)
@@ -98,7 +100,18 @@ func (bc *Blockchain) GetBlockByIndex(idx uint64) *Block {
 	return nil
 }
 
-// Height возвращает высоту цепочки
+// возвращает блок по высоте (номеру блока)
+func (bc *Blockchain) GetBlockByNumber(number uint64) *Block {
+	bc.mutex.RLock()
+	defer bc.mutex.RUnlock()
+
+	if number >= uint64(len(bc.blocks)) {
+		return nil
+	}
+	return bc.blocks[number]
+}
+
+// Height возвращает текущую высоту блокчейна
 func (bc *Blockchain) Height() uint64 {
 	bc.mutex.RLock()
 	defer bc.mutex.RUnlock()
@@ -112,4 +125,32 @@ func (bc *Blockchain) AllBlocks() []*Block {
 	blocksCopy := make([]*Block, len(bc.blocks))
 	copy(blocksCopy, bc.blocks)
 	return blocksCopy
+}
+func (bc *Blockchain) AddTx(tx *Transaction) error {
+	bc.mempool.Add(tx)
+	return nil
+}
+func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
+	// Примерная реализация:
+	// 1. Поиск транзакции в блоках (confirmed)
+	// 2. Поиск в mempool (pending)
+	// 3. Если не найдено — not found
+
+	bc.mutex.RLock()
+	defer bc.mutex.RUnlock()
+	for _, block := range bc.blocks {
+		for _, tx := range block.Transactions {
+			if tx.Hash == hash {
+				return "confirmed", nil
+			}
+		}
+	}
+	if bc.mempool != nil {
+		bc.mempool.mutex.RLock()
+		defer bc.mempool.mutex.RUnlock()
+		if _, ok := bc.mempool.txs[hash]; ok {
+			return "pending", nil
+		}
+	}
+	return "not found", errors.New("transaction not found")
 }
