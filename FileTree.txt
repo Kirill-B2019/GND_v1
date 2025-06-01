@@ -1,0 +1,104 @@
+C:\xampp\htdocs\GO\GND\
+|---go.mod
+|---go.sum
+|---main.go
+|---package-lock.json
+|---package.json
+|---README.md
+|---api
+|   |---middleware.go
+|   |---rest.go
+|   |---rpc.go
+|   `---websocket.go
+|---audit
+|---cmd
+|---config
+|   `---config.json
+|---consensus
+|   |---consensus.go
+|   |---manager.go
+|   |---poa.go
+|   `---pos.go
+|---contracts
+|   |---README.md
+|   |---erc20
+|   |---gndtoken
+|   |   |---OracleExample.sol
+|   |   `---SimpleGNDToken.sol
+|   |---interfaces
+|   |   `---ISimpleGNDToken.sol
+|   |---migration
+|   |---storage
+|   |---templates
+|   |---tests
+|   |   `---simplegndtoken.test.js
+|   |---trc20
+|   `---utils
+|---core
+|   |---block.go
+|   |---blockchain.go
+|   |---config.go
+|   |---fees.go
+|   |---logger.go
+|   |---mempool.go
+|   |---state.go
+|   |---transaction.go
+|   |---utils.go
+|   `---wallet.go
+|---docs
+|   |---api.md
+|   |---architecture.md
+|   |---arhitech_gnd_step1.md
+|   |---consensus.md
+|   |---contracts.md
+|   |---FileStructure.md
+|   |---integration.md
+|   |---tokens.md
+|   `---wallwt.md
+|---integration
+|   |---address.go
+|   |---bridges.go
+|   |---ipfs.go
+|   `---oracles.go
+|---monitoring
+|   |---alerts.go
+|   |---events.go
+|   `---metrics.go
+|
+|---tests
+|   |---integration
+|   |---load
+|   |---security
+|   `---unit
+|---tokens
+|   |---custom.go
+|   |---erc20.go
+|   |---registry.go
+|   |---token.go
+|   `---trc20.go
+|---ui
+|   |---devpanel
+|   |---explorer
+|   `---wallet
+|       |---.gitignore
+|       |---package-lock.json
+|       |---package.json
+|       |---README.md
+|       |---tsconfig.json
+|       |---build
+|       |   |---asset-manifest.json
+|       |   |---favicon.ico
+|       |   |---index.html
+|       |   |---logo192.png
+|       |   |---logo512.png
+|       |   |---manifest.json
+|       |   |---robots.txt
+|---utils
+|   `---address.go
+`---vm
+    |---compiler.go
+    |---contracts.go
+    |---evm.go
+    |---interface.go
+    `---sandbox.go tz.docx                       
+main.go       

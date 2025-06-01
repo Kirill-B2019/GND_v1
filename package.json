@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "base-58": "^0.0.1",
+    "crypto-js": "^4.2.0",
+    "elliptic": "^6.6.1",
+    "typescript": "^4.9.5",
+    "web-vitals": "^5.0.2"
+  }
+}
