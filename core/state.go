@@ -13,7 +13,7 @@ type Address string
 // Account — структура аккаунта (кошелька/контракта)
 type Account struct {
 	Address      Address
-	Balance      *big.Int
+	Balances     map[string]*big.Int // ключ — символ монеты
 	Nonce        uint64
 	Storage      map[string]*big.Int // Состояние контракта
 	Code         []byte              // Байткод контракта
@@ -45,22 +45,24 @@ func NewState() *State {
 }
 
 // Получить баланс
-func (s *State) GetBalance(addr Address) *big.Int {
+func (s *State) GetBalance(addr Address, symbol string) *big.Int {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	if acc, ok := s.accounts[addr]; ok {
-		return acc.Balance
+		if bal, ok := acc.Balances[symbol]; ok {
+			return new(big.Int).Set(bal)
+		}
 	}
 	return big.NewInt(0)
 }
 
 // Списать баланс
-func (s *State) SubBalance(addr Address, amount *big.Int) bool {
+func (s *State) SubBalance(addr Address, symbol string, amount *big.Int) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if acc, ok := s.accounts[addr]; ok {
-		if acc.Balance.Cmp(amount) >= 0 {
-			acc.Balance.Sub(acc.Balance, amount)
+		if bal, ok := acc.Balances[symbol]; ok && bal.Cmp(amount) >= 0 {
+			acc.Balances[symbol].Sub(bal, amount)
 			return true
 		}
 	}
@@ -68,19 +70,21 @@ func (s *State) SubBalance(addr Address, amount *big.Int) bool {
 }
 
 // Начислить баланс
-func (s *State) Credit(addr Address, amount *big.Int) {
+func (s *State) Credit(addr Address, symbol string, amount *big.Int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	acc, ok := s.accounts[addr]
 	if !ok {
 		acc = &Account{
-			Address: addr,
-			Balance: big.NewInt(0),
-			Storage: make(map[string]*big.Int),
+			Address:  addr,
+			Balances: make(map[string]*big.Int),
 		}
 		s.accounts[addr] = acc
 	}
-	acc.Balance.Add(acc.Balance, amount)
+	if _, ok := acc.Balances[symbol]; !ok {
+		acc.Balances[symbol] = big.NewInt(0)
+	}
+	acc.Balances[symbol].Add(acc.Balances[symbol], amount)
 }
 
 // Получить nonce
@@ -115,39 +119,62 @@ func (s *State) ApplyTransaction(tx *Transaction) bool {
 
 	from := Address(tx.From)
 	to := Address(tx.To)
+	symbol := tx.Symbol // Используем символ из транзакции
 
-	if !ValidateAddress(tx.From) || !ValidateAddress(tx.To) {
-		fmt.Printf("Некорректные адреса: from=%s, to=%s\n", tx.From, tx.To)
+	// Валидация основных параметров
+	if !ValidateAddress(tx.From) || !ValidateAddress(tx.To) || symbol == "" {
+		fmt.Println("Invalid transaction parameters")
 		return false
 	}
 
+	// Получаем аккаунты
 	accFrom, ok := s.accounts[from]
 	if !ok {
-		fmt.Printf("Отправитель не найден: %s\n", tx.From)
+		fmt.Printf("Sender not found: %s\n", tx.From)
 		return false
 	}
+
+	// Проверка nonce
 	if tx.Nonce != accFrom.Nonce {
-		fmt.Printf("Неверный nonce: ожидается %d, получен %d\n", accFrom.Nonce, tx.Nonce)
+		fmt.Printf("Invalid nonce: expected %d, got %d\n", accFrom.Nonce, tx.Nonce)
 		return false
 	}
-	totalCost := new(big.Int).Add(big.NewInt(int64(tx.Value)), new(big.Int).Mul(big.NewInt(int64(tx.GasPrice)), big.NewInt(int64(tx.GasLimit))))
-	if accFrom.Balance.Cmp(totalCost) < 0 {
-		fmt.Printf("Недостаточно средств: требуется %s, доступно %s\n", totalCost.String(), accFrom.Balance.String())
+
+	// Расчет комиссии
+	gasCost := new(big.Int).Mul(
+		big.NewInt(int64(tx.GasPrice)),
+		big.NewInt(int64(tx.GasLimit)),
+	)
+	totalCost := new(big.Int).Add(tx.Value, gasCost)
+
+	// Проверка баланса
+	balance := accFrom.Balances[symbol]
+	if balance == nil || balance.Cmp(totalCost) < 0 {
+		fmt.Printf("Insufficient %s balance: need %s, have %s\n",
+			symbol,
+			totalCost.String(),
+			balance.String())
 		return false
 	}
-	accFrom.Balance.Sub(accFrom.Balance, totalCost)
+
+	// Списание средств
+	accFrom.Balances[symbol].Sub(balance, totalCost)
 	accFrom.Nonce++
 
+	// Зачисление получателю
 	accTo, ok := s.accounts[to]
 	if !ok {
 		accTo = &Account{
-			Address: to,
-			Balance: big.NewInt(0),
-			Storage: make(map[string]*big.Int),
+			Address:  to,
+			Balances: make(map[string]*big.Int),
 		}
 		s.accounts[to] = accTo
 	}
-	accTo.Balance.Add(accTo.Balance, big.NewInt(int64(tx.Value)))
+
+	if accTo.Balances[symbol] == nil {
+		accTo.Balances[symbol] = big.NewInt(0)
+	}
+	accTo.Balances[symbol].Add(accTo.Balances[symbol], tx.Value)
 
 	return true
 }

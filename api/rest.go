@@ -1,3 +1,5 @@
+//api/rest.go
+
 package api
 
 import (
@@ -48,14 +50,22 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 			http.Error(w, "invalid address", http.StatusBadRequest)
 			return
 		}
-		balance := bc.State.GetBalance(core.Address(address))
+
+		// Возвращаем балансы по всем монетам
+		balances := make([]map[string]interface{}, 0)
+		for _, coin := range config.Coins {
+			balance := bc.State.GetBalance(core.Address(address), coin.Symbol)
+			balances = append(balances, map[string]interface{}{
+				"symbol":   coin.Symbol,
+				"name":     coin.Name,
+				"decimals": coin.Decimals,
+				"balance":  balance.String(),
+			})
+		}
 
 		resp := map[string]interface{}{
 			"address":  address,
-			"balance":  balance,
-			"name":     config.Coin.Name,
-			"symbol":   config.Coin.Symbol,
-			"decimals": config.Coin.Decimals,
+			"balances": balances,
 		}
 		json.NewEncoder(w).Encode(resp)
 	})

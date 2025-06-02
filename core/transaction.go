@@ -1,10 +1,12 @@
+//core/transaction.go
+
 package core
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"strconv"
+	"math/big"
 )
 
 // TxType определяет тип транзакции
@@ -19,10 +21,12 @@ const (
 
 // Transaction - структура транзакции в блокчейне ГАНИМЕД
 type Transaction struct {
+	ID        string
 	Hash      string // Хеш транзакции (вычисляется при создании)
 	From      string // Адрес отправителя (Base58, с префиксом GND, GND_, GN, GN_)
 	To        string // Адрес получателя (или адрес контракта, с префиксом)
-	Value     uint64 // Сумма перевода в GND (или 0 для вызова/деплоя контракта)
+	Symbol    string // Добавляем поле для указания валюты
+	Value     *big.Int
 	GasPrice  uint64 // Цена газа (GND за единицу газа)
 	GasLimit  uint64 // Лимит газа для транзакции
 	Nonce     uint64 // Порядковый номер транзакции отправителя
@@ -33,7 +37,14 @@ type Transaction struct {
 }
 
 // NewTransaction - конструктор транзакции с обязательной валидацией адресов
-func NewTransaction(from, to string, value, gasPrice, gasLimit, nonce uint64, data []byte, txType TxType, signature string) (*Transaction, error) {
+func NewTransaction(
+	from, to, symbol string,
+	value *big.Int,
+	gasPrice, gasLimit, nonce uint64,
+	data []byte,
+	txType TxType,
+	signature string,
+) (*Transaction, error) {
 	if !ValidateAddress(from) {
 		return nil, errors.New("invalid sender address (from)")
 	}
@@ -43,6 +54,7 @@ func NewTransaction(from, to string, value, gasPrice, gasLimit, nonce uint64, da
 	tx := &Transaction{
 		From:      from,
 		To:        to,
+		Symbol:    symbol,
 		Value:     value,
 		GasPrice:  gasPrice,
 		GasLimit:  gasLimit,
@@ -59,20 +71,27 @@ func NewTransaction(from, to string, value, gasPrice, gasLimit, nonce uint64, da
 func (tx *Transaction) CalculateHash() string {
 	input := tx.From +
 		tx.To +
-		strconv.FormatUint(tx.Value, 10) +
-		strconv.FormatUint(tx.GasPrice, 10) +
-		strconv.FormatUint(tx.GasLimit, 10) +
-		strconv.FormatUint(tx.Nonce, 10) +
+		tx.Symbol +
+		tx.Value.String() +
+		uint64ToString(tx.GasPrice) +
+		uint64ToString(tx.GasLimit) +
+		uint64ToString(tx.Nonce) +
 		string(tx.Data) +
 		string(tx.Type)
 	hash := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(hash[:])
 }
 
+// Вспомогательная функция для uint64 -> string
+func uint64ToString(u uint64) string {
+	return new(big.Int).SetUint64(u).String()
+}
+
 // HashString возвращает хеш транзакции (для совместимости)
 func (tx *Transaction) HashString() string {
 	return tx.Hash
 }
+
 func DecodeRawTransaction(data []byte) (*Transaction, error) {
 	// Реализуйте декодирование транзакции из байтов (например, через gob, json, hex)
 	return nil, errors.New("DecodeRawTransaction не реализован")

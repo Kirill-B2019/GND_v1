@@ -1,4 +1,5 @@
-// config/config.go
+//core/config.go
+
 package core
 
 import (
@@ -25,29 +26,27 @@ type CoinConfig struct {
 	Description     string `json:"description"`
 	ContractAddress string `json:"contract_address"`
 	CoinLogo        string `json:"coin_logo"`
+	TotalSupply     string `json:"total_supply"` // Добавлено новое поле
 }
 
-// Config описывает параметры блокчейна, которые могут быть заданы через файл или API
+// Основной конфиг блокчейна (config.json)
 type Config struct {
-	ConsensusType string       `json:"consensus_type"` // "pos" или "poa"
-	GasLimit      uint64       `json:"gas_limit"`      // лимит газа на блок
-	NetworkID     string       `json:"network_id"`     // идентификатор сети
-	RpcPort       int          `json:"rpc_port"`       // порт для RPC API
-	RestPort      int          `json:"rest_port"`      // порт для REST API
-	WsPort        int          `json:"ws_port"`        // порт для WebSocket
-	Coin          CoinConfig   `json:"coin"`
+	Port          int          `json:"port"`
+	NodeName      string       `json:"node_name"`
+	ConsensusType string       `json:"consensus_type"`
+	GasLimit      uint64       `json:"gas_limit"`
+	NetworkID     string       `json:"network_id"`
+	Coins         []CoinConfig `json:"coins"` // Массив вместо единичного Coin
 	EVM           EVMConfig    `json:"evm"`
 	Server        ServerConfig `json:"server"`
-	// Можно добавить другие параметры: комиссия, минимальный стейк, список авторитетов и т.д.
+	ConsensusConf string       `json:"consensus_config"` // путь к consensus.json
 }
 
-// GlobalConfig - потокобезопасная обертка для конфигурации (если нужно динамическое обновление)
 type GlobalConfig struct {
 	mutex  sync.RWMutex
 	config *Config
 }
 
-// NewConfigFromFile загружает конфиг из файла
 func NewConfigFromFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -60,7 +59,6 @@ func NewConfigFromFile(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Пример использования потокобезопасной обертки
 func (g *GlobalConfig) Get() *Config {
 	g.mutex.RLock()
 	defer g.mutex.RUnlock()

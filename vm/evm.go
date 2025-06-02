@@ -1,5 +1,3 @@
-//vm/evm.go
-
 package vm
 
 import (
@@ -23,7 +21,8 @@ func GetContract(addr core.Address) (Contract, bool) {
 type EVMConfig struct {
 	Blockchain *core.Blockchain
 	State      *core.State
-	GasLimit   uint64 // лимит газа на выполнение одной транзакции/контракта
+	GasLimit   uint64            // лимит газа на выполнение одной транзакции/контракта
+	Coins      []core.CoinConfig // Добавляем доступ к конфигурации монет
 }
 
 // EVM реализует изолированную виртуальную машину для исполнения байткода контрактов
@@ -56,9 +55,12 @@ func (evm *EVM) DeployContract(
 		new(big.Int).SetUint64(gasPrice),
 	)
 
+	// Получаем символ основной монеты из конфига
+	primarySymbol := evm.config.Coins[0].Symbol
+
 	// Проверка баланса
-	if evm.config.State.GetBalance(fromAddr).Cmp(requiredFee) < 0 {
-		return "", errors.New("insufficient GND for deploy fee")
+	if evm.config.State.GetBalance(fromAddr, primarySymbol).Cmp(requiredFee) < 0 {
+		return "", errors.New("insufficient " + primarySymbol + " for deploy fee")
 	}
 
 	// Генерация адреса контракта
@@ -78,7 +80,7 @@ func (evm *EVM) DeployContract(
 	ContractRegistry[core.Address(addr)] = contract
 
 	// Списание комиссии
-	evm.config.State.SubBalance(fromAddr, requiredFee)
+	evm.config.State.SubBalance(fromAddr, primarySymbol, requiredFee)
 
 	return addr, nil
 }
@@ -92,11 +94,17 @@ func (e *EVM) CallContract(from, to string, data []byte, gasLimit, gasPrice, val
 
 // SendContractTx отправляет транзакцию контракта
 func (e *EVM) SendContractTx(from, to string, data []byte, gasLimit, gasPrice, value, nonce uint64, signature string) (string, error) {
+	primarySymbol := e.config.Coins[0].Symbol
 	tx, _ := core.NewTransaction(
-		from, to,
-		value, gasLimit, gasPrice, nonce,
+		from,
+		to,
+		primarySymbol, // Добавляем символ монеты
+		new(big.Int).SetUint64(value),
+		gasLimit,
+		gasPrice,
+		nonce,
 		data,
-		core.TxContractCall, // тип транзакции
+		core.TxContractCall,
 		signature,
 	)
 	return tx.Hash, nil
@@ -104,8 +112,9 @@ func (e *EVM) SendContractTx(from, to string, data []byte, gasLimit, gasPrice, v
 
 // GetBalance возвращает баланс GND для адреса
 func (e *EVM) GetBalance(address string) (*big.Int, error) {
+	primarySymbol := e.config.Coins[0].Symbol
 	addr := core.Address(address)
-	return e.config.State.GetBalance(addr), nil
+	return e.config.State.GetBalance(addr, primarySymbol), nil
 }
 
 // LatestBlock возвращает последний блок

@@ -131,13 +131,10 @@ func (bc *Blockchain) AddTx(tx *Transaction) error {
 	return nil
 }
 func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
-	// Примерная реализация:
-	// 1. Поиск транзакции в блоках (confirmed)
-	// 2. Поиск в mempool (pending)
-	// 3. Если не найдено — not found
-
 	bc.mutex.RLock()
 	defer bc.mutex.RUnlock()
+
+	// Поиск в подтвержденных блоках
 	for _, block := range bc.blocks {
 		for _, tx := range block.Transactions {
 			if tx.Hash == hash {
@@ -145,12 +142,13 @@ func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
 			}
 		}
 	}
+
+	// Поиск в мемпуле
 	if bc.mempool != nil {
-		bc.mempool.mutex.RLock()
-		defer bc.mempool.mutex.RUnlock()
-		if _, ok := bc.mempool.txs[hash]; ok {
+		if exists := bc.mempool.Exists(hash); exists {
 			return "pending", nil
 		}
 	}
+
 	return "not found", errors.New("transaction not found")
 }

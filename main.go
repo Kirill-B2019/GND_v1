@@ -2,6 +2,8 @@ package main
 
 import (
 	"GND/api"
+	"GND/consensus"
+	"GND/core"
 	"GND/vm"
 	"fmt"
 	"log"
@@ -9,9 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"GND/consensus"
-	"GND/core"
 )
 
 func main() {
@@ -20,70 +19,91 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
-	fmt.Printf("Конфиг: consensus=%s, gas_limit=%d, network_id=%s\n", cfg.ConsensusType, cfg.GasLimit, cfg.NetworkID)
+	fmt.Printf("Конфиг: gas_limit=%d, network_id=%s\n", cfg.GasLimit, cfg.NetworkID)
 
-	// 2. Генерация или загрузка кошелька валидатора/майнера
+	// 2. Загрузка настроек консенсуса PoS/PoA (убрана неиспользуемая переменная)
+	if _, err := consensus.LoadConsensusSettings(cfg.ConsensusConf); err != nil {
+		log.Fatalf("Ошибка загрузки consensus.json: %v", err)
+	}
+
+	// 3. Генерация кошелька валидатора
 	minerWallet, err := core.NewWallet()
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
-	fmt.Printf("Адрес валидатора/майнера: %s\n", string(minerWallet.Address))
+	fmt.Printf("Адрес genesis-валидатора: %s\n", minerWallet.Address)
 
-	// 3. Создание генезис-блока
+	// 4. Создание генезис-блока
 	genesisBlock := core.NewBlock(
-		0,                           // index
-		"",                          // prevHash
-		string(minerWallet.Address), // miner
-		[]*core.Transaction{},       // пустой список транзакций
-		cfg.GasLimit,                // gasLimit
-		cfg.ConsensusType,           // consensus
+		0,
+		"",
+		string(minerWallet.Address),
+		[]*core.Transaction{},
+		cfg.GasLimit,
+		"pos",
 	)
 
-	// 4. Инициализация блокчейна
+	// 5. Инициализация блокчейна и мемпула
 	blockchain := core.NewBlockchain(genesisBlock)
-	blockchain.State.Credit(minerWallet.Address, big.NewInt(1_000_000_000)) // начальный баланс GND
-
-	// 5. Инициализация мемпула транзакций
 	mempool := core.NewMempool()
-
-	// 6. Запуск выбранного алгоритма консенсуса
-	var consensusEngine consensus.Consensus
-	switch cfg.ConsensusType {
-	case "pos":
-		consensusEngine = consensus.NewPoS()
-	case "poa":
-		consensusEngine = consensus.NewPoA()
-	default:
-		log.Fatalf("Неизвестный тип консенсуса: %s", cfg.ConsensusType)
+	fmt.Printf(
+		"Генезис-блок #%d создан\n",
+		genesisBlock.Index,
+	)
+	// Начисление баланса для первой монеты из конфига
+	for _, coin := range cfg.Coins {
+		amount := new(big.Int)
+		if coin.TotalSupply != "" {
+			amount.SetString(coin.TotalSupply, 10)
+		} else {
+			amount.SetInt64(1_000_000)
+			amount = amount.Mul(amount, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(coin.Decimals)), nil))
+		}
+		blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 	}
-	consensusEngine.Start(blockchain, mempool)
-	fmt.Printf("Консенсус %s запущен\n", consensusEngine.Type())
+	fmt.Printf(
+		"Баланс адреса %s:\n",
+		minerWallet.Address,
+	)
+	// Получение баланса
+	for _, coin := range cfg.Coins {
+		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
+		fmt.Printf(
+			"%s:  %s. Знаков: %d\n",
+			balance.String(), coin.Symbol, coin.Decimals,
+		)
+	}
 
-	// 7. Запуск API (асинхронно)
-
-	// Инициализация EVM с лимитом газа из конфига
+	// 6. Запуск серверов
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: cfg.EVM.GasLimit})
-	// Запуск RPC сервера
 	go api.StartRPCServer(evmInstance, cfg.Server.RPCAddr)
-	fmt.Println("RPCServer запущен.")
 	go api.StartRESTServer(blockchain, mempool, cfg)
-	fmt.Println("RESTServer запущен.")
-	// Запуск WebSocket сервера
-	fmt.Println("Пытаюсь запустить WebSocket сервер на адресе:", cfg.Server.WebSocketAddr)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WebSocketAddr)
-	fmt.Println("WebSocketServer запущен.")
-	fmt.Println("Все серверы запущены")
 
-	// 8. Грейсфул-шатдаун (Ctrl+C)
+	// 7. Обработка транзакций (пример)
+	go processTransactions(mempool)
+
+	// 8. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	fmt.Println("Нода GND_0x0001 запущен. ")
-	fmt.Println("Блокчейн ГАНИМЕД запущен. Для остановки нажмите Ctrl+C.")
+	fmt.Println("Нода ГАНИМЕД запущена. Для остановки нажмите Ctrl+C.")
 	<-sigs
-
-	// 9. Остановка консенсуса и сервисов
-	consensusEngine.Stop()
 	fmt.Println("Нода ГАНИМЕД остановлена.")
+}
 
+func processTransactions(mempool *core.Mempool) {
+	for {
+		tx, err := mempool.Pop()
+		if err != nil {
+			continue
+		}
+		consType := consensus.SelectConsensusForTx(tx.To)
+		switch consType {
+		case consensus.ConsensusPoS:
+			fmt.Printf("Tx %s: обработка через PoS\n", tx.ID)
+		case consensus.ConsensusPoA:
+			fmt.Printf("Tx %s: обработка через PoA\n", tx.ID)
+		}
+	}
 	select {}
 }
