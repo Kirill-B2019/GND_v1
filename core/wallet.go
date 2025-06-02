@@ -8,6 +8,8 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"golang.org/x/crypto/ripemd160"
 	"math/big" // Добавляем импорт math/big
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -49,8 +51,33 @@ func NewWallet() (*Wallet, error) {
 	checksum := checksum(pubKeyHash)
 	fullPayload := append(pubKeyHash, checksum...)
 	encoded := base58.Encode(fullPayload)
-
 	address := prefix + encoded
+
+	// === СОЗДАНИЕ ПАПКИ ДЛЯ КОШЕЛЬКА ===
+	walletDir := filepath.Join("wallets", address)
+	err = os.MkdirAll(walletDir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
+	// === СОХРАНЕНИЕ ПРИВАТНОГО КЛЮЧА ===
+	privBytes := privKey.Serialize()
+	err = os.WriteFile(filepath.Join(walletDir, "private.key"), privBytes, 0600)
+	if err != nil {
+		return nil, err
+	}
+
+	// === СОХРАНЕНИЕ ПУБЛИЧНОГО КЛЮЧА ===
+	err = os.WriteFile(filepath.Join(walletDir, "public.key"), pubKey, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// === СОХРАНЕНИЕ АДРЕСА ===
+	err = os.WriteFile(filepath.Join(walletDir, "address.txt"), []byte(address), 0644)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Wallet{
 		PrivateKey: privKey,

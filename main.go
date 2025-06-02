@@ -69,8 +69,8 @@ func main() {
 	for _, coin := range cfg.Coins {
 		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
 		fmt.Printf(
-			"%s:  %s. Знаков: %d\n",
-			balance.String(), coin.Symbol, coin.Decimals,
+			"%s: %s  %s. Знаков: %d\n",
+			coin.Name, balance.String(), coin.Symbol, coin.Decimals,
 		)
 	}
 
@@ -86,9 +86,9 @@ func main() {
 	// 8. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	fmt.Println("Нода ГАНИМЕД запущена. Для остановки нажмите Ctrl+C.")
+	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
 	<-sigs
-	fmt.Println("Нода ГАНИМЕД остановлена.")
+	fmt.Println("Нода ГАНИМЕД остановлена.\n")
 }
 
 func processTransactions(mempool *core.Mempool) {
