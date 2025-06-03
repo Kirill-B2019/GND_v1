@@ -51,17 +51,47 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 
 	mux.HandleFunc("/tx/send", func(w http.ResponseWriter, r *http.Request) {
 		var tx core.Transaction
+
+		// 1. Проверка Content-Type
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "Неподдерживаемый тип. JSON только", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		// 2. Декодирование с проверкой ошибок
 		if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Недопустимый JSON-файл: %v", err), http.StatusBadRequest)
 			return
 		}
-		if !core.ValidateAddress(tx.From) || !core.ValidateAddress(tx.To) {
-			http.Error(w, "invalid address", http.StatusBadRequest)
+
+		// 3. Валидация адресов
+		if !core.ValidateAddress(tx.From) {
+			http.Error(w, "Неверный адрес отправителя", http.StatusBadRequest)
 			return
 		}
-		mempool.Add(&tx)
+
+		if !core.ValidateAddress(tx.To) {
+			http.Error(w, "Неверный адрес получателя", http.StatusBadRequest)
+			return
+		}
+
+		// 4. Добавление в мемпул с обработкой ошибок
+		if err := mempool.Add(&tx); err != nil {
+			http.Error(w, fmt.Sprintf("Транзакция отклонена: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// 5. Генерация ответа
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{"txHash": tx.Hash})
+
+		// 6. Проверка ошибок кодирования
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"txHash": tx.Hash,
+			"status": "pending",
+		}); err != nil {
+			log.Printf("Не удалось закодировать ответ: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/api/wallet/", func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +124,43 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		}
 		json.NewEncoder(w).Encode(resp)
 	})
+
+	// Подключение обработчика генерации кошелька с middleware
+	mux.Handle("/api/wallet/create",
+		AuthMiddleware( // Проверка API-ключа (см. middleware.go)
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Разрешаем только POST-запросы для безопасности
+				if r.Method != http.MethodPost {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+
+				// Генерируем новый кошелёк через core.NewWallet()
+				wallet, err := core.NewWallet()
+				if err != nil {
+					http.Error(w, "failed to generate wallet", http.StatusInternalServerError)
+					return
+				}
+
+				// Получаем публичный ключ в hex-формате (см. core.Wallet)
+				pubKeyHex := wallet.PublicKeyHex()
+
+				// Формируем ответ (только публичные данные!)
+				resp := map[string]interface{}{
+					"address":   wallet.Address, // Адрес кошелька
+					"publicKey": pubKeyHex,      // Публичный ключ в hex-формате
+					//"privateKey": wallet.PrivateKeyHex(), // Не возвращайте приватный ключ в некастодиальных решениях!
+				}
+
+				// Устанавливаем заголовок Content-Type для JSON
+				w.Header().Set("Content-Type", "application/json")
+				// Кодируем и отправляем ответ
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					log.Printf("Ошибка кодирования ответа: %v", err)
+				}
+			}),
+		),
+	)
 
 	addr := config.Server.RESTAddr
 	log.Printf("REST сервер запущен на %s\n", addr)
