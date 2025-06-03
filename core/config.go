@@ -40,6 +40,7 @@ type Config struct {
 	EVM           EVMConfig    `json:"evm"`
 	Server        ServerConfig `json:"server"`
 	ConsensusConf string       `json:"consensus_config"` // путь к consensus.json
+	MaxWorkers    int          `json:"max_workers"`
 }
 
 type GlobalConfig struct {

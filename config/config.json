@@ -5,6 +5,7 @@
   "consensus_type": "pos",
   "gas_limit": 1000000,
   "network_id": "ganymede-testnet",
+  "MaxWorkers": 8,
   "coins": [
     {
       "name": "GANYMED GND-Core Coin",
