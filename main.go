@@ -10,7 +10,6 @@ import (
 	"log"
 	"math/big"
 
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -90,10 +89,6 @@ func main() {
 	}()
 	go api.StartRESTServer(blockchain, mempool, cfg)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WebSocketAddr)
-
-	http.HandleFunc("/hello", HelloHandler)
-	log.Println("Сервер запущен на :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
 
 	// 7. Обработка транзакций (пример)
 	go processTransactions(mempool)
