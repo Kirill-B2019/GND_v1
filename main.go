@@ -116,5 +116,5 @@ func processTransactions(mempool *core.Mempool) {
 			fmt.Printf("Tx %s: обработка через PoA\n", tx.ID)
 		}
 	}
-	select {}
+
 }

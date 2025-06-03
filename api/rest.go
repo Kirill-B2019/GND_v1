@@ -131,14 +131,14 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Разрешаем только POST-запросы для безопасности
 				if r.Method != http.MethodPost {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
 					return
 				}
 
 				// Генерируем новый кошелёк через core.NewWallet()
 				wallet, err := core.NewWallet()
 				if err != nil {
-					http.Error(w, "failed to generate wallet", http.StatusInternalServerError)
+					http.Error(w, "ошибка генерации кошелька", http.StatusInternalServerError)
 					return
 				}
 
