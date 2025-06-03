@@ -13,17 +13,43 @@ import (
 
 func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Config) {
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		// Получаем адрес ноды из конфига
+		nodeAddr := config.Server.RESTAddr
+
+		// Формируем строку с описанием монет
+		coinsInfo := ""
+		for _, coin := range config.Coins {
+			coinsInfo += fmt.Sprintf(
+				"Монета: %s (%s), знаков после запятой: %d\n",
+				coin.Name, coin.Symbol, coin.Decimals,
+			)
+			// Если есть описание, добавьте его:
+			if coin.Description != "" {
+				coinsInfo += fmt.Sprintf("Описание: %s\n", coin.Description)
+			}
+		}
+
+		// Формируем итоговое сообщение
+		msg := fmt.Sprintf(
+			"Привет, это ГАНИМЕД.\nМой API версии 1.0\n"+
+				"Порт node: %s\n\n"+
+				"Доступные монеты:\n%s",
+			nodeAddr, coinsInfo,
+		)
+
+		w.Write([]byte(msg))
+	})
+
 	mux.HandleFunc("/block/latest", func(w http.ResponseWriter, r *http.Request) {
 		block := bc.LatestBlock()
 		json.NewEncoder(w).Encode(block)
 	})
-	addr := config.Server.RESTAddr // ← используйте это поле
-	log.Printf("REST сервер запущен на %s\n", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Ошибка запуска REST сервера: %v", err)
-	}
 
-	http.HandleFunc("/tx/send", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/tx/send", func(w http.ResponseWriter, r *http.Request) {
 		var tx core.Transaction
 		if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -38,7 +64,7 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		json.NewEncoder(w).Encode(map[string]string{"txHash": tx.Hash})
 	})
 
-	http.HandleFunc("/api/wallet/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/wallet/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path[len("/api/wallet/"):]
 		parts := strings.Split(path, "/")
 		if len(parts) != 2 || parts[1] != "balance" {
@@ -51,7 +77,6 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 			return
 		}
 
-		// Возвращаем балансы по всем монетам
 		balances := make([]map[string]interface{}, 0)
 		for _, coin := range config.Coins {
 			balance := bc.State.GetBalance(core.Address(address), coin.Symbol)
@@ -70,6 +95,9 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	fmt.Sprintf(":%d", config.Server.RESTAddr)
-	http.ListenAndServe(addr, nil)
+	addr := config.Server.RESTAddr
+	log.Printf("REST сервер запущен на %s\n", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("Ошибка запуска REST сервера: %v", err)
+	}
 }

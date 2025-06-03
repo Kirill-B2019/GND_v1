@@ -5,9 +5,12 @@ import (
 	"GND/consensus"
 	"GND/core"
 	"GND/vm"
+
 	"fmt"
 	"log"
 	"math/big"
+
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -76,9 +79,21 @@ func main() {
 
 	// 6. Запуск серверов
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: cfg.EVM.GasLimit})
-	go api.StartRPCServer(evmInstance, cfg.Server.RPCAddr)
+	go func() {
+		err := api.StartRPCServer(evmInstance, cfg.Server.RPCAddr)
+		if err != nil {
+			fmt.Printf(
+				"Ошибка запуска RPCServer %s:\n",
+				err,
+			)
+		}
+	}()
 	go api.StartRESTServer(blockchain, mempool, cfg)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WebSocketAddr)
+
+	http.HandleFunc("/hello", HelloHandler)
+	log.Println("Сервер запущен на :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 
 	// 7. Обработка транзакций (пример)
 	go processTransactions(mempool)
@@ -89,6 +104,7 @@ func main() {
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
 	<-sigs
 	fmt.Println("Нода ГАНИМЕД остановлена.\n")
+
 }
 
 func processTransactions(mempool *core.Mempool) {

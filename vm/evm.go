@@ -1,3 +1,5 @@
+//vm/evm.go
+
 package vm
 
 import (
@@ -54,7 +56,10 @@ func (evm *EVM) DeployContract(
 		new(big.Int).SetUint64(gasLimit),
 		new(big.Int).SetUint64(gasPrice),
 	)
-
+	// Проверка конфигурации монет
+	if len(evm.config.Coins) == 0 {
+		return "", errors.New("требуется настройка монеты")
+	}
 	// Получаем символ основной монеты из конфига
 	primarySymbol := evm.config.Coins[0].Symbol
 

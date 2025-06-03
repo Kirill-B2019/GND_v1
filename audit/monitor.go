@@ -33,26 +33,27 @@ func NewMonitor(threshold *big.Int) *Monitor {
 }
 
 // CheckTransaction анализирует транзакцию на предмет подозрительности
+
 func (m *Monitor) CheckTransaction(tx *core.Transaction) {
-	// Пример: подозрительно — слишком крупная сумма
-	if big.NewInt(int64(tx.Value)).Cmp(m.Threshold) >= 0 {
+	// Проверка на крупную сумму
+	if tx.Value.Cmp(m.Threshold) >= 0 {
 		m.AddSuspicious(tx, "Крупная сумма перевода")
 	}
 
-	// Пример: подозрительно — перевод на свой же адрес
+	// Перевод самому себе
 	if tx.From == tx.To {
 		m.AddSuspicious(tx, "Перевод самому себе")
 	}
 
-	// Можно добавить другие правила: частые переводы, нестандартные адреса и т.д.
+	// Частые переводы
 	now := time.Now()
 	lastTime, exists := m.lastTxTimestamps[tx.From]
-	if exists && now.Sub(lastTime) < 10*time.Second { // например, менее 10 секунд между транзакциями
+	if exists && now.Sub(lastTime) < 10*time.Second {
 		m.AddSuspicious(tx, "Частые переводы с одного адреса (возможно, бот-активность)")
 	}
 	m.lastTxTimestamps[tx.From] = now
 
-	//Перевод на новый/неизвестный адрес (например, адрес не встречался ранее)
+	// Перевод на новый/неизвестный адрес
 	if !m.knownAddresses[tx.To] {
 		m.AddSuspicious(tx, "Перевод на новый/неизвестный адрес")
 	}

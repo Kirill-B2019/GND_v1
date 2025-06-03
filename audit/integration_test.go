@@ -9,6 +9,7 @@ import (
 )
 
 // Интеграционный тест: создание блокчейна, кошелька, деплой контракта, проверка баланса
+
 func TestBlockchainIntegration(t *testing.T) {
 	// 1. Создание генезис-блока и блокчейна
 	genesis := &core.Block{
@@ -26,13 +27,13 @@ func TestBlockchainIntegration(t *testing.T) {
 		t.Fatalf("ошибка создания кошелька: %v", err)
 	}
 
-	// 3. Кредитуем кошелёк начальными средствами
-	blockchain.State.Credit(wallet.Address, big.NewInt(100000))
+	// 3. Кредитуем кошелёк начальными средствами (добавлен параметр "ETH")
+	blockchain.State.Credit(wallet.Address, "GND.c", big.NewInt(100000))
 
-	// 4. Проверяем баланс
-	balance := blockchain.State.GetBalance(wallet.Address)
+	// 4. Проверяем баланс (добавлен параметр "ETH")
+	balance := blockchain.State.GetBalance(wallet.Address, "GND.c")
 	if balance.Cmp(big.NewInt(100000)) != 0 {
-		t.Errorf("ожидался баланс 1000, получено %s", balance.String())
+		t.Errorf("ожидался баланс 100000, получено %s", balance.String())
 	}
 
 	// 5. Деплой контракта (эмуляция)
@@ -40,6 +41,9 @@ func TestBlockchainIntegration(t *testing.T) {
 		Blockchain: blockchain,
 		State:      blockchain.State,
 		GasLimit:   1000000,
+		Coins: []core.CoinConfig{
+			{Symbol: "GND.c"}, // или другой символ основной валюты
+		},
 	})
 	contractAddr, err := evm.DeployContract(
 		string(wallet.Address),
