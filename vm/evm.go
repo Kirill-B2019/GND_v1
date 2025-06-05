@@ -4,7 +4,6 @@ package vm
 
 import (
 	"GND/core"
-	_ "GND/utils"
 	"encoding/hex"
 	"errors"
 	"fmt"

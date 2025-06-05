@@ -1,16 +1,18 @@
 package core
 
 import (
+	"context"
 	"crypto/rand" // Импорт для rand.Int
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/ripemd160"
 	"math/big" // Добавляем импорт math/big
-	"os"
-	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Допустимые префиксы в байтовом представлении
@@ -19,64 +21,79 @@ var validPrefixes = [][]byte{
 	[]byte("GN_"),
 }
 
+var accountID int
+
 type Wallet struct {
 	PrivateKey *secp256k1.PrivateKey
 	Address    Address
 }
 
-func NewWallet() (*Wallet, error) {
-	privKey, err := secp256k1.GeneratePrivateKey()
+func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
+
+	//выбор ID для кошелька
+	err := pool.QueryRow(
+		context.Background(),
+		`INSERT INTO accounts DEFAULT VALUES RETURNING id`,
+	).Scan(&accountID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ошибка создания аккаунта: %w", err)
 	}
 
-	// Генерация публичного ключа (сжатый формат)
-	pubKey := privKey.PubKey().SerializeCompressed()
+	// Генерация ключей
+	privKey, err := secp256k1.GeneratePrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка генерации ключа: %w", err)
+	}
 
-	// SHA-256 + RIPEMD-160
+	// Формирование адреса (как в оригинале)
+	pubKey := privKey.PubKey().SerializeCompressed()
 	shaHash := sha256.Sum256(pubKey)
 	ripemdHasher := ripemd160.New()
 	if _, err := ripemdHasher.Write(shaHash[:]); err != nil {
 		return nil, err
 	}
 	pubKeyHash := ripemdHasher.Sum(nil)
-
-	// Выбор префикса
 	prefix, err := randomPrefix()
 	if err != nil {
 		return nil, err
 	}
-
-	// Формирование адреса
 	checksum := checksum(pubKeyHash)
 	fullPayload := append(pubKeyHash, checksum...)
 	encoded := base58.Encode(fullPayload)
 	address := prefix + encoded
 
-	// === СОЗДАНИЕ ПАПКИ ДЛЯ КОШЕЛЬКА ===
-	walletDir := filepath.Join("wallets", address)
-	err = os.MkdirAll(walletDir, 0700)
-	if err != nil {
-		return nil, err
-	}
+	// Подготовка данных для БД
+	privateKeyBytes := privKey.Serialize()
+	publicKeyHex := hex.EncodeToString(pubKey)
+	privateKeyHex := hex.EncodeToString(privateKeyBytes) // Шифруйте на практике!
+	now := time.Now()
 
-	// === СОХРАНЕНИЕ ПРИВАТНОГО КЛЮЧА ===
-	privBytes := privKey.Serialize()
-	err = os.WriteFile(filepath.Join(walletDir, "private.key"), privBytes, 0600)
-	if err != nil {
-		return nil, err
-	}
+	// SQL-запрос
+	query := `
+    INSERT INTO wallets (
+        account_id,
+        address,
+        public_key,
+        private_key,
+        created_at,
+        updated_at,
+        status
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id
+`
+	var walletID int
+	err = pool.QueryRow(context.Background(), query,
+		accountID,
+		address, // <-- добавлен адрес кошелька
+		publicKeyHex,
+		privateKeyHex,
+		now,
+		now,
+		"active",
+	).Scan(&walletID)
 
-	// === СОХРАНЕНИЕ ПУБЛИЧНОГО КЛЮЧА ===
-	err = os.WriteFile(filepath.Join(walletDir, "public.key"), pubKey, 0644)
 	if err != nil {
-		return nil, err
-	}
-
-	// === СОХРАНЕНИЕ АДРЕСА ===
-	err = os.WriteFile(filepath.Join(walletDir, "address.txt"), []byte(address), 0644)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ошибка сохранения в БД: %w", err)
 	}
 
 	return &Wallet{

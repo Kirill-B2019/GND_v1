@@ -6,12 +6,19 @@ import (
 	"GND/core"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"net/http"
 	"strings"
+	_ "sync"
 )
 
-func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Config) {
+func StartRESTServer(
+	bc *core.Blockchain,
+	mempool *core.Mempool,
+	config *core.Config,
+	pool *pgxpool.Pool,
+) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +143,7 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 				}
 
 				// Генерируем новый кошелёк через core.NewWallet()
-				wallet, err := core.NewWallet()
+				wallet, err := core.NewWallet(pool)
 				if err != nil {
 					http.Error(w, "ошибка генерации кошелька", http.StatusInternalServerError)
 					return

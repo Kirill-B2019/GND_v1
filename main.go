@@ -76,9 +76,10 @@ func main() {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 	defer pool.Close()
+	go monitorPoolStats(ctx, pool) //Total — всего соединений в пуле (и занятых, и свободных) Idle — сколько соединений сейчас свободно Acquired — сколько соединений занято (используется приложением)
 
 	// 3. Генерация кошелька валидатора
-	minerWallet, err := core.NewWallet()
+	minerWallet, err := core.NewWallet(pool)
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
@@ -136,7 +137,7 @@ func main() {
 			fmt.Printf("Ошибка запуска RPCServer %s:\n", err)
 		}
 	}()
-	go api.StartRESTServer(blockchain, mempool, cfg)
+	go api.StartRESTServer(blockchain, mempool, cfg, pool)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WS.WSAddr)
 
 	// 7. Обработка транзакций через worker pool
