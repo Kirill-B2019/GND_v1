@@ -1,0 +1,14 @@
+{
+  "database": {
+    "host": "45.12.72.15",
+    "port": 5432,
+    "user": "gnduser",
+    "password": "Titan!@Day",
+    "dbname": "gnd_db",
+    "sslmode": "disable",
+    "max_conns": 20,
+    "min_conns": 5,
+    "max_conn_lifetime": 1800000000000,
+    "max_conn_idle_time": 600000000000
+  }
+}

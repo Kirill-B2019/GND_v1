@@ -4,19 +4,41 @@ package core
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"sync"
+	"time"
 )
 
-type EVMConfig struct {
-	GasLimit uint64 `json:"gas_limit"`
+// Основной конфиг блокчейна (config.json)
+type Config struct {
+	Port          int                      `json:"port"`
+	NodeName      string                   `json:"node_name"`
+	ConsensusType string                   `json:"consensus_type"`
+	GasLimit      uint64                   `json:"gas_limit"`
+	NetworkID     string                   `json:"network_id"`
+	MaxWorkers    int                      `json:"MaxWorkers"`
+	Coins         []CoinConfig             `json:"coins"`
+	Consensus     []map[string]interface{} `json:"consensus"`
+	EVM           EVMConfig                `json:"evm"`
+	Server        ServerConfig             `json:"server"`
+	DB            DBConfig                 `json:"database"`
 }
 
-type ServerConfig struct {
-	RPCAddr       string `json:"rpc_addr"`
-	RESTAddr      string `json:"rest_addr"`
-	WebSocketAddr string `json:"ws_addr"`
+type GlobalConfig struct {
+	mutex  sync.RWMutex
+	config *Config
+}
+type DBConfig struct {
+	Host            string        `json:"host"`
+	Port            int           `json:"port"`
+	User            string        `json:"user"`
+	Password        string        `json:"password"`
+	DBName          string        `json:"dbname"`
+	SSLMode         string        `json:"sslmode"`
+	MaxConns        int           `json:"max_conns"`
+	MinConns        int           `json:"min_conns"`
+	MaxConnLifetime time.Duration `json:"max_conn_lifetime"`
+	MaxConnIdleTime time.Duration `json:"max_conn_idle_time"`
 }
 
 type CoinConfig struct {
@@ -26,38 +48,130 @@ type CoinConfig struct {
 	Description     string `json:"description"`
 	ContractAddress string `json:"contract_address"`
 	CoinLogo        string `json:"coin_logo"`
-	TotalSupply     string `json:"total_supply"` // Добавлено новое поле
+	TotalSupply     string `json:"total_supply"`
 }
 
-// Основной конфиг блокчейна (config.json)
-type Config struct {
-	Port          int          `json:"port"`
-	NodeName      string       `json:"node_name"`
-	ConsensusType string       `json:"consensus_type"`
-	GasLimit      uint64       `json:"gas_limit"`
-	NetworkID     string       `json:"network_id"`
-	Coins         []CoinConfig `json:"coins"` // Массив вместо единичного Coin
-	EVM           EVMConfig    `json:"evm"`
-	Server        ServerConfig `json:"server"`
-	ConsensusConf string       `json:"consensus_config"` // путь к consensus.json
-	MaxWorkers    int          `json:"max_workers"`
+type ConsensusPosConfig struct {
+	Type              string `json:"type"`
+	AverageBlockDelay string `json:"average_block_delay"`
+	InitialBaseTarget int    `json:"initial_base_target"`
+	InitialBalance    string `json:"initial_balance"`
 }
 
-type GlobalConfig struct {
-	mutex  sync.RWMutex
-	config *Config
+type ConsensusPoaConfig struct {
+	Type              string `json:"type"`
+	RoundDuration     string `json:"round_duration"`
+	SyncDuration      string `json:"sync_duration"`
+	BanDurationBlocks int    `json:"ban_duration_blocks"`
+	WarningsForBan    int    `json:"warnings_for_ban"`
+	MaxBansPercentage int    `json:"max_bans_percentage"`
 }
 
-func NewConfigFromFile(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения файла конфига: %w", err)
-	}
+type ConsensusConfig struct {
+	Consensus []map[string]interface{} `json:"consensus"`
+}
+
+type EVMConfig struct {
+	GasLimit uint64 `json:"gas_limit"`
+}
+
+type ServerRPCConfig struct {
+	RPCAddr string `json:"rpc_addr"`
+	Name    string `json:"name"`
+}
+
+type ServerRESTConfig struct {
+	RESTAddr string `json:"rest_addr"`
+	Name     string `json:"name"`
+}
+
+type ServerWSConfig struct {
+	WSAddr string `json:"ws_addr"`
+	Name   string `json:"name"`
+}
+
+type ServerConfig struct {
+	RPC  ServerRPCConfig  `json:"rpc"`
+	REST ServerRESTConfig `json:"rest"`
+	WS   ServerWSConfig   `json:"ws"`
+}
+
+// Загрузка основного конфига и конфига базы данных, слияние в одну структуру
+func InitGlobalConfigDefault() (*GlobalConfig, error) {
+	const (
+		mainPath      = "config/config.json"
+		dbPath        = "config/db.json"
+		coinsPath     = "config/coins.json"
+		consensusPath = "config/consensus.json"
+		evmPath       = "config/evm.json"
+		serversPath   = "config/servers.json"
+	)
+
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга конфига: %w", err)
+
+	// Основной конфиг
+	if data, err := os.ReadFile(mainPath); err == nil {
+		_ = json.Unmarshal(data, &cfg)
 	}
-	return &cfg, nil
+
+	// DB конфиг
+	type dbWrapper struct {
+		DB DBConfig `json:"database"`
+	}
+	if data, err := os.ReadFile(dbPath); err == nil {
+		var dbCfg dbWrapper
+		if err := json.Unmarshal(data, &dbCfg); err == nil {
+			cfg.DB = dbCfg.DB
+		}
+	}
+
+	// Coins
+	type coinsWrapper struct {
+		Coins []CoinConfig `json:"coins"`
+	}
+	if data, err := os.ReadFile(coinsPath); err == nil {
+		var coinsCfg coinsWrapper
+		if err := json.Unmarshal(data, &coinsCfg); err == nil {
+			cfg.Coins = coinsCfg.Coins
+		}
+	}
+
+	// Consensus
+	type consensusWrapper struct {
+		Consensus []map[string]interface{} `json:"consensus"`
+	}
+	if data, err := os.ReadFile(consensusPath); err == nil {
+		var consensusCfg consensusWrapper
+		if err := json.Unmarshal(data, &consensusCfg); err == nil {
+			cfg.Consensus = consensusCfg.Consensus
+		}
+	}
+
+	// EVM
+	type evmWrapper struct {
+		EVM EVMConfig `json:"evm"`
+	}
+	if data, err := os.ReadFile(evmPath); err == nil {
+		var evmCfg evmWrapper
+		if err := json.Unmarshal(data, &evmCfg); err == nil {
+			cfg.EVM = evmCfg.EVM
+		}
+	}
+
+	// Servers
+	type serversWrapper struct {
+		Server ServerConfig `json:"server"`
+	}
+	if data, err := os.ReadFile(serversPath); err == nil {
+		var serversCfg serversWrapper
+		if err := json.Unmarshal(data, &serversCfg); err == nil {
+			cfg.Server = serversCfg.Server
+		}
+	}
+
+	gc := &GlobalConfig{}
+	gc.Set(&cfg)
+	return gc, nil
 }
 
 func (g *GlobalConfig) Get() *Config {

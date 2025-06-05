@@ -1,0 +1,16 @@
+{
+  "server": {
+    "rpc": {
+      "rpc_addr": ":8181",
+      "name": "server RPC"
+    },
+    "rest": {
+      "rest_addr": ":8182",
+      "name": "server REST"
+    },
+    "ws": {
+      "ws_addr": ":8183",
+      "name": "server WS"
+    }
+  }
+}

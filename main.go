@@ -5,7 +5,10 @@ import (
 	"GND/consensus"
 	"GND/core"
 	"GND/vm"
+	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"math/big"
 	"net/http"
@@ -14,20 +17,65 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// 1. Загрузка глобальной конфигурации
-	cfg, err := core.NewConfigFromFile("config/config.json")
+	globalConfig, err := core.InitGlobalConfigDefault()
 	if err != nil {
 		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
-	fmt.Printf("Конфиг: gas_limit=%d, network_id=%s\n", cfg.GasLimit, cfg.NetworkID)
-
+	cfg := globalConfig.Get()
+	log.Println("Node name:", cfg.NodeName)
 	// 2. Загрузка настроек консенсуса PoS/PoA
-	if _, err := consensus.LoadConsensusSettings(cfg.ConsensusConf); err != nil {
-		log.Fatalf("Ошибка загрузки consensus.json: %v", err)
+	// После загрузки основного конфига
+	if len(cfg.Consensus) == 0 {
+		// Если консенсусы не заданы вообще — добавляем PoS и PoA
+		cfg.Consensus = []map[string]interface{}{
+			{
+				"type":                "pos",
+				"average_block_delay": "60s",
+				"initial_base_target": 153722867,
+				"initial_balance":     "10000000",
+			},
+			{
+				"type":                "poa",
+				"round_duration":      "17s",
+				"sync_duration":       "3s",
+				"ban_duration_blocks": 100,
+				"warnings_for_ban":    3,
+				"max_bans_percentage": 40,
+			},
+		}
 	}
+
+	// Извлекаем настройки PoS
+	var posConfig core.ConsensusPosConfig
+	for _, c := range cfg.Consensus {
+		if c["type"] == "pos" {
+			data, _ := json.Marshal(c)
+			json.Unmarshal(data, &posConfig)
+			break
+		}
+	}
+
+	// Если PoS всё ещё пустой — fatal error
+	if posConfig.Type == "" {
+		log.Fatal("Конфигурация PoS не найдена")
+	}
+	// Инициализируем модуль консенсуса
+	consensus.InitPosConsensus(&posConfig)
+
+	// 2. Инициализация пула соединений
+	pool, err := core.InitDBPool(ctx, cfg.DB)
+	if err != nil {
+		log.Fatalf("Database connection failed: %v", err)
+	}
+	defer pool.Close()
 
 	// 3. Генерация кошелька валидатора
 	minerWallet, err := core.NewWallet()
@@ -83,13 +131,13 @@ func main() {
 	// 6. Запуск серверов
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: cfg.EVM.GasLimit})
 	go func() {
-		err := api.StartRPCServer(evmInstance, cfg.Server.RPCAddr)
+		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
 		if err != nil {
 			fmt.Printf("Ошибка запуска RPCServer %s:\n", err)
 		}
 	}()
 	go api.StartRESTServer(blockchain, mempool, cfg)
-	go api.StartWebSocketServer(blockchain, cfg.Server.WebSocketAddr)
+	go api.StartWebSocketServer(blockchain, cfg.Server.WS.WSAddr)
 
 	// 7. Обработка транзакций через worker pool
 	go processTransactions(mempool, cfg.MaxWorkers)
@@ -134,5 +182,24 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 				fmt.Printf("Tx %s: обработка через PoA\n", tx.ID)
 			}
 		}()
+	}
+}
+func monitorPoolStats(ctx context.Context, pool *pgxpool.Pool) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			stats := pool.Stat()
+			log.Printf(
+				"Pool stats: Total=%d, Idle=%d, Acquired=%d",
+				stats.TotalConns(),
+				stats.IdleConns(),
+				stats.AcquiredConns(),
+			)
+		case <-ctx.Done():
+			return
+		}
 	}
 }

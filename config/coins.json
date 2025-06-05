@@ -1,0 +1,22 @@
+{
+  "coins": [
+    {
+      "name": "GANYMED GND-Core Coin",
+      "symbol": "GND.c",
+      "decimals": 18,
+      "description": "Нативная монета блокчейна ГАНИМЕД. Используется для оплаты комиссий, стейкинга и всех внутренних операций, доступ к DApps.",
+      "contract_address": "",
+      "coin_logo": "",
+      "total_supply": "1000000000000000000000000"
+    },
+    {
+      "name": "GANYMED GND-Stable Coin",
+      "symbol": "GND.st",
+      "decimals": 6,
+      "description": "Нативная стабильная монета блокчейна ГАНИМЕД. Используется для диверсификации рисков, снижения волатильности.",
+      "contract_address": "",
+      "coin_logo": "",
+      "total_supply": "1000000000000"
+    }
+  ]
+}

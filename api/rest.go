@@ -18,7 +18,7 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 		// Получаем адрес ноды из конфига
-		nodeAddr := config.Server.RESTAddr
+		nodeAddr := config.Server.REST.RESTAddr
 
 		// Формируем строку с описанием монет
 		coinsInfo := ""
@@ -162,7 +162,7 @@ func StartRESTServer(bc *core.Blockchain, mempool *core.Mempool, config *core.Co
 		),
 	)
 
-	addr := config.Server.RESTAddr
+	addr := config.Server.REST.RESTAddr
 	log.Printf("REST сервер запущен на %s\n", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
