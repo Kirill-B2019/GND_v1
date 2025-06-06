@@ -131,6 +131,6 @@
 ## Контракты (токены)
 - [GNDst-1.md](docs/GNDst-1.md) - стандарт токенов GND
 ## Подробнее
-- [FileStructure.md](docs/FileStructure.md) - Структура файлов блокчейна «ГАНИМЕД»
+- [architecture.md](docs/architecture.md)...
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Kirill-B2019/GND_v1)
