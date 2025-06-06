@@ -3,10 +3,13 @@
 package core
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
+	"time"
 )
 
 // TxType определяет тип транзакции
@@ -95,4 +98,14 @@ func (tx *Transaction) HashString() string {
 func DecodeRawTransaction(data []byte) (*Transaction, error) {
 	// Реализуйте декодирование транзакции из байтов (например, через gob, json, hex)
 	return nil, errors.New("DecodeRawTransaction не реализован")
+}
+
+// Сохраняет транзакцию в БД (секционируемая таблица)
+func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool, timestamp time.Time) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO transactions (
+			id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		tx.ID, tx.Hash, tx.From, tx.To, tx.Value.String(), CalculateTxFee(tx), tx.Nonce, tx.Type, nil, "pending", timestamp)
+	return err
 }

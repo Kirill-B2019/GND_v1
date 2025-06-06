@@ -55,3 +55,18 @@ func (b *Block) CalculateHash() string {
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
+func (b *Block) CalculateHashWithoutNonce() string {
+	var sb strings.Builder
+	sb.WriteString(strconv.FormatUint(b.Index, 10))
+	sb.WriteString(b.PrevHash)
+	sb.WriteString(strconv.FormatInt(b.Timestamp, 10))
+	sb.WriteString(b.Miner)
+	sb.WriteString(b.Consensus)
+	for _, tx := range b.Transactions {
+		sb.WriteString(tx.Hash)
+	}
+	sb.WriteString(strconv.FormatUint(b.GasLimit, 10))
+	sb.WriteString(strconv.FormatUint(b.GasUsed, 10))
+	hash := sha256.Sum256([]byte(sb.String()))
+	return hex.EncodeToString(hash[:])
+}

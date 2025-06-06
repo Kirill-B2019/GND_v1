@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"math/big"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -31,6 +30,7 @@ func main() {
 	}
 	cfg := globalConfig.Get()
 	log.Println("Node name:", cfg.NodeName)
+
 	// 2. Загрузка настроек консенсуса PoS/PoA
 	// После загрузки основного конфига
 	if len(cfg.Consensus) == 0 {
@@ -85,7 +85,8 @@ func main() {
 	}
 	fmt.Printf("Адрес genesis-валидатора: %s\n", minerWallet.Address)
 
-	// 4. Создание генезис-блока
+	// 4. Инициализация блокчейна
+	var blockchain *core.Blockchain
 	genesisBlock := core.NewBlock(
 		0,
 		"",
@@ -95,9 +96,14 @@ func main() {
 		"pos",
 	)
 
-	// 5. Инициализация блокчейна и мемпула
-	blockchain := core.NewBlockchain(genesisBlock)
-	mempool := core.NewMempool()
+	// Попытка загрузить существующую цепочку из БД
+	blockchain, err = core.LoadBlockchainFromDB(pool)
+	if err != nil {
+		log.Printf("Не удалось загрузить блокчейн из БД: %v", err)
+		blockchain = core.NewBlockchain(genesisBlock, pool)
+	} else {
+		fmt.Printf("Блокчейн успешно восстановлен из БД\n")
+	}
 	fmt.Printf("Генезис-блок #%d создан\n", genesisBlock.Index)
 
 	// Кэш множителей для big.Int
@@ -121,6 +127,13 @@ func main() {
 			amount.SetInt64(1_000_000)
 			amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
 		}
+		// First save wallet to insert account
+		_, err := pool.Exec(context.Background(), `
+	INSERT INTO accounts (address) VALUES ($1)`,
+			string(minerWallet.Address))
+		if err != nil {
+			log.Fatalf("Failed to insert account: %v", err)
+		}
 		blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 	}
 	fmt.Printf("Баланс адреса %s:\n", minerWallet.Address)
@@ -128,9 +141,15 @@ func main() {
 		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
 		fmt.Printf("%s: %s  %s. Знаков: %d\n", coin.Name, balance.String(), coin.Symbol, coin.Decimals)
 	}
+	// 5. мемпула
+	mempool := core.NewMempool()
 
 	// 6. Запуск серверов
-	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: cfg.EVM.GasLimit})
+	gasLimit := cfg.EVM.GasLimit
+	if gasLimit == 0 {
+		gasLimit = 10_000_000 // default EVM Gas Limit
+	}
+	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: gasLimit})
 	go func() {
 		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
 		if err != nil {
@@ -151,17 +170,12 @@ func main() {
 		}
 	}()*/
 
-	// 9. Запуск pprof для профилирования
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
 	// 10. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
 	<-sigs
-	fmt.Println("Нода ГАНИМЕД остановлена.\n")
+	fmt.Println("Нода ГАНИМЕД остановлена.")
 }
 
 // Ограничение числа воркеров для обработки транзакций

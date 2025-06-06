@@ -2,8 +2,11 @@ package vm
 
 import (
 	"GND/core" // Импортируем core для использования Address
+	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
 var ContractRegistry = make(map[core.Address]Contract)
@@ -133,4 +136,33 @@ var contractRegistry = make(map[core.Address]Contract)
 
 func registerContract(addr core.Address, c Contract) {
 	contractRegistry[addr] = c
+}
+
+func (c *TokenContract) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO contracts (
+			address, owner, code, abi, created_at, type
+		) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (address) DO NOTHING`,
+		c.address, c.owner, c.bytecode, nil, time.Now(), "erc20")
+
+	return err
+}
+func (c *TokenContract) SaveTokenInfoToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO tokens (
+			contract_id, standard, symbol, name, decimals, total_supply
+		) VALUES ($1, $2, $3, $4, $5, $6)`,
+		c.address, "erc20", c.symbol, c.name, c.decimals, "1000000") // Замените на реальные данные
+
+	return err
+}
+func (c *TokenContract) UpdateTokenBalanceInDB(ctx context.Context, pool *pgxpool.Pool, address core.Address, amount uint64) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO token_balances (
+			token_id, address, balance
+		) VALUES ((SELECT id FROM tokens WHERE symbol = $1), $2, $3)
+		ON CONFLICT (token_id, address) DO UPDATE SET balance = $3`,
+		c.symbol, address, amount)
+
+	return err
 }

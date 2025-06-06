@@ -1,14 +1,30 @@
+// api/websocket.go
+
 package api
 
 import (
+	"GND/core"
+	"context"
+	"fmt"
+	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"net/http"
 	"sync"
 	"time"
-
-	"GND/core"
-	"github.com/gorilla/websocket"
 )
+
+var (
+	clients  = make(map[*Client]bool) // было: map[*websocket.Conn]bool
+	hubMutex sync.RWMutex
+)
+
+type Client struct {
+	Conn *websocket.Conn
+	// Дополнительные поля, например:
+	Addr          string
+	Subscriptions map[string]bool // например, подписка на адреса
+}
 
 // Структура сообщения для клиента
 type WSMessage struct {
@@ -53,33 +69,40 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Ошибка апгрейда WS:", err)
 		return
 	}
-	wsManager.lock.Lock()
-	wsManager.clients[conn] = true
-	wsManager.lock.Unlock()
+
+	client := &Client{
+		Conn:          conn,
+		Addr:          conn.RemoteAddr().String(),
+		Subscriptions: make(map[string]bool),
+	}
+
+	hubMutex.Lock()
+	clients[client] = true
+	hubMutex.Unlock()
+
 	log.Println("WS: новое подключение")
-	go wsReadLoop(conn)
+	go wsReadLoop(client)
 }
 
 // Чтение сообщений от клиента (например, подписка на адрес/тип событий)
-func wsReadLoop(conn *websocket.Conn) {
+func wsReadLoop(client *Client) {
 	defer func() {
-		wsManager.lock.Lock()
-		delete(wsManager.clients, conn)
-		wsManager.lock.Unlock()
-		if err := conn.Close(); err != nil {
+		hubMutex.Lock()
+		delete(clients, client)
+		hubMutex.Unlock()
+
+		if err := client.Conn.Close(); err != nil {
 			log.Printf("WS: ошибка при закрытии соединения: %v", err)
 		}
 		log.Println("WS: отключение клиента")
 	}()
 	for {
-		_, _, err := conn.ReadMessage()
+		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WS: ошибка чтения сообщения: %v", err)
-			}
+			log.Printf("Ошибка чтения сообщения: %v", err)
 			break
 		}
-		// Здесь можно обработать команды подписки/фильтрации
+		fmt.Printf("Получено сообщение: %s\n", message)
 	}
 }
 
@@ -99,16 +122,24 @@ func wsBroadcast(msg WSMessage) {
 }
 
 // Периодически слать последний блок (или по событию)
-func broadcastBlocks(bc *core.Blockchain) {
-	lastHash := ""
-	for {
-		block := bc.LatestBlock()
-		if block.Hash != lastHash {
-			msg := WSMessage{Type: "block", Data: block}
-			wsBroadcast(msg)
-			lastHash = block.Hash
+func broadcastBlocks(blockchain *core.Blockchain) {
+	if blockchain == nil {
+		log.Println("Blockchain is nil")
+		return
+	}
+
+	hubMutex.RLock()
+	defer hubMutex.RUnlock()
+
+	for client := range clients {
+		if client.Conn != nil {
+			err := client.Conn.WriteJSON(blockchain.LatestBlock())
+			if err != nil {
+				log.Printf("Error sending block to client: %v", err)
+				client.Conn.Close()
+				delete(clients, client)
+			}
 		}
-		time.Sleep(2 * time.Second)
 	}
 }
 
@@ -122,4 +153,23 @@ func NotifyNewTx(tx *core.Transaction) {
 func NotifyContractEvent(event interface{}) {
 	msg := WSMessage{Type: "event", Data: event}
 	wsBroadcast(msg)
+}
+func SaveContractEventToDB(ctx context.Context, pool *pgxpool.Pool, event WSMessage) error {
+	txTimestamp, ok := event.Data.(map[string]interface{})["time"].(time.Time)
+	if !ok {
+		return fmt.Errorf("неверный формат времени")
+	}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO logs (
+			tx_id, tx_timestamp, contract_id, event, data, timestamp
+		) VALUES ($1, $2, $3, $4, $5, $6)`,
+		event.Data.(map[string]interface{})["txHash"], // Используйте ID или Hash
+		txTimestamp,
+		event.Data.(map[string]interface{})["contract"],
+		event.Type,
+		event.Data,
+		txTimestamp)
+
+	return err
 }
