@@ -128,8 +128,8 @@
 - [consensus.md](docs/consensus.md) - алгоритмы консенсуса
 - [contracts.md](docs/contracts.md) - работа со смарт-контрактами
 - [integration.md](docs/integration.md) - интеграция с GND
-## Контракты
-- [README.md](contracts/README.md) -документация по смарт-контрактам блокчейна «ГАНИМЕД»
+## Контракты (токены)
+- [GNDst-1.md](docs/GNDst-1.md) - стандарт токенов GND
 ## Подробнее
 - [FileStructure.md](docs/FileStructure.md) - Структура файлов блокчейна «ГАНИМЕД»
 
