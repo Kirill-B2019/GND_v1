@@ -132,3 +132,5 @@
 - [README.md](contracts/README.md) -документация по смарт-контрактам блокчейна «ГАНИМЕД»
 ## Подробнее
 - [FileStructure.md](docs/FileStructure.md) - Структура файлов блокчейна «ГАНИМЕД»
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Kirill-B2019/GND_v1)
