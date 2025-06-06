@@ -43,7 +43,7 @@ func (c *IPFSClient) AddFile(r io.Reader) (string, error) {
 
 // GetData скачивает данные по CID из IPFS
 func (c *IPFSClient) GetData(cid string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	reader, err := c.sh.Cat(cid)
 	if err != nil {

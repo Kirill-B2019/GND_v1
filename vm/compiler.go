@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -131,27 +132,8 @@ func ValidateContract(result *CompileResult) error {
 	return nil
 }
 
-// Пример использования:
-//
-// func main() {
-//     compiler := &DefaultSolidityCompiler{SolcPath: "solc"}
-//     source, _ := ioutil.ReadFile("MyToken.sol")
-//     metadata := ContractMetadata{
-//         Name: "MyToken",
-//         Standard: "erc20",
-//         Owner: "GND1...",
-//         Compiler: "solc",
-//         Version: "0.8.24",
-//         Params: map[string]interface{}{"initialSupply": 1000},
-//         Description: "Demo ERC-20 token",
-//     }
-//     res, err := compiler.Compile(source, metadata)
-//     if err != nil {
-//         panic(err)
-//     }
-//     if err := ValidateContract(res); err != nil {
-//         panic(err)
-//     }
-//     fmt.Println("Bytecode:", res.Bytecode)
-//     fmt.Println("ABI:", res.ABI)
-// }
+// Вспомогательная функция генерации байткода
+func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int) []byte {
+	// TODO: Реальная генерация байткода (например, компиляция Solidity)
+	return []byte{0x60, 0x60, 0x60, 0x70} // заглушка
+}
