@@ -3,9 +3,12 @@
 package gndst1
 
 import (
+	"GND/core"
 	"GND/tokens"
+	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
 )
 
@@ -21,106 +24,160 @@ type TokenMeta struct {
 	Description string
 }
 
+// GNDst1 реализует стандарт GNDST1 для токенов
 type GNDst1 struct {
+	address     core.Address
 	name        string
 	symbol      string
 	decimals    uint8
 	totalSupply *big.Int
-	balances    map[string]*big.Int
-	allowances  map[string]map[string]*big.Int
+	balances    map[core.Address]*big.Int
+	allowances  map[string]*big.Int // key format: "owner:spender"
+	pool        *pgxpool.Pool
 	kycPassed   map[string]bool
 	bridge      string
 }
 
-func NewGNDst1(initialSupply *big.Int, bridgeAddress string) *GNDst1 {
+func NewGNDst1(
+	address core.Address,
+	name string,
+	symbol string,
+	decimals uint8,
+	totalSupply *big.Int,
+	pool *pgxpool.Pool,
+) *GNDst1 {
 	return &GNDst1{
-		name:        "Ganimed Token",
-		symbol:      "GND",
-		decimals:    18,
-		totalSupply: new(big.Int).Set(initialSupply),
-		balances: map[string]*big.Int{
-			"owner": new(big.Int).Set(initialSupply),
-		},
-		allowances: make(map[string]map[string]*big.Int),
-		kycPassed:  make(map[string]bool),
-		bridge:     bridgeAddress,
+		address:     address,
+		name:        name,
+		symbol:      symbol,
+		decimals:    decimals,
+		totalSupply: totalSupply,
+		balances:    make(map[core.Address]*big.Int),
+		allowances:  make(map[string]*big.Int),
+		pool:        pool,
+		kycPassed:   make(map[string]bool),
 	}
 }
 
 // --- Базовые методы ---
-func (t *GNDst1) Name() string          { return t.name }
-func (t *GNDst1) Symbol() string        { return t.symbol }
-func (t *GNDst1) Decimals() uint8       { return t.decimals }
-func (t *GNDst1) TotalSupply() *big.Int { return t.totalSupply }
+func (t *GNDst1) GetAddress() core.Address { return t.address }
+func (t *GNDst1) GetName() string          { return t.name }
+func (t *GNDst1) GetSymbol() string        { return t.symbol }
+func (t *GNDst1) GetDecimals() uint8       { return t.decimals }
+func (t *GNDst1) GetTotalSupply() *big.Int { return t.totalSupply }
 
-func (t *GNDst1) BalanceOf(account string) *big.Int {
-	if balance, ok := t.balances[account]; ok {
-		return balance
+// GetBalance возвращает баланс токенов для адреса
+func (t *GNDst1) GetBalance(ctx context.Context, address core.Address) (*big.Int, error) {
+	balance, exists := t.balances[address]
+	if !exists {
+		return big.NewInt(0), nil
 	}
-	return big.NewInt(0)
+	return balance, nil
 }
 
 // --- ERC-20 совместимые методы ---
-func (t *GNDst1) Transfer(from string, to string, amount *big.Int) bool {
-	if amount.Cmp(big.NewInt(0)) <= 0 {
-		return false
-	}
-	if senderBalance, ok := t.balances[from]; !ok || senderBalance.Cmp(amount) < 0 {
-		return false
+func (t *GNDst1) Transfer(ctx context.Context, from core.Address, to core.Address, amount *big.Int) error {
+	if amount.Sign() <= 0 {
+		return errors.New("amount must be positive")
 	}
 
-	t.balances[from] = new(big.Int).Sub(t.balances[from], amount)
-	t.balances[to] = new(big.Int).Add(t.balances[to], amount)
-	return true
+	// Проверяем баланс
+	balance := t.balances[from]
+	if balance == nil || balance.Cmp(amount) < 0 {
+		return errors.New("insufficient balance")
+	}
+
+	// Выполняем перевод
+	balance.Sub(balance, amount)
+	if _, exists := t.balances[to]; !exists {
+		t.balances[to] = new(big.Int)
+	}
+	t.balances[to].Add(t.balances[to], amount)
+
+	// TODO: Сохранить в БД
+	return nil
 }
 
-func (t *GNDst1) Allowance(owner string, spender string) *big.Int {
-	if _, ok := t.allowances[owner]; !ok {
-		return big.NewInt(0)
+// Allowance возвращает количество токенов, которое spender может потратить от имени owner
+func (t *GNDst1) Allowance(ctx context.Context, owner core.Address, spender core.Address) (*big.Int, error) {
+	key := fmt.Sprintf("%s:%s", string(owner), string(spender))
+	allowance, exists := t.allowances[key]
+	if !exists {
+		return big.NewInt(0), nil
 	}
-	if _, ok := t.allowances[owner][spender]; !ok {
-		return big.NewInt(0)
-	}
-	return t.allowances[owner][spender]
+	return allowance, nil
 }
 
-func (t *GNDst1) Approve(spender string, amount *big.Int) bool {
-	if amount.Cmp(big.NewInt(0)) < 0 {
-		return false
+// Approve устанавливает количество токенов, которое spender может потратить от имени owner
+func (t *GNDst1) Approve(ctx context.Context, owner core.Address, spender core.Address, amount *big.Int) error {
+	if amount.Sign() < 0 {
+		return errors.New("amount cannot be negative")
 	}
-	if t.allowances[spender] == nil {
-		t.allowances[spender] = make(map[string]*big.Int)
-	}
-	t.allowances[spender]["msg.sender"] = amount
-	return true
+
+	key := fmt.Sprintf("%s:%s", string(owner), string(spender))
+	t.allowances[key] = amount
+
+	// TODO: Сохранить в БД
+	return nil
 }
 
-func (t *GNDst1) TransferFrom(from string, to string, amount *big.Int) bool {
-	if amount.Cmp(big.NewInt(0)) <= 0 {
-		return false
+// TransferFrom переводит amount токенов от from к to, используя разрешение
+func (t *GNDst1) TransferFrom(ctx context.Context, from core.Address, to core.Address, amount *big.Int) error {
+	if amount.Sign() <= 0 {
+		return errors.New("amount must be positive")
 	}
 
-	allowance := t.Allowance(from, "msg.sender")
+	// Проверяем разрешение
+	allowance, err := t.Allowance(ctx, from, t.address)
+	if err != nil {
+		return err
+	}
 	if allowance.Cmp(amount) < 0 {
-		return false
+		return errors.New("insufficient allowance")
 	}
 
-	t.allowances["msg.sender"][from] = new(big.Int).Sub(allowance, amount)
-	t.Transfer(from, to, amount)
-	return true
+	// Проверяем баланс
+	balance := t.balances[from]
+	if balance == nil || balance.Cmp(amount) < 0 {
+		return errors.New("insufficient balance")
+	}
+
+	// Выполняем перевод
+	balance.Sub(balance, amount)
+	if _, exists := t.balances[to]; !exists {
+		t.balances[to] = new(big.Int)
+	}
+	t.balances[to].Add(t.balances[to], amount)
+
+	// Уменьшаем разрешение
+	key := fmt.Sprintf("%s:%s", string(from), string(t.address))
+	t.allowances[key].Sub(t.allowances[key], amount)
+
+	// TODO: Сохранить в БД
+	return nil
 }
 
 // --- Расширенные методы GNDst-1 ---
-func (t *GNDst1) CrossChainTransfer(targetChain string, to string, amount *big.Int) bool {
-	if amount.Cmp(big.NewInt(0)) <= 0 {
-		return false
-	}
-	if senderBalance := t.BalanceOf("msg.sender"); senderBalance.Cmp(amount) < 0 {
-		return false
+func (t *GNDst1) CrossChainTransfer(ctx context.Context, targetChain string, to string, amount *big.Int) error {
+	if amount.Sign() <= 0 {
+		return errors.New("amount must be positive")
 	}
 
-	t.Transfer("msg.sender", t.bridge, amount)
-	return true
+	// Проверяем баланс
+	senderBalance, err := t.GetBalance(ctx, t.address)
+	if err != nil {
+		return fmt.Errorf("failed to check balance: %v", err)
+	}
+	if senderBalance.Cmp(amount) < 0 {
+		return errors.New("insufficient balance")
+	}
+
+	// Выполняем перевод
+	if err := t.Transfer(ctx, t.address, t.address, amount); err != nil {
+		return fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	return nil
 }
 
 func (t *GNDst1) SetKycStatus(user string, status bool) {
@@ -165,4 +222,27 @@ func (t *GNDst1) CustomMethod(method string, args ...interface{}) (interface{}, 
 	default:
 		return nil, fmt.Errorf("неизвестный пользовательский метод: %s", method)
 	}
+}
+
+// BridgeTransfer выполняет перевод токенов через мост
+func (t *GNDst1) BridgeTransfer(ctx context.Context, amount *big.Int) error {
+	if amount.Sign() <= 0 {
+		return errors.New("amount must be positive")
+	}
+
+	// Проверяем баланс
+	senderBalance, err := t.GetBalance(ctx, t.address)
+	if err != nil {
+		return fmt.Errorf("failed to check balance: %v", err)
+	}
+	if senderBalance.Cmp(amount) < 0 {
+		return errors.New("insufficient balance")
+	}
+
+	// Выполняем перевод
+	if err := t.Transfer(ctx, t.address, t.address, amount); err != nil {
+		return fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	return nil
 }

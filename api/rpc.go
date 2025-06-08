@@ -1,12 +1,13 @@
 package api
 
 import (
-	"GND/core"
 	_ "GND/tokens"
+	"GND/types"
 	"GND/vm"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	_ "strconv"
 )
@@ -28,6 +29,7 @@ type DeployContractParams struct {
 	GasPrice    uint64                 `json:"gas_price"`
 	Nonce       uint64                 `json:"nonce"`
 	Signature   string                 `json:"signature"`
+	TotalSupply *big.Int               `json:"total_supply"`
 }
 
 func StartRPCServer(evm *vm.EVM, addr string) error {
@@ -55,10 +57,10 @@ func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
 
 		// ... валидация ...
 
-		meta := vm.ContractMeta{
+		meta := types.ContractMeta{
 			Name:        params.Name,
 			Standard:    params.Standard,
-			Owner:       core.Address(params.Owner),
+			Owner:       params.Owner,
 			Params:      toStringMap(params.Params),
 			Description: params.Description,
 			MetadataCID: params.MetadataCID,
@@ -75,6 +77,7 @@ func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
 			params.GasPrice,
 			params.Nonce,
 			params.Signature,
+			params.TotalSupply,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -124,12 +127,20 @@ func SendContractTxHandler(evm *vm.EVM) http.HandlerFunc {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
-		txHash, err := evm.SendContractTx(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value, params.Nonce, params.Signature)
+		result, err := evm.CallContract(
+			params.From,
+			params.To,
+			params.Data,
+			params.GasLimit,
+			params.GasPrice,
+			params.Value,
+			params.Signature,
+		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"txHash": txHash})
+		json.NewEncoder(w).Encode(map[string]interface{}{"result": result})
 	}
 }
 func AccountBalanceHandler(evm *vm.EVM) http.HandlerFunc {

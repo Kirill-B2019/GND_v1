@@ -1,7 +1,7 @@
 package audit
 
 import (
-	"GND/core"
+	"GND/vm"
 	"strings"
 )
 
@@ -54,17 +54,17 @@ func CheckEvents(contractCode string) bool {
 }
 
 // Комплексная проверка контракта
-func RunSecurityChecks(contract *core.Account) []SecurityIssue {
+func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 	var issues []SecurityIssue
 
-	code := string(contract.Code)
+	code := string(contract.Bytecode())
 
 	if CheckOverflow(1<<63, 1<<63) {
 		issues = append(issues, SecurityIssue{
 			Title:       "Возможное переполнение",
 			Description: "Обнаружено потенциальное переполнение при сложении uint64.",
 			Severity:    "high",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 
@@ -73,7 +73,7 @@ func RunSecurityChecks(contract *core.Account) []SecurityIssue {
 			Title:       "Возможная атака повторного входа (reentrancy)",
 			Description: "В коде контракта обнаружен вызов внешнего контракта до изменения storage.",
 			Severity:    "critical",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 
@@ -83,7 +83,7 @@ func RunSecurityChecks(contract *core.Account) []SecurityIssue {
 			Title:       "Открытая функция без модификатора доступа",
 			Description: "Функция может быть вызвана любым адресом: " + f,
 			Severity:    "medium",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 
@@ -92,7 +92,7 @@ func RunSecurityChecks(contract *core.Account) []SecurityIssue {
 			Title:       "Нет проверки владельца в критических функциях",
 			Description: "В коде отсутствует проверка owner или onlyOwner.",
 			Severity:    "high",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 
@@ -101,7 +101,7 @@ func RunSecurityChecks(contract *core.Account) []SecurityIssue {
 			Title:       "Использование устаревших конструкций",
 			Description: "В коде найдено использование tx.origin.",
 			Severity:    "low",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 
@@ -110,7 +110,7 @@ func RunSecurityChecks(contract *core.Account) []SecurityIssue {
 			Title:       "Нет событий для отслеживания действий",
 			Description: "В коде отсутствуют события (event) для важных функций.",
 			Severity:    "info",
-			Location:    string(contract.Address),
+			Location:    string(contract.Address()),
 		})
 	}
 

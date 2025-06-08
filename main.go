@@ -181,20 +181,35 @@ func main() {
 // Ограничение числа воркеров для обработки транзакций
 func processTransactions(mempool *core.Mempool, maxWorkers int) {
 	sem := make(chan struct{}, maxWorkers)
+	logger := log.New(os.Stdout, "[TX Processor] ", log.LstdFlags)
+
 	for {
 		sem <- struct{}{}
 		go func() {
-			defer func() { <-sem }()
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Printf("Panic recovered in transaction processor: %v", r)
+				}
+				<-sem
+			}()
+
 			tx, err := mempool.Pop()
 			if err != nil {
+				logger.Printf("Error popping transaction from mempool: %v", err)
 				return
 			}
+
 			consType := consensus.SelectConsensusForTx(tx.To)
+			logger.Printf("Processing transaction %s through %s consensus", tx.ID, consType)
+
+			// TODO: Add actual transaction processing logic here
 			switch consType {
 			case consensus.ConsensusPoS:
-				fmt.Printf("Tx %s: обработка через PoS\n", tx.ID)
+				logger.Printf("Transaction %s: processing through PoS", tx.ID)
 			case consensus.ConsensusPoA:
-				fmt.Printf("Tx %s: обработка через PoA\n", tx.ID)
+				logger.Printf("Transaction %s: processing through PoA", tx.ID)
+			default:
+				logger.Printf("Transaction %s: unknown consensus type", tx.ID)
 			}
 		}()
 	}
@@ -203,17 +218,30 @@ func monitorPoolStats(ctx context.Context, pool *pgxpool.Pool) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
+	logger := log.New(os.Stdout, "[DB Pool Monitor] ", log.LstdFlags)
+
 	for {
 		select {
 		case <-ticker.C:
 			stats := pool.Stat()
-			log.Printf(
-				"Pool stats: Total=%d, Idle=%d, Acquired=%d",
+			logger.Printf(
+				"Pool statistics:\n"+
+					"  Total connections: %d\n"+
+					"  Idle connections: %d\n"+
+					"  Acquired connections: %d",
+
 				stats.TotalConns(),
 				stats.IdleConns(),
 				stats.AcquiredConns(),
 			)
+
+			// Alert if pool is near capacity
+			if float64(stats.AcquiredConns())/float64(stats.TotalConns()) > 0.8 {
+				logger.Printf("WARNING: Database pool is near capacity (%.1f%% used)",
+					float64(stats.AcquiredConns())/float64(stats.TotalConns())*100)
+			}
 		case <-ctx.Done():
+			logger.Println("Database pool monitoring stopped")
 			return
 		}
 	}

@@ -1,10 +1,10 @@
 // vm/evm.go
-// vm/evm.go
 
 package vm
 
 import (
 	"GND/core"
+	"GND/types"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -12,21 +12,6 @@ import (
 	"math/big"
 	"sync"
 )
-
-// Определение EVMInterface для инъекции зависимости
-type EVMInterface interface {
-	CallStatic(from core.Address, to core.Address, data []byte, gasLimit uint64, gasPrice uint64, value uint64) ([]byte, error)
-}
-
-// ContractRegistryType — тип реестра контрактов
-type ContractRegistryType map[core.Address]Contract
-
-var ContractRegistry ContractRegistryType = make(ContractRegistryType)
-
-func GetContract(addr core.Address) (Contract, bool) {
-	c, ok := ContractRegistry[addr]
-	return c, ok
-}
 
 // EVMConfig определяет параметры виртуальной машины
 type EVMConfig struct {
@@ -38,9 +23,9 @@ type EVMConfig struct {
 
 // EVM реализует изолированную виртуальную машину для исполнения байткода контрактов
 type EVM struct {
-	config EVMConfig
-	mutex  sync.RWMutex
-	evm    EVMInterface // Теперь интерфейс определен корректно
+	config       EVMConfig
+	mutex        sync.RWMutex
+	eventManager types.EventManager
 }
 
 // NewEVM создает новый экземпляр EVM
@@ -50,16 +35,41 @@ func NewEVM(config EVMConfig) *EVM {
 	}
 }
 
+// SetEventManager устанавливает менеджер событий
+func (e *EVM) SetEventManager(em types.EventManager) {
+	e.eventManager = em
+}
+
+// GetSender возвращает адрес отправителя
+func (e *EVM) GetSender() string {
+	if len(e.config.Coins) == 0 {
+		return ""
+	}
+	return e.config.Coins[0].ContractAddress
+}
+
 // DeployContract деплоит байткод контракта, регистрирует его и списывает комиссию в GND
 func (e *EVM) DeployContract(
 	from string,
 	bytecode []byte,
-	meta ContractMeta,
+	meta types.ContractMeta,
 	gasLimit uint64,
 	gasPrice uint64,
 	nonce uint64,
 	signature string,
+	totalSupply *big.Int,
 ) (string, error) {
+	// Валидация входных параметров
+	if len(bytecode) == 0 {
+		return "", errors.New("пустой байткод контракта")
+	}
+	if gasLimit == 0 || gasPrice == 0 {
+		return "", errors.New("некорректные параметры газа")
+	}
+	if totalSupply == nil {
+		return "", errors.New("totalSupply не может быть nil")
+	}
+
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
@@ -74,51 +84,62 @@ func (e *EVM) DeployContract(
 	}
 	primarySymbol := e.config.Coins[0].Symbol
 
-	if e.config.State.GetBalance(fromAddr, primarySymbol).Cmp(requiredFee) < 0 {
-		return "", errors.New("недостаточно " + primarySymbol + " для комиссии деплоя")
+	// Проверка баланса
+	balance := e.config.State.GetBalance(fromAddr, primarySymbol)
+	if balance.Cmp(requiredFee) < 0 {
+		return "", fmt.Errorf("недостаточно %s для комиссии деплоя (требуется: %s, доступно: %s)",
+			primarySymbol, requiredFee.String(), balance.String())
 	}
 
+	// Генерация адреса контракта с использованием keccak256
 	addr := fmt.Sprintf("GNDct%x", hashBytes(append(bytecode, byte(nonce))))
+
+	// Проверка существования контракта
+	if _, exists := ContractRegistry[core.Address(addr)]; exists {
+		return "", errors.New("контракт с таким адресом уже существует")
+	}
+
 	meta.Address = addr
 	meta.Bytecode = hex.EncodeToString(bytecode)
 
-	contract := NewTokenContract(
+	contract, err := NewTokenContract(
 		core.Address(addr),
 		bytecode,
 		core.Address(from),
 		meta.Name,
 		meta.Symbol,
-		18,
+		18, // TODO: сделать настраиваемым
+		totalSupply,
+		nil, // TODO: добавить pool
 	)
-	RegisterContract(contract.address, contract)
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания токен-контракта: %v", err)
+	}
 
-	e.config.State.SubBalance(fromAddr, primarySymbol, requiredFee)
+	// Регистрация контракта
+	ContractRegistry[contract.address] = contract
+
+	// Списание комиссии
+	if err := e.config.State.SubBalance(fromAddr, primarySymbol, requiredFee); err != nil {
+		return "", fmt.Errorf("ошибка списания комиссии: %v", err)
+	}
 
 	return addr, nil
 }
 
 // CallContract выполняет функцию контракта
-func (e *EVM) CallContract(from, to string, data []byte, gasLimit, gasPrice, value uint64, signature string) ([]byte, error) {
+func (e *EVM) CallContract(
+	from string,
+	to string,
+	data []byte,
+	gasLimit uint64,
+	gasPrice uint64,
+	value uint64,
+	signature string,
+) ([]byte, error) {
 	fromAddr := core.Address(from)
 	toAddr := core.Address(to)
 	return e.config.State.CallStatic(fromAddr, toAddr, data, gasLimit, gasPrice, value)
-}
-
-// SendContractTx отправляет транзакцию контракта
-func (e *EVM) SendContractTx(from, to string, data []byte, gasLimit, gasPrice, value, nonce uint64, signature string) (string, error) {
-	tx, _ := core.NewTransaction(
-		from,
-		to,
-		"GND.c",
-		new(big.Int).SetUint64(value),
-		gasLimit,
-		gasPrice,
-		nonce,
-		data,
-		core.TxContractCall,
-		signature,
-	)
-	return tx.Hash, nil
 }
 
 // GetBalance возвращает баланс GND для адреса
