@@ -1,15 +1,16 @@
+// vm/contracts.go
+
 package vm
 
 import (
-	"GND/core" // Импортируем core для использования Address
+	"GND/core" // импортируем core для использования Address
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
-
-var ContractRegistry = make(map[core.Address]Contract)
 
 // Определяем тип Bytecode как псевдоним для []byte
 type Bytecode = []byte
@@ -36,8 +37,8 @@ type TokenContract struct {
 	bytecode Bytecode
 	owner    core.Address
 	name     string
-	symbol   string // исправлено на lowercase
-	decimals uint8  // исправлено на lowercase
+	symbol   string
+	decimals uint8
 	balances map[core.Address]uint64
 }
 
@@ -75,6 +76,7 @@ func (c *TokenContract) Address() core.Address {
 func (c *TokenContract) Bytecode() Bytecode {
 	return c.bytecode
 }
+
 func (c *TokenContract) Execute(method string, args []interface{}) (interface{}, error) {
 	switch method {
 	case "transfer":
@@ -82,17 +84,17 @@ func (c *TokenContract) Execute(method string, args []interface{}) (interface{},
 	case "balanceOf":
 		return c.handleBalanceOf(args)
 	default:
-		return nil, fmt.Errorf("unknown method: %s", method)
+		return nil, fmt.Errorf("неизвестный метод: %s", method)
 	}
 }
 
 func (c *TokenContract) handleTransfer(args []interface{}) (interface{}, error) {
-	// Реализуйте обработку args как []interface{}
+	// TODO: Реализуйте обработку аргументов
 	return true, nil
 }
 
 func (c *TokenContract) handleBalanceOf(args []interface{}) (interface{}, error) {
-	// Реализуйте обработку args как []interface{}
+	// TODO: Реализуйте обработку аргументов
 	return uint64(100), nil
 }
 
@@ -107,26 +109,21 @@ func DeployContract(
 	signature string,
 ) (core.Address, error) {
 
-	// Пример реализации:
 	if len(bytecode) < 20 {
-		return core.Address(""), errors.New("invalid bytecode")
+		return core.Address(""), errors.New("неверный байткод")
 	}
 
-	// Генерация адреса контракта (упрощенно)
-	address := core.Address(bytecode[:20])
-
-	// Создаем экземпляр контракта
+	address := core.Address(hex.EncodeToString(bytecode[:20]))
 	contract := NewTokenContract(
 		address,
 		bytecode,
-		from,      // owner
-		meta.Name, // name
-		meta.Name, // symbol (временно используем name)
-		18,        // decimals
+		from,
+		meta.Name,
+		meta.Symbol,
+		18,
 	)
 
-	// Регистрируем контракт в реестре (логика регистрации зависит от вашей реализации)
-	registerContract(address, contract)
+	RegisterContract(address, contract)
 
 	return address, nil
 }
@@ -147,15 +144,17 @@ func (c *TokenContract) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error 
 
 	return err
 }
+
 func (c *TokenContract) SaveTokenInfoToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 		INSERT INTO tokens (
 			contract_id, standard, symbol, name, decimals, total_supply
 		) VALUES ($1, $2, $3, $4, $5, $6)`,
-		c.address, "erc20", c.symbol, c.name, c.decimals, "1000000") // Замените на реальные данные
+		c.address, "erc20", c.symbol, c.name, c.decimals, "1000000")
 
 	return err
 }
+
 func (c *TokenContract) UpdateTokenBalanceInDB(ctx context.Context, pool *pgxpool.Pool, address core.Address, amount uint64) error {
 	_, err := pool.Exec(ctx, `
 		INSERT INTO token_balances (

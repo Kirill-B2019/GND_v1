@@ -1,9 +1,11 @@
-//vm/evm.go
+// vm/evm.go
+// vm/evm.go
 
 package vm
 
 import (
 	"GND/core"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,7 +13,15 @@ import (
 	"sync"
 )
 
+// Определение EVMInterface для инъекции зависимости
+type EVMInterface interface {
+	CallStatic(from core.Address, to core.Address, data []byte, gasLimit uint64, gasPrice uint64, value uint64) ([]byte, error)
+}
+
+// ContractRegistryType — тип реестра контрактов
 type ContractRegistryType map[core.Address]Contract
+
+var ContractRegistry ContractRegistryType = make(ContractRegistryType)
 
 func GetContract(addr core.Address) (Contract, bool) {
 	c, ok := ContractRegistry[addr]
@@ -23,59 +33,55 @@ type EVMConfig struct {
 	Blockchain *core.Blockchain
 	State      *core.State
 	GasLimit   uint64            // лимит газа на выполнение одной транзакции/контракта
-	Coins      []core.CoinConfig // Добавляем доступ к конфигурации монет
+	Coins      []core.CoinConfig // доступ к конфигурации монет
 }
 
 // EVM реализует изолированную виртуальную машину для исполнения байткода контрактов
 type EVM struct {
 	config EVMConfig
 	mutex  sync.RWMutex
+	evm    EVMInterface // Теперь интерфейс определен корректно
 }
 
 // NewEVM создает новый экземпляр EVM
-func NewEVM(config EVMConfig, reg interface{}) *EVM {
+func NewEVM(config EVMConfig) *EVM {
 	return &EVM{
 		config: config,
-		evm:    core.NewEVM(cfg.GasLimit, reg)
 	}
 }
 
 // DeployContract деплоит байткод контракта, регистрирует его и списывает комиссию в GND
-func (evm *EVM) DeployContract(
+func (e *EVM) DeployContract(
 	from string,
 	bytecode []byte,
 	meta ContractMeta,
 	gasLimit uint64,
 	gasPrice uint64,
 	nonce uint64,
-	signature string
+	signature string,
 ) (string, error) {
-	evm.mutex.Lock()
-	defer evm.mutex.Unlock()
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
 
 	fromAddr := core.Address(from)
 	requiredFee := new(big.Int).Mul(
 		new(big.Int).SetUint64(gasLimit),
 		new(big.Int).SetUint64(gasPrice),
 	)
-	// Проверка конфигурации монет
-	if len(evm.config.Coins) == 0 {
+
+	if len(e.config.Coins) == 0 {
 		return "", errors.New("требуется настройка монеты")
 	}
-	// Получаем символ основной монеты из конфига
-	primarySymbol := evm.config.Coins[0].Symbol
+	primarySymbol := e.config.Coins[0].Symbol
 
-	// Проверка баланса
-	if evm.config.State.GetBalance(fromAddr, primarySymbol).Cmp(requiredFee) < 0 {
-		return "", errors.New("insufficient " + primarySymbol + " for deploy fee")
+	if e.config.State.GetBalance(fromAddr, primarySymbol).Cmp(requiredFee) < 0 {
+		return "", errors.New("недостаточно " + primarySymbol + " для комиссии деплоя")
 	}
 
-	// Генерация адреса контракта
 	addr := fmt.Sprintf("GNDct%x", hashBytes(append(bytecode, byte(nonce))))
 	meta.Address = addr
 	meta.Bytecode = hex.EncodeToString(bytecode)
 
-	// Регистрация контракта
 	contract := NewTokenContract(
 		core.Address(addr),
 		bytecode,
@@ -84,10 +90,9 @@ func (evm *EVM) DeployContract(
 		meta.Symbol,
 		18,
 	)
-	ContractRegistry[core.Address(addr)] = contract
+	RegisterContract(contract.address, contract)
 
-	// Списание комиссии
-	evm.config.State.SubBalance(fromAddr, primarySymbol, requiredFee)
+	e.config.State.SubBalance(fromAddr, primarySymbol, requiredFee)
 
 	return addr, nil
 }
@@ -101,11 +106,10 @@ func (e *EVM) CallContract(from, to string, data []byte, gasLimit, gasPrice, val
 
 // SendContractTx отправляет транзакцию контракта
 func (e *EVM) SendContractTx(from, to string, data []byte, gasLimit, gasPrice, value, nonce uint64, signature string) (string, error) {
-	primarySymbol := e.config.Coins[0].Symbol
 	tx, _ := core.NewTransaction(
 		from,
 		to,
-		primarySymbol, // Добавляем символ монеты
+		"GND.c",
 		new(big.Int).SetUint64(value),
 		gasLimit,
 		gasPrice,
@@ -153,13 +157,6 @@ func (e *EVM) GetTxStatus(hash string) (string, error) {
 
 // hashBytes генерирует хеш для адресации
 func hashBytes(data []byte) []byte {
-	var h uint64 = 5381
-	for _, b := range data {
-		h = ((h << 5) + h) + uint64(b)
-	}
-	out := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		out[i] = byte((h >> (8 * uint(i))) & 0xff)
-	}
-	return out
+	hash := sha256.Sum256(data)
+	return hash[:]
 }
