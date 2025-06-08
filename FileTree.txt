@@ -1,125 +1,120 @@
-C:\XAMPP\HTDOCS\GO\GND\
+C:\xampp\htdocs\GO\GND\
+|---.gitignore
+|---db.sql
 |---g-logo.png
-|---gnd.exe
+|---GND.exe
 |---go.mod
 |---go.sum
+|---handlers.go
+|---handlers_test.go
 |---main.go
+|---main_test.go
 |---package-lock.json
 |---package.json
-|---readme.md
-|---изображение whatsapp 2025-05-06 в 09.10.56_3f13d04c.jpg
-|---.IDEA
-|   |---.gitignore
-|   |---gnd.iml
-|   |---modules.xml
-|   |---vcs.xml
-|   `---workspace.xml
-|---API
+|---README.md
+|---Изображение WhatsApp 2025-05-06 в 09.10.56_3f13d04c.jpg
+|---api
+|   |---api_wallet_test.go
 |   |---middleware.go
 |   |---rest.go
 |   |---rpc.go
 |   `---websocket.go
-|---AUDIT
+|---audit
 |   |---audit_report.go
 |   |---external_tools.md
 |   |---integration_test.go
 |   |---monitor.go
-|   |---readme.md
+|   |---README.md
 |   |---rules.go
 |   |---security_checks.go
-|   `---EXAMPLES
+|   `---examples
 |       `---sample_report.md
-|---CMD
-|---CONFIG
-|   `---config.json
-|---CONSENSUS
+|---cmd
+|---config
+|   |---coins.json
+|   |---config.json
+|   |---consensus.json
+|   |---db.json
+|   |---evm.json
+|   |---req.conf
+|   `---servers.json
+|---consensus
 |   |---consensus.go
 |   |---manager.go
 |   |---poa.go
 |   `---pos.go
-|---CONTRACTS
-|   |---readme.md
-|   |---ERC20
-|   |---GNDTOKEN
-|   |   |---oracleexample.sol
-|   |   `---simplegndtoken.sol
-|   |---INTERFACES
-|   |   `---isimplegndtoken.sol
-|   |---MIGRATION
-|   |---STORAGE
-|   |   `---contract_storage.go
-|   |---TEMPLATES
-|   |---TESTS
-|   |   `---simplegndtoken.test.js
-|   |---TRC20
-|   `---UTILS
-|---CORE
+|---core
+|   |---address.go
 |   |---block.go
 |   |---blockchain.go
 |   |---config.go
 |   |---fees.go
 |   |---logger.go
 |   |---mempool.go
+|   |---pool.go
 |   |---state.go
 |   |---transaction.go
 |   |---utils.go
-|   `---wallet.go
-|---DOCS
+|   |---wallet.go
+|   `---wallet_test.go
+|---docs
 |   |---api.md
 |   |---architecture.md
 |   |---arhitech_gnd_step1.md
 |   |---consensus.md
 |   |---contracts.md
-|   |---filestructure.md
+|   |---diagram.png
+|   |---diagramDB.drawio
+|   |---FileStructure.md
+|   |---GNDst-1.md
 |   |---integration.md
 |   |---tokens.md
 |   `---wallwt.md
-|---INTEGRATION
+|---integration
 |   |---address.go
 |   |---bridges.go
 |   |---ipfs.go
 |   `---oracles.go
-|---MONITORING
+|---monitoring
 |   |---alerts.go
 |   |---events.go
 |   `---metrics.go
-|---TESTS
-|   |---INTEGRATION
-|   |---LOAD
-|   |---SECURITY
-|   `---UNIT
-|---TOKENS
-|   |---custom.go
-|   |---erc20.go
-|   |---registry.go
-|   |---token.go
-|   `---trc20.go
-|---UI
-|   |---DEVPANEL
-|   |---EXPLORER
-|   `---WALLET
-|       |---.gitignore
-|       |---package-lock.json
-|       |---package.json
-|       |---readme.md
-|       |---tsconfig.json
-|       |---BUILD
-|       |   |---asset-manifest.json
-|       |   |---favicon.ico
-|       |   |---index.html
-|       |   |---logo192.png
-|       |   |---logo512.png
-|       |   |---manifest.json
-|       |   |---robots.txt
-|       |   `---STATIC
-|       |       |---CSS
-|       |       |   |---main.e1884c06.css
-|       |           `---main.e1884c06.css.map
-|---UTILS
-|   `---address.go
-`---VM
+|---tests
+|   |---integration
+|   |---load
+|   |---security
+|   `---unit
+|---tokens
+|   |---metadata.go
+|   |---types.go
+|   |---deployer
+|   |   |---compiler.go
+|   |   `---deployer.go
+|   |---handlers
+|   |   |---balance.go
+|   |   `---info.go
+|   |---interfaces
+|   |   `---token.go
+|   |---registry
+|   |   |---registry.go
+|   |   `---registry_test.go
+|   |---standards
+|   |   `---gndst1
+|   |       |---gndst1.abi.json
+|   |       |---gndst1.go
+|   |       |---gndst1Base.sol
+|   |       `---gndst1_test.go
+|   |---types
+|   `---utils
+|       |---events.go
+|       `---helpers.go
+|---ui
+|   |---devpanel
+|   `---explorer
+|---utils
+`---vm
     |---compiler.go
     |---contracts.go
     |---evm.go
-    |---interface.go
+    |---integration.go
     `---sandbox.go
