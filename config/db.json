@@ -2,8 +2,8 @@
   "database": {
     "host": "45.12.72.15",
     "port": 5432,
-    "user": "*******",
-    "password": "********************",
+    "user": "gnduser",
+    "password": "Titan!@Day",
     "dbname": "gnd_db",
     "sslmode": "disable",
     "max_conns": 20,

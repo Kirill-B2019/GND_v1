@@ -33,9 +33,10 @@ type EVM struct {
 }
 
 // NewEVM создает новый экземпляр EVM
-func NewEVM(config EVMConfig) *EVM {
+func NewEVM(config EVMConfig, reg interface{}) *EVM {
 	return &EVM{
 		config: config,
+		evm:    core.NewEVM(cfg.GasLimit, reg)
 	}
 }
 
@@ -44,8 +45,10 @@ func (evm *EVM) DeployContract(
 	from string,
 	bytecode []byte,
 	meta ContractMeta,
-	gasLimit, gasPrice, nonce uint64,
-	signature string,
+	gasLimit uint64,
+	gasPrice uint64,
+	nonce uint64,
+	signature string
 ) (string, error) {
 	evm.mutex.Lock()
 	defer evm.mutex.Unlock()

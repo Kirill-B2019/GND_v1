@@ -1,20 +1,22 @@
 // tokens/integration.go
 
-package tokens
+package vm
 
 import (
+	"GND/tokens/deployer"
+	"GND/tokens/registry"
+	"GND/tokens/standards/gndst1"
 	"context"
 	"github.com/gogo/protobuf/test/issue312/events"
 	"math/big"
 
 	"GND/core"
-	"GND/vm"
 )
 
 func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decimals uint8, totalSupply *big.Int) (string, error) {
 	from := e.config.State.GetEOA()
-	bytecode := generateBytecode(name, symbol, decimals, totalSupply)
-	meta := vm.ContractMeta{
+	bytecode := deployer.generateBytecode(name, symbol, decimals, totalSupply)
+	meta := ContractMeta{
 		Name:     name,
 		Symbol:   symbol,
 		Standard: "gndst1",
@@ -34,7 +36,7 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 	}
 
 	// Регистрация токена
-	RegisterToken(addr, NewGNDst1(totalSupply, addr))
+	registry.RegisterToken(addr, gndst1.NewGNDst1(totalSupply, addr))
 
 	// Публикация события
 	events.PublishEvent("contract", map[string]interface{}{
