@@ -1,6 +1,6 @@
 //handlers_test.go
 
-package main
+package utils
 
 import (
 	"encoding/json"

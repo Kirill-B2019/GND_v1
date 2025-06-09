@@ -32,9 +32,7 @@ func main() {
 	log.Println("Node name:", cfg.NodeName)
 
 	// 2. Загрузка настроек консенсуса PoS/PoA
-	// После загрузки основного конфига
 	if len(cfg.Consensus) == 0 {
-		// Если консенсусы не заданы вообще — добавляем PoS и PoA
 		cfg.Consensus = []map[string]interface{}{
 			{
 				"type":                "pos",
@@ -53,7 +51,7 @@ func main() {
 		}
 	}
 
-	// Извлекаем настройки PoS
+	// Извлечение настройки PoS
 	var posConfig core.ConsensusPosConfig
 	for _, c := range cfg.Consensus {
 		if c["type"] == "pos" {
@@ -62,41 +60,30 @@ func main() {
 			break
 		}
 	}
-
-	// Если PoS всё ещё пустой — fatal error
 	if posConfig.Type == "" {
 		log.Fatal("Конфигурация PoS не найдена")
 	}
-	// Инициализируем модуль консенсуса
 	consensus.InitPosConsensus(&posConfig)
 
-	// 2. Инициализация пула соединений
+	// 3. Инициализация пула соединений
 	pool, err := core.InitDBPool(ctx, cfg.DB)
 	if err != nil {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 	defer pool.Close()
-	go monitorPoolStats(ctx, pool) //Total — всего соединений в пуле (и занятых, и свободных) Idle — сколько соединений сейчас свободно Acquired — сколько соединений занято (используется приложением)
+	go monitorPoolStats(ctx, pool)
 
-	// 3. Генерация кошелька валидатора
+	// 4. Генерация кошелька валидатора
 	minerWallet, err := core.NewWallet(pool)
 	if err != nil {
 		log.Fatalf("Ошибка генерации кошелька: %v", err)
 	}
 	fmt.Printf("Адрес genesis-валидатора: %s\n", minerWallet.Address)
 
-	// 4. Инициализация блокчейна
+	// 5. Инициализация блокчейна
 	var blockchain *core.Blockchain
-	genesisBlock := core.NewBlock(
-		0,
-		"",
-		string(minerWallet.Address),
-		[]*core.Transaction{},
-		cfg.GasLimit,
-		"pos",
-	)
+	genesisBlock := core.NewBlock(0, "", string(minerWallet.Address), []*core.Transaction{}, cfg.GasLimit, "pos")
 
-	// Попытка загрузить существующую цепочку из БД
 	blockchain, err = core.LoadBlockchainFromDB(pool)
 	if err != nil {
 		log.Printf("Не удалось загрузить блокчейн из БД: %v", err)
@@ -106,9 +93,8 @@ func main() {
 	}
 	fmt.Printf("Генезис-блок #%d создан\n", genesisBlock.Index)
 
-	// Кэш множителей для big.Int
+	// 6. Кэш множителей для big.Int
 	decimalsCache := sync.Map{}
-
 	getDecimalsMultiplier := func(decimals int64) *big.Int {
 		if val, ok := decimalsCache.Load(decimals); ok {
 			return val.(*big.Int)
@@ -118,7 +104,7 @@ func main() {
 		return multiplier
 	}
 
-	// Начисление баланса для первой монеты из конфига
+	// 7. Начисление баланса для монет
 	for _, coin := range cfg.Coins {
 		amount := new(big.Int)
 		if coin.TotalSupply != "" {
@@ -127,29 +113,36 @@ func main() {
 			amount.SetInt64(1_000_000)
 			amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
 		}
-		// First save wallet to insert account
+
 		_, err := pool.Exec(context.Background(), `
-	INSERT INTO accounts (address) VALUES ($1)`,
+INSERT INTO accounts (address) VALUES ($1)
+ON CONFLICT (address) DO NOTHING`,
 			string(minerWallet.Address))
+
 		if err != nil {
 			log.Fatalf("Failed to insert account: %v", err)
 		}
 		blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 	}
+
+	// 8. Вывод текущего баланса
 	fmt.Printf("Баланс адреса %s:\n", minerWallet.Address)
 	for _, coin := range cfg.Coins {
 		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
 		fmt.Printf("%s: %s  %s. Знаков: %d\n", coin.Name, balance.String(), coin.Symbol, coin.Decimals)
 	}
-	// 5. мемпула
+
+	// 9. Мемпул
 	mempool := core.NewMempool()
 
-	// 6. Запуск серверов
+	// 10. EVM
 	gasLimit := cfg.EVM.GasLimit
 	if gasLimit == 0 {
-		gasLimit = 10_000_000 // default EVM Gas Limit
+		gasLimit = 10_000_000
 	}
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: gasLimit})
+
+	// 11. Серверы
 	go func() {
 		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
 		if err != nil {
@@ -159,18 +152,10 @@ func main() {
 	go api.StartRESTServer(blockchain, mempool, cfg, pool)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WS.WSAddr)
 
-	// 7. Обработка транзакций через worker pool
+	// 12. Обработка транзакций
 	go processTransactions(mempool, cfg.MaxWorkers)
 
-	// 8. Мониторинг числа горутин
-	/*	go func() {
-		for {
-			log.Printf("Goroutines: %d", runtime.NumGoroutine())
-			time.Sleep(5 * time.Second)
-		}
-	}()*/
-
-	// 10. Грейсфул-шатдаун
+	// 13. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
@@ -178,7 +163,7 @@ func main() {
 	fmt.Println("Нода ГАНИМЕД остановлена.")
 }
 
-// Ограничение числа воркеров для обработки транзакций
+// Горутины обработки транзакций
 func processTransactions(mempool *core.Mempool, maxWorkers int) {
 	sem := make(chan struct{}, maxWorkers)
 	logger := log.New(os.Stdout, "[TX Processor] ", log.LstdFlags)
@@ -202,7 +187,6 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 			consType := consensus.SelectConsensusForTx(tx.To)
 			logger.Printf("Processing transaction %s through %s consensus", tx.ID, consType)
 
-			// TODO: Add actual transaction processing logic here
 			switch consType {
 			case consensus.ConsensusPoS:
 				logger.Printf("Transaction %s: processing through PoS", tx.ID)
@@ -214,6 +198,8 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 		}()
 	}
 }
+
+// Мониторинг пула подключений к БД
 func monitorPoolStats(ctx context.Context, pool *pgxpool.Pool) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -229,13 +215,11 @@ func monitorPoolStats(ctx context.Context, pool *pgxpool.Pool) {
 					"  Total connections: %d\n"+
 					"  Idle connections: %d\n"+
 					"  Acquired connections: %d",
-
 				stats.TotalConns(),
 				stats.IdleConns(),
 				stats.AcquiredConns(),
 			)
 
-			// Alert if pool is near capacity
 			if float64(stats.AcquiredConns())/float64(stats.TotalConns()) > 0.8 {
 				logger.Printf("WARNING: Database pool is near capacity (%.1f%% used)",
 					float64(stats.AcquiredConns())/float64(stats.TotalConns())*100)
