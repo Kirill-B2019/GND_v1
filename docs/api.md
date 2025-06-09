@@ -1,3 +1,249 @@
+# Документация API ГАНИМЕД
+
+Базовый URL: `http://45.12.72.15:8182`
+
+## REST API
+
+### Получение баланса
+```http
+GET /api/balance/{address}
+```
+Получает балансы всех токенов для указанного адреса.
+
+**Параметры:**
+- `address` - адрес кошелька
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "address": "0x...",
+        "balances": [
+            {
+                "symbol": "GND.c",
+                "name": "Ganymede Coin",
+                "decimals": 18,
+                "balance": "1000000000000000000"
+            }
+        ]
+    }
+}
+```
+
+### Создание кошелька
+```http
+POST /api/wallet/create
+```
+Создает новый кошелек.
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "address": "0x...",
+        "publicKey": "0x..."
+    }
+}
+```
+
+### Универсальный вызов токена
+```http
+POST /api/token/call
+```
+Вызывает метод токена стандарта GNDst-1.
+
+**Тело запроса:**
+```json
+{
+    "tokenAddr": "0x...",
+    "method": "transfer",
+    "args": ["0x...", "0x...", "1000000000000000000"]
+}
+```
+
+**Поддерживаемые методы:**
+- `transfer` - перевод токенов
+- `approve` - разрешение на расход токенов
+- `balanceOf` - получение баланса
+- `allowance` - проверка разрешения на расход
+- `transferFrom` - перевод от имени другого адреса
+- `increaseAllowance` - увеличение разрешения
+- `decreaseAllowance` - уменьшение разрешения
+- `mint` - создание новых токенов (только для владельца)
+- `burn` - уничтожение токенов
+- `pause` - приостановка операций (только для владельца)
+- `unpause` - возобновление операций (только для владельца)
+- `transferOwnership` - передача прав владельца
+- `renounceOwnership` - отказ от прав владельца
+
+## RPC API
+
+### Получение баланса
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "gnd_getBalance",
+    "params": ["0x...", "latest"]
+}
+```
+
+### Отправка транзакции
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "gnd_sendTransaction",
+    "params": [{
+        "from": "0x...",
+        "to": "0x...",
+        "value": "0x...",
+        "gas": "0x...",
+        "gasPrice": "0x..."
+    }]
+}
+```
+
+### Вызов контракта
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "gnd_call",
+    "params": [{
+        "to": "0x...",
+        "data": "0x..."
+    }, "latest"]
+}
+```
+
+## WebSocket API
+
+### Подписка на события
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "gnd_subscribe",
+    "params": ["newHeads"]
+}
+```
+
+### Подписка на логи
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "gnd_subscribe",
+    "params": ["logs", {
+        "address": "0x...",
+        "topics": ["0x..."]
+    }]
+}
+```
+
+## Коды ошибок
+
+- `400` - Неверный запрос
+- `401` - Не авторизован
+- `403` - Доступ запрещен
+- `404` - Не найдено
+- `500` - Внутренняя ошибка сервера
+
+## Примеры использования
+
+### REST API (curl)
+```bash
+# Получение баланса
+curl http://45.12.72.15:8182/api/balance/0x...
+
+# Создание кошелька
+curl -X POST http://45.12.72.15:8182/api/wallet/create
+
+# Вызов метода токена
+curl -X POST http://45.12.72.15:8182/api/token/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tokenAddr": "0x...",
+    "method": "transfer",
+    "args": ["0x...", "0x...", "1000000000000000000"]
+  }'
+```
+
+### WebSocket (JavaScript)
+```javascript
+const ws = new WebSocket('ws://45.12.72.15:8182/ws');
+
+ws.onopen = () => {
+    ws.send(JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "gnd_subscribe",
+        params: ["newHeads"]
+    }));
+};
+
+ws.onmessage = (event) => {
+    console.log(JSON.parse(event.data));
+};
+```
+
+### RPC (JavaScript)
+```javascript
+async function getBalance(address) {
+    const response = await fetch('http://45.12.72.15:8182/rpc', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "gnd_getBalance",
+            params: [address, "latest"]
+        })
+    });
+    return await response.json();
+}
+```
+
+## Стандарт токенов GNDst-1
+
+GND использует собственный стандарт токенов GNDst-1, который включает следующие основные методы:
+
+### Основные методы
+- `transfer(address to, uint256 amount)` - перевод токенов
+- `approve(address spender, uint256 amount)` - разрешение на расход токенов
+- `balanceOf(address account)` - получение баланса
+- `allowance(address owner, address spender)` - проверка разрешения на расход
+- `transferFrom(address from, address to, uint256 amount)` - перевод от имени другого адреса
+
+### Расширенные методы
+- `increaseAllowance(address spender, uint256 addedValue)` - увеличение разрешения
+- `decreaseAllowance(address spender, uint256 subtractedValue)` - уменьшение разрешения
+- `mint(address to, uint256 amount)` - создание новых токенов (только для владельца)
+- `burn(uint256 amount)` - уничтожение токенов
+- `burnFrom(address account, uint256 amount)` - уничтожение токенов с другого адреса
+
+### Административные методы
+- `pause()` - приостановка операций (только для владельца)
+- `unpause()` - возобновление операций (только для владельца)
+- `transferOwnership(address newOwner)` - передача прав владельца
+- `renounceOwnership()` - отказ от прав владельца
+
+### События
+- `Transfer(address indexed from, address indexed to, uint256 value)`
+- `Approval(address indexed owner, address indexed spender, uint256 value)`
+- `Mint(address indexed to, uint256 amount)`
+- `Burn(address indexed from, uint256 amount)`
+- `Paused(address account)`
+- `Unpaused(address account)`
+- `OwnershipTransferred(address indexed previousOwner, address indexed newOwner)`
+
+Нативная монета GND.c также следует стандарту GNDst-1 и имеет 18 десятичных знаков.
+
 # API блокчейна «ГАНИМЕД»
 
 ## Общие сведения

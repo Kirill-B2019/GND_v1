@@ -5,7 +5,7 @@ package core
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/rand"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto/elliptic"
+	"GND/core/crypto"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -37,104 +37,119 @@ const (
 	TxTypeTokenUnpause TxType = "token_unpause"
 )
 
-// Transaction - структура транзакции в блокчейне ГАНИМЕД
+// Transaction представляет транзакцию в блокчейне
 type Transaction struct {
-	ID         int       // ID транзакции
-	BlockID    *int      // ID блока (nil если транзакция в мемпуле)
-	Hash       string    // Хеш транзакции
-	From       string    // Адрес отправителя
-	To         string    // Адрес получателя
-	Symbol     string    // Символ токена
-	Value      *big.Int  // Количество токенов
-	GasPrice   *big.Int  // Цена за единицу газа
-	GasLimit   uint64    // Лимит газа
-	Nonce      uint64    // Номер транзакции отправителя
-	Type       string    // Тип транзакции (transfer, contract_deploy, contract_call)
-	ContractID *int      // ID контракта (для вызовов контракта)
-	Data       []byte    // Дополнительные данные
-	Status     string    // Статус транзакции (pending, confirmed, failed)
-	Timestamp  time.Time // Время создания транзакции
-	Signature  []byte    // Подпись транзакции
+	From      Address   `json:"from"`
+	To        Address   `json:"to"`
+	Value     *big.Int  `json:"value"`
+	Data      []byte    `json:"data,omitempty"`
+	Nonce     uint64    `json:"nonce"`
+	GasLimit  uint64    `json:"gasLimit"`
+	GasPrice  *big.Int  `json:"gasPrice"`
+	Hash      string    `json:"hash"`
+	Signature []byte    `json:"signature"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// Validate проверяет валидность транзакции
+func (tx *Transaction) Validate() error {
+	if tx.From == "" {
+		return fmt.Errorf("empty sender address")
+	}
+	if tx.To == "" {
+		return fmt.Errorf("empty recipient address")
+	}
+	if tx.Value == nil || tx.Value.Sign() < 0 {
+		return fmt.Errorf("invalid value")
+	}
+	if tx.GasLimit == 0 {
+		return fmt.Errorf("invalid gas limit")
+	}
+	if tx.GasPrice == nil || tx.GasPrice.Sign() <= 0 {
+		return fmt.Errorf("invalid gas price")
+	}
+	return nil
 }
 
 // NewTransaction создает новую транзакцию
-func NewTransaction(from, to, symbol string, value *big.Int, gasPrice *big.Int, gasLimit uint64, nonce uint64, txType string, data []byte) *Transaction {
+func NewTransaction(from, to string, value *big.Int, data []byte, nonce uint64, gasLimit uint64, gasPrice *big.Int) (*Transaction, error) {
+	fromAddr := Address(from)
+	toAddr := Address(to)
+
+	if !fromAddr.IsValid() {
+		return nil, fmt.Errorf("invalid sender address")
+	}
+	if !toAddr.IsValid() {
+		return nil, fmt.Errorf("invalid recipient address")
+	}
+
 	tx := &Transaction{
-		From:      from,
-		To:        to,
-		Symbol:    symbol,
+		From:      fromAddr,
+		To:        toAddr,
 		Value:     value,
-		GasPrice:  gasPrice,
-		GasLimit:  gasLimit,
-		Nonce:     nonce,
-		Type:      txType,
 		Data:      data,
-		Status:    "pending",
+		Nonce:     nonce,
+		GasLimit:  gasLimit,
+		GasPrice:  gasPrice,
 		Timestamp: time.Now(),
 	}
+
+	// Вычисление хеша транзакции
 	tx.Hash = tx.CalculateHash()
-	return tx
+	return tx, nil
 }
 
 // CalculateHash вычисляет хеш транзакции
 func (tx *Transaction) CalculateHash() string {
 	var sb strings.Builder
-	sb.WriteString(tx.From)
-	sb.WriteString(tx.To)
-	sb.WriteString(tx.Symbol)
+	sb.WriteString(tx.From.String())
+	sb.WriteString(tx.To.String())
 	sb.WriteString(tx.Value.String())
 	sb.WriteString(tx.GasPrice.String())
 	sb.WriteString(strconv.FormatUint(tx.GasLimit, 10))
 	sb.WriteString(strconv.FormatUint(tx.Nonce, 10))
-	sb.WriteString(tx.Type)
-	if tx.ContractID != nil {
-		sb.WriteString(strconv.Itoa(*tx.ContractID))
-	}
 	sb.Write(tx.Data)
 	sb.WriteString(tx.Timestamp.Format(time.RFC3339))
+
 	hash := sha256.Sum256([]byte(sb.String()))
-	return hex.EncodeToString(hash[:])
+	return "0x" + hex.EncodeToString(hash[:])
 }
 
 // Sign подписывает транзакцию
-func (tx *Transaction) Sign(privateKey *ecdsa.PrivateKey) error {
-	hash := tx.CalculateHash()
-	hashBytes, err := hex.DecodeString(hash)
+func (tx *Transaction) Sign(privateKey string) error {
+	// Преобразование приватного ключа
+	key, err := crypto.HexToPrivateKey(privateKey)
 	if err != nil {
-		return fmt.Errorf("ошибка декодирования хеша: %w", err)
+		return fmt.Errorf("invalid private key: %v", err)
 	}
 
-	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hashBytes)
+	// Подпись хеша транзакции
+	signature, err := crypto.Sign([]byte(tx.Hash), key)
 	if err != nil {
-		return fmt.Errorf("ошибка подписи: %w", err)
+		return fmt.Errorf("failed to sign transaction: %v", err)
 	}
 
-	signature := append(r.Bytes(), s.Bytes()...)
 	tx.Signature = signature
 	return nil
 }
 
 // Verify проверяет подпись транзакции
-func (tx *Transaction) Verify() (bool, error) {
-	if len(tx.Signature) != 64 {
-		return false, fmt.Errorf("неверная длина подписи")
+func (tx *Transaction) Verify() bool {
+	if tx.Signature == nil {
+		return false
 	}
 
-	r := new(big.Int).SetBytes(tx.Signature[:32])
-	s := new(big.Int).SetBytes(tx.Signature[32:])
+	// Восстанавливаем публичный ключ из подписи
+	hash := sha256.Sum256([]byte(tx.Hash))
+	r := new(big.Int).SetBytes(tx.Signature[:len(tx.Signature)/2])
+	s := new(big.Int).SetBytes(tx.Signature[len(tx.Signature)/2:])
 
-	hash := tx.CalculateHash()
-	hashBytes, err := hex.DecodeString(hash)
-	if err != nil {
-		return false, fmt.Errorf("ошибка декодирования хеша: %w", err)
-	}
-
-	publicKey, err := RecoverPublicKey(tx.From)
-	if err != nil {
-		return false, fmt.Errorf("ошибка восстановления публичного ключа: %w", err)
-	}
-
-	return ecdsa.Verify(publicKey, hashBytes, r, s), nil
+	// Проверяем подпись
+	return crypto.Verify([]byte(tx.Hash), tx.Signature, &ecdsa.PublicKey{
+		Curve: crypto.GetCurve(),
+		X:     r,
+		Y:     s,
+	})
 }
 
 // SaveToDB сохраняет транзакцию в БД
@@ -191,4 +206,67 @@ func RecoverPublicKey(address string) (*ecdsa.PublicKey, error) {
 	}
 
 	return publicKey, nil
+}
+
+// ProcessTransaction обрабатывает транзакцию немедленно (0 подтверждений)
+func (b *Blockchain) ProcessTransaction(tx *Transaction) error {
+	// Проверка транзакции
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("invalid transaction: %v", err)
+	}
+
+	// Применение транзакции к состоянию
+	if err := b.State.ApplyTransaction(tx); err != nil {
+		return fmt.Errorf("failed to apply transaction: %v", err)
+	}
+
+	// Обновление балансов
+	senderBalance := b.State.GetBalance(tx.From, "GND")
+
+	if senderBalance.Cmp(tx.Value) < 0 {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	// Обновление баланса отправителя
+	b.State.Credit(tx.From, "GND", new(big.Int).Neg(tx.Value))
+
+	// Обновление баланса получателя
+	b.State.Credit(tx.To, "GND", tx.Value)
+
+	return nil
+}
+
+// Save сохраняет транзакцию в базу данных
+func (tx *Transaction) Save(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO transactions (
+			id, hash, sender, recipient, value, nonce, gas_limit, gas_price,
+			type, data, status, timestamp
+		) VALUES (
+			nextval('transactions_id_seq'), $1, $2, $3, $4, $5, $6, $7,
+			'transfer', $8, 'pending', $9
+		)`,
+		tx.Hash,
+		tx.From.String(),
+		tx.To.String(),
+		tx.Value.String(),
+		tx.Nonce,
+		tx.GasLimit,
+		tx.GasPrice.String(),
+		tx.Data,
+		tx.Timestamp,
+	)
+	return err
+}
+
+// UpdateStatus обновляет статус транзакции
+func (tx *Transaction) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status string) error {
+	_, err := pool.Exec(ctx, `
+		UPDATE transactions 
+		SET status = $1 
+		WHERE hash = $2`,
+		status,
+		tx.Hash,
+	)
+	return err
 }

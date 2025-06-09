@@ -36,12 +36,6 @@ func main() {
 	if len(cfg.Consensus) == 0 {
 		cfg.Consensus = []map[string]interface{}{
 			{
-				"type":                "pos",
-				"average_block_delay": "60s",
-				"initial_base_target": 153722867,
-				"initial_balance":     "10000000",
-			},
-			{
 				"type":                "poa",
 				"round_duration":      "17s",
 				"sync_duration":       "3s",
@@ -49,22 +43,28 @@ func main() {
 				"warnings_for_ban":    3,
 				"max_bans_percentage": 40,
 			},
+			{
+				"type":                "pos",
+				"average_block_delay": "60s",
+				"initial_base_target": 153722867,
+				"initial_balance":     "10000000",
+			},
 		}
 	}
 
-	// Извлечение настройки PoS
-	var posConfig core.ConsensusPosConfig
+	// Извлечение настройки PoA
+	var poaConfig core.ConsensusPoaConfig
 	for _, c := range cfg.Consensus {
-		if c["type"] == "pos" {
+		if c["type"] == "poa" {
 			data, _ := json.Marshal(c)
-			json.Unmarshal(data, &posConfig)
+			json.Unmarshal(data, &poaConfig)
 			break
 		}
 	}
-	if posConfig.Type == "" {
-		log.Fatal("Конфигурация PoS не найдена")
+	if poaConfig.Type == "" {
+		log.Fatal("Конфигурация PoA не найдена")
 	}
-	consensus.InitPosConsensus(&posConfig)
+	consensus.InitPoaConsensus(&poaConfig)
 
 	// 3. Инициализация пула соединений
 	pool, err := core.InitDBPool(ctx, cfg.DB)
@@ -225,7 +225,7 @@ func main() {
 		}
 	}()
 	go api.StartRESTServer(blockchain, mempool, cfg, pool)
-	go api.StartWebSocketServer(blockchain, cfg.Server.WS.WSAddr)
+	go api.StartWebSocketServer(blockchain, mempool, cfg)
 
 	// 13. Обработка транзакций
 	go processTransactions(mempool, cfg.MaxWorkers)

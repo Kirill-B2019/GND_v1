@@ -82,8 +82,8 @@ type ServerRPCConfig struct {
 }
 
 type ServerRESTConfig struct {
-	RESTAddr string `json:"rest_addr"`
-	Name     string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 type ServerWSConfig struct {
