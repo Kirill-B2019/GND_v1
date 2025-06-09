@@ -2,6 +2,16 @@
 
 Базовый URL: `http://127.0.0.1:8545`
 
+## Аутентификация
+
+Все запросы к API должны включать заголовок `X-API-Key` с действительным API ключом:
+
+```http
+X-API-Key: your_api_key_here
+```
+
+При отсутствии или неверном API ключе будет возвращен статус 401 Unauthorized.
+
 ## RPC API
 
 ### Доступные эндпоинты
@@ -24,6 +34,12 @@
 
 #### Токены
 - `/token/universal-call` - Универсальный вызов токена
+- `/token/balance/{address}` - Получить баланс токенов
+- `/token/transfer` - Перевод токенов
+- `/token/approve` - Разрешение на расход токенов
+
+#### Кошельки
+- `/wallet/create` - Создание нового кошелька
 
 ### Детальное описание эндпоинтов
 
@@ -231,10 +247,100 @@ POST /token/universal-call
 }
 ```
 
+#### Создание кошелька
+```http
+POST /wallet/create
+```
+
+**Заголовки:**
+- `X-API-Key` - API ключ для аутентификации
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "address": "0x...",
+        "publicKey": "0x...",
+        "privateKey": "0x..."
+    }
+}
+```
+
+#### Получение баланса токенов
+```http
+GET /token/balance/{address}
+```
+
+**Параметры пути:**
+- `address` - адрес аккаунта
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "address": "0x...",
+        "balance": "1000000000000000000",
+        "token": "0x..."
+    }
+}
+```
+
+#### Перевод токенов
+```http
+POST /token/transfer
+```
+
+**Тело запроса:**
+```json
+{
+    "from": "0x...",
+    "to": "0x...",
+    "amount": "1000000000000000000",
+    "token": "0x..."
+}
+```
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "transactionHash": "0x..."
+    }
+}
+```
+
+#### Разрешение на расход токенов
+```http
+POST /token/approve
+```
+
+**Тело запроса:**
+```json
+{
+    "owner": "0x...",
+    "spender": "0x...",
+    "amount": "1000000000000000000",
+    "token": "0x..."
+}
+```
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "transactionHash": "0x..."
+    }
+}
+```
+
 ## Коды ошибок
 
 - `400` - Неверный запрос
-- `401` - Не авторизован
+- `401` - Не авторизован (отсутствует или неверный API ключ)
 - `403` - Доступ запрещен
 - `404` - Не найдено
 - `500` - Внутренняя ошибка сервера
@@ -265,6 +371,31 @@ curl -X POST http://127.0.0.1:8545/token/universal-call \
     "tokenAddr": "0x...",
     "method": "transfer",
     "args": ["0x...", "0x...", "1000000000000000000"]
+  }'
+```
+
+### Создание кошелька (curl)
+```bash
+curl -X POST http://127.0.0.1:8545/wallet/create \
+  -H "X-API-Key: your_api_key_here"
+```
+
+### Получение баланса токенов (curl)
+```bash
+curl http://127.0.0.1:8545/token/balance/0x123... \
+  -H "X-API-Key: your_api_key_here"
+```
+
+### Перевод токенов (curl)
+```bash
+curl -X POST http://127.0.0.1:8545/token/transfer \
+  -H "X-API-Key: your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "0x123...",
+    "to": "0x456...",
+    "amount": "1000000000000000000",
+    "token": "0x789..."
   }'
 ```
 

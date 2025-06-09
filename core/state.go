@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// StateIface определяет интерфейс для работы с состоянием блокчейна
+// Реализуется core.State и моками для тестов
+type StateIface interface {
+	GetBalance(address Address, symbol string) *big.Int
+	AddBalance(address Address, symbol string, amount *big.Int) error
+	SubBalance(address Address, symbol string, amount *big.Int) error
+	Credit(address Address, symbol string, amount *big.Int)
+	SaveToDB() error
+	LoadTokenBalances(address Address) map[string]*big.Int
+	ApplyTransaction(tx *Transaction) error
+	TransferToken(from, to Address, symbol string, amount *big.Int) error
+	UpdateNonce(address Address, nonce uint64) error
+	GetNonce(addr Address) int64
+	ValidateAddress(address Address) bool
+	CallStatic(from, to Address, data []byte, gasLimit, gasPrice, value uint64) ([]byte, error)
+	Close()
+}
+
 // BlockchainState - структура состояния в блокчейне ГАНИМЕД
 type BlockchainState struct {
 	ID          int       // ID состояния

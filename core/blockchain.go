@@ -14,7 +14,7 @@ import (
 // Blockchain - основная структура цепочки блоков
 type Blockchain struct {
 	blocks  []*Block      // Все блоки цепочки
-	State   *State        // Состояние (балансы, аккаунты)
+	State   StateIface    // Состояние (балансы, аккаунты) теперь интерфейс
 	mempool *Mempool      // Пул неподтвержденных транзакций
 	mutex   sync.RWMutex  // Mutex для потокобезопасного доступа к блокам
 	pool    *pgxpool.Pool // Подключение к БД
@@ -24,7 +24,7 @@ type Blockchain struct {
 func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
 	bc := &Blockchain{
 		blocks:  []*Block{genesis},
-		State:   NewState(pool),
+		State:   NewState(pool), // NewState возвращает *State, который реализует StateIface
 		mempool: NewMempool(),
 		pool:    pool,
 	}
@@ -42,6 +42,10 @@ func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
 
 // storeBlock сохраняет блок в таблице blocks
 func (bc *Blockchain) storeBlock(block *Block) error {
+	if bc.pool == nil {
+		// В тестах или без БД пропускаем запись
+		return nil
+	}
 	_, err := bc.pool.Exec(context.Background(), `
 		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -155,7 +159,7 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
 	ctx := context.Background()
 	bc := &Blockchain{
 		blocks:  []*Block{},
-		State:   NewState(pool),
+		State:   NewState(pool), // StateIface
 		mempool: NewMempool(),
 		pool:    pool,
 	}

@@ -16,7 +16,7 @@ import (
 // EVMConfig определяет параметры виртуальной машины
 type EVMConfig struct {
 	Blockchain *core.Blockchain
-	State      *core.State
+	State      core.StateIface
 	GasLimit   uint64            // лимит газа на выполнение одной транзакции/контракта
 	Coins      []core.CoinConfig // доступ к конфигурации монет
 }

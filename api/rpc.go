@@ -211,9 +211,17 @@ func BlockByNumberHandler(evm *vm.EVM) http.HandlerFunc {
 		var params struct {
 			Number uint64 `json:"number"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
+		if r.Method == "GET" {
+			// Для обратной совместимости: поддержка query-параметра
+			numStr := r.URL.Query().Get("number")
+			if numStr != "" {
+				fmt.Sscanf(numStr, "%d", &params.Number)
+			}
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
 		}
 		block := evm.BlockByNumber(params.Number)
 		if block == nil {

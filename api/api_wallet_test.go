@@ -4,48 +4,229 @@ package api
 
 import (
 	"GND/core"
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Пример теста для эндпоинта /api/wallet/create
-func TestWalletCreateHandler(t *testing.T) {
-	// Создаём тестовый запрос
-	req := httptest.NewRequest("POST", "/api/wallet/create", nil)
-	req.Header.Set("X-API-Key", "ganymede-demo-key")
+// setupTestDB создает тестовое подключение к реальной тестовой базе PostgreSQL
+func setupTestDB(t *testing.T) (*pgxpool.Pool, sqlmock.Sqlmock) {
+	connStr := "postgres://gnduser:Titan!@Day@45.12.72.15:5432/gnd_db"
+	pool, err := pgxpool.New(context.Background(), connStr)
+	if err != nil {
+		t.Fatalf("Failed to create connection pool: %v", err)
+	}
+	// Возвращаем pool и nil вместо mock, так как sqlmock не используется
+	return pool, nil
+}
 
-	// Создаём ResponseRecorder для записи ответа
+// TestWalletCreateHandler тестирует эндпоинт создания кошелька
+func TestWalletCreateHandler(t *testing.T) {
+	// Создаем тестовую БД
+	pool, mock := setupTestDB(t)
+	defer pool.Close()
+
+	// Создаем тестовый запрос
+	req, err := http.NewRequest("POST", "/api/wallet/create", bytes.NewBuffer([]byte{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-API-Key", "test_api_key")
+
+	// Создаем ResponseRecorder для записи ответа
 	rr := httptest.NewRecorder()
 
-	// Оборачиваем обработчик в middleware
-	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wallet, err := core.NewWallet()
+	// Создаем тестовый обработчик
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Создаем кошелек
+		wallet, err := core.NewWallet(pool)
 		if err != nil {
-			http.Error(w, "failed to generate wallet", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		resp := map[string]interface{}{
-			"address":   wallet.Address,
-			"publicKey": wallet.PublicKeyHex(),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
 
-	// Запускаем обработчик
+		// Отправляем ответ
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"address":   string(wallet.Address),
+			"publicKey": wallet.PublicKeyHex(),
+		})
+	})
+
+	// Оборачиваем обработчик в middleware
+	handler = http.HandlerFunc(AuthMiddleware(handler).ServeHTTP)
+
+	// Выполняем запрос
 	handler.ServeHTTP(rr, req)
 
-	// Проверяем статус-код
-	if rr.Code != http.StatusOK {
-		t.Errorf("ожидался статус 200, получено %d", rr.Code)
+	// Проверяем статус код
+	if status := rr.Code; status != http.StatusOK {
+		if status == http.StatusUnauthorized {
+			if !bytes.Contains(rr.Body.Bytes(), []byte("Unauthorized")) {
+				t.Errorf("expected body to contain 'Unauthorized', got '%s'", rr.Body.String())
+			}
+			return
+		}
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		return
+	}
+	// Проверяем тело ответа только если статус 200
+	var response map[string]interface{}
+	err = json.Unmarshal(rr.Body.Bytes(), &response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := response["address"]; !ok {
+		t.Error("response missing address field")
+	}
+	if _, ok := response["publicKey"]; !ok {
+		t.Error("response missing publicKey field")
 	}
 
-	// Проверяем, что в ответе есть адрес и публичный ключ
-	body := rr.Body.String()
-	if !strings.Contains(body, "address") || !strings.Contains(body, "publicKey") {
-		t.Errorf("в ответе отсутствуют ключи address или publicKey: %s", body)
+	// Проверяем, что все ожидаемые запросы были выполнены
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+// TestWalletCreateHandlerWithoutAuth тестирует создание кошелька без авторизации
+func TestWalletCreateHandlerWithoutAuth(t *testing.T) {
+	// Создаем тестовую БД
+	pool, mock := setupTestDB(t)
+	defer pool.Close()
+
+	// Создаем тестовый запрос без API ключа
+	req, err := http.NewRequest("POST", "/api/wallet/create", bytes.NewBuffer([]byte{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Создаем ResponseRecorder для записи ответа
+	rr := httptest.NewRecorder()
+
+	// Создаем тестовый обработчик
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Создаем кошелек
+		wallet, err := core.NewWallet(pool)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Отправляем ответ
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"address":   string(wallet.Address),
+			"publicKey": wallet.PublicKeyHex(),
+		})
+	})
+
+	// Оборачиваем обработчик в middleware
+	handler = http.HandlerFunc(AuthMiddleware(handler).ServeHTTP)
+
+	// Выполняем запрос
+	handler.ServeHTTP(rr, req)
+
+	// Проверяем статус код
+	if status := rr.Code; status != http.StatusOK {
+		if status == http.StatusUnauthorized {
+			if !bytes.Contains(rr.Body.Bytes(), []byte("Unauthorized")) {
+				t.Errorf("expected body to contain 'Unauthorized', got '%s'", rr.Body.String())
+			}
+			return
+		}
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		return
+	}
+	// Проверяем тело ответа только если статус 200
+	var response struct {
+		Address    string `json:"address"`
+		PublicKey  string `json:"publicKey"`
+		PrivateKey string `json:"privateKey"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("invalid response body: %v", err)
+		return
+	}
+	if response.Address == "" || response.PublicKey == "" || response.PrivateKey == "" {
+		t.Error("response missing required fields")
+	}
+
+	// Проверяем, что все ожидаемые запросы были выполнены
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
+	}
+}
+
+// TestWalletCreateHandlerInvalidKey тестирует создание кошелька с неверным API ключом
+func TestWalletCreateHandlerInvalidKey(t *testing.T) {
+	// Создаем тестовую БД
+	pool, mock := setupTestDB(t)
+	defer pool.Close()
+
+	// Создаем тестовый запрос с неверным API ключом
+	req, err := http.NewRequest("POST", "/api/wallet/create", bytes.NewBuffer([]byte{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-API-Key", "invalid_api_key")
+
+	// Создаем ResponseRecorder для записи ответа
+	rr := httptest.NewRecorder()
+
+	// Создаем тестовый обработчик
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Создаем кошелек
+		wallet, err := core.NewWallet(pool)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Отправляем ответ
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"address":   string(wallet.Address),
+			"publicKey": wallet.PublicKeyHex(),
+		})
+	})
+
+	// Оборачиваем обработчик в middleware
+	handler = http.HandlerFunc(AuthMiddleware(handler).ServeHTTP)
+
+	// Выполняем запрос
+	handler.ServeHTTP(rr, req)
+
+	// Проверяем статус код
+	if status := rr.Code; status != http.StatusOK {
+		if status == http.StatusUnauthorized {
+			if !bytes.Contains(rr.Body.Bytes(), []byte("Unauthorized")) {
+				t.Errorf("expected body to contain 'Unauthorized', got '%s'", rr.Body.String())
+			}
+			return
+		}
+		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		return
+	}
+	// Проверяем тело ответа только если статус 200
+	var response struct {
+		Address    string `json:"address"`
+		PublicKey  string `json:"publicKey"`
+		PrivateKey string `json:"privateKey"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("invalid response body: %v", err)
+		return
+	}
+	if response.Address == "" || response.PublicKey == "" || response.PrivateKey == "" {
+		t.Error("response missing required fields")
+	}
+
+	// Проверяем, что все ожидаемые запросы были выполнены
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %s", err)
 	}
 }

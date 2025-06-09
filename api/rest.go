@@ -349,7 +349,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 				http.Error(w, "Invalid or expired API key", http.StatusUnauthorized)
 				return
 			}
-			log.Printf("RPC Server сервер запущен на %s", cfg.Server.REST.Port)
+			log.Printf("RPC Server сервер запущен на %d", cfg.Server.REST.Port)
 			next.ServeHTTP(w, r)
 		}
 	}
