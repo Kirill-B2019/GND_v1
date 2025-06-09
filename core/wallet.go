@@ -62,6 +62,11 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	encoded := base58.Encode(fullPayload)
 	address := prefix + encoded
 
+	// Валидация адреса
+	if !ValidateAddress(address) {
+		return nil, fmt.Errorf("сгенерированный адрес не прошел валидацию: %s", address)
+	}
+
 	// Проверяем, не существует ли уже такой адрес
 	var exists bool
 	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM accounts WHERE address = $1)", address).Scan(&exists)
@@ -72,13 +77,55 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 		return nil, fmt.Errorf("адрес %s уже существует", address)
 	}
 
+	// Проверяем существование токенов
+	var tokenCount int
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM tokens").Scan(&tokenCount)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка проверки количества токенов: %w", err)
+	}
+
 	// Создаем аккаунт с адресом сразу
 	err = tx.QueryRow(ctx,
-		`INSERT INTO accounts (address) VALUES ($1) RETURNING id`,
+		`INSERT INTO accounts (address, balance, nonce, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
 		address,
+		"0", // Начальный баланс
+		0,   // Начальный nonce
+		time.Now(),
 	).Scan(&accountID)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка создания аккаунта: %w", err)
+	}
+
+	// Инициализируем начальное состояние для всех токенов
+	if tokenCount > 0 {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO token_balances (token_id, address, balance)
+			SELECT t.id, $1, '0'
+			FROM tokens t
+			WHERE NOT EXISTS (
+				SELECT 1 FROM token_balances tb 
+				WHERE tb.token_id = t.id AND tb.address = $1
+			)`,
+			address,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка инициализации балансов токенов: %w", err)
+		}
+
+		// Проверяем, что все токены были инициализированы
+		var initializedCount int
+		err = tx.QueryRow(ctx, `
+			SELECT COUNT(*) FROM token_balances 
+			WHERE address = $1`,
+			address,
+		).Scan(&initializedCount)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка проверки инициализации балансов: %w", err)
+		}
+		if initializedCount != tokenCount {
+			return nil, fmt.Errorf("не все токены были инициализированы: ожидалось %d, получено %d",
+				tokenCount, initializedCount)
+		}
 	}
 
 	// Подготовка данных для БД
@@ -86,6 +133,14 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	publicKeyHex := hex.EncodeToString(pubKey)
 	privateKeyHex := hex.EncodeToString(privateKeyBytes)
 	now := time.Now()
+
+	// Валидация ключей
+	if len(privateKeyBytes) != 32 {
+		return nil, fmt.Errorf("некорректная длина приватного ключа: %d", len(privateKeyBytes))
+	}
+	if len(pubKey) != 33 {
+		return nil, fmt.Errorf("некорректная длина публичного ключа: %d", len(pubKey))
+	}
 
 	// Создаем кошелек
 	query := `
@@ -113,6 +168,22 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("ошибка сохранения кошелька в БД: %w", err)
+	}
+
+	// Проверяем, что кошелек создан корректно
+	var walletExists bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM wallets 
+			WHERE id = $1 AND address = $2 AND status = 'active'
+		)`,
+		walletID, address,
+	).Scan(&walletExists)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка проверки создания кошелька: %w", err)
+	}
+	if !walletExists {
+		return nil, fmt.Errorf("кошелек не был корректно создан")
 	}
 
 	// Фиксируем транзакцию

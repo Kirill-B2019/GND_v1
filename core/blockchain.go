@@ -196,9 +196,19 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
 // loadTransactionsForBlock загружает транзакции для конкретного блока
 func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockIndex uint64) ([]*Transaction, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT hash, from_address, to_address, symbol, value, gas_price, gas_limit, nonce, data, type, signature 
+		SELECT 
+			hash, 
+			sender, 
+			recipient, 
+			value, 
+			fee, 
+			nonce, 
+			type, 
+			payload, 
+			status, 
+			timestamp 
 		FROM transactions 
-		WHERE block_index = $1`, blockIndex)
+		WHERE block_id = $1`, blockIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -207,27 +217,26 @@ func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockInde
 	var txs []*Transaction
 	for rows.Next() {
 		var tx Transaction
-		var data []byte
 		var valueStr string
+		var payload []byte
 
 		err := rows.Scan(
 			&tx.Hash,
 			&tx.Sender,
 			&tx.Recipient,
-			&tx.Symbol,
 			&valueStr,
-			&tx.GasPrice,
-			&tx.GasLimit,
+			&tx.Fee,
 			&tx.Nonce,
-			&data,
 			&tx.Type,
-			&tx.Signature,
+			&payload,
+			&tx.Status,
+			&tx.Timestamp,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		tx.Data = data
+		tx.Data = payload
 		tx.Value, _ = new(big.Int).SetString(valueStr, 10)
 		txs = append(txs, &tx)
 	}
@@ -258,14 +267,19 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 
 	// Создаем токены из конфигурации
 	for _, coin := range cfg.Coins {
+		contractAddress := coin.ContractAddress
+		if contractAddress == "" {
+			contractAddress = fmt.Sprintf("GNDct%s", GenerateContractAddress())
+			coin.ContractAddress = contractAddress
+		}
 		token := NewToken(
-			coin.ContractAddress,
+			contractAddress,
 			coin.Symbol,
 			coin.Name,
 			coin.Decimals,
 			coin.TotalSupply,
 			string(wallet.Address),
-			"ERC20",
+			"gndst1",
 			coin.Standard,
 			genesis.ID,
 			0,
@@ -287,11 +301,14 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 
 		_, err := pool.Exec(ctx, `
 			INSERT INTO token_balances (token_id, address, balance)
-			SELECT id, $1, $2
-			FROM tokens WHERE address = $3
+			VALUES (
+				(SELECT t.id FROM tokens t JOIN contracts c ON t.contract_id = c.id WHERE c.address = $1),
+				$2,
+				$3
+			)
 			ON CONFLICT (token_id, address) DO UPDATE
-			SET balance = $2`,
-			string(wallet.Address), amount.String(), coin.ContractAddress)
+			SET balance = EXCLUDED.balance`,
+			contractAddress, string(wallet.Address), amount.String())
 		if err != nil {
 			return fmt.Errorf("ошибка создания баланса токена: %w", err)
 		}

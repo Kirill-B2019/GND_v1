@@ -6,6 +6,7 @@ import (
 	"GND/core"
 	"GND/vm"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,7 +14,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -129,17 +129,6 @@ func main() {
 		fmt.Println("Блокчейн успешно восстановлен из БД")
 	}
 
-	// 7. Кэш множителей для big.Int
-	decimalsCache := sync.Map{}
-	getDecimalsMultiplier := func(decimals int64) *big.Int {
-		if val, ok := decimalsCache.Load(decimals); ok {
-			return val.(*big.Int)
-		}
-		multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(decimals), nil)
-		decimalsCache.Store(decimals, multiplier)
-		return multiplier
-	}
-
 	// 11. EVM
 	gasLimit := cfg.EVM.GasLimit
 	if gasLimit == 0 {
@@ -149,87 +138,111 @@ func main() {
 
 	// 8. Начисление баланса для монет (только если это новый аккаунт)
 	if !existingAccount {
-		for _, coin := range cfg.Coins {
+		// Создаем генезис-блок
+		genesis := &core.Block{
+			Index:     0,
+			Timestamp: time.Now(),
+			Miner:     string(minerWallet.Address),
+			GasUsed:   0,
+			GasLimit:  10_000_000,
+			Consensus: "poa",
+			Nonce:     "0",
+			Status:    "finalized",
+		}
+		genesis.Hash = genesis.CalculateHash()
+
+		blockchain = core.NewBlockchain(genesis, pool)
+
+		for i := range cfg.Coins {
+			coin := &cfg.Coins[i]
+			contractAddress := coin.ContractAddress
+			if contractAddress == "" {
+				contractAddress = fmt.Sprintf("GNDct%s", core.GenerateContractAddress())
+				coin.ContractAddress = contractAddress
+			}
+
+			// Проверяем, существует ли токен с таким символом
+			var existingTokenID int
+			err = pool.QueryRow(ctx, "SELECT id FROM tokens WHERE symbol = $1", coin.Symbol).Scan(&existingTokenID)
+			if err == nil {
+				fmt.Printf("[DEBUG] Токен с символом %s уже существует, пропускаем создание\n", coin.Symbol)
+				continue
+			} else if err != sql.ErrNoRows {
+				log.Fatalf("ошибка проверки существования токена %s: %v", coin.Symbol, err)
+			}
+
+			token := core.NewToken(
+				contractAddress,
+				coin.Symbol,
+				coin.Name,
+				coin.Decimals,
+				coin.TotalSupply,
+				string(minerWallet.Address),
+				"gndst1",
+				coin.Standard,
+				int(genesis.Index),
+				0,
+			)
+
+			if err := token.SaveToDB(ctx, pool); err != nil {
+				log.Fatalf("ошибка создания токена %s: %v", coin.Symbol, err)
+			}
+
 			amount := new(big.Int)
 			if coin.TotalSupply != "" {
 				amount.SetString(coin.TotalSupply, 10)
 			} else {
 				amount.SetInt64(1_000_000)
-				amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
+				multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(coin.Decimals)), nil)
+				amount.Mul(amount, multiplier)
 			}
 
-			// Генерируем адрес контракта, если он не указан
-			if coin.ContractAddress == "" {
-				coin.ContractAddress = fmt.Sprintf("GNDct%s", core.GenerateContractAddress())
-			}
-			fmt.Printf("Создаем токен %s с адресом контракта %s\n", coin.Symbol, coin.ContractAddress)
-
-			// Проверяем стандарт токена
-			if coin.Standard == "gndst1" {
-				addr, err := evmInstance.DeployGNDst1Token(ctx, coin.Name, coin.Symbol, uint8(coin.Decimals), amount)
-				if err != nil {
-					log.Fatalf("Ошибка деплоя токена GNDst1: %v", err)
-				}
-				fmt.Printf("GNDst1 токен %s (%s) задеплоен по адресу %s\n", coin.Name, coin.Symbol, addr)
-				continue
-			}
-
-			// Проверяем существование контракта
-			var contractExists bool
-			err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM contracts WHERE address = $1)", coin.ContractAddress).Scan(&contractExists)
-			if err != nil {
-				log.Fatalf("Ошибка проверки контракта: %v", err)
-			}
-			fmt.Printf("Контракт %s существует: %v\n", coin.ContractAddress, contractExists)
-
-			if !contractExists {
-				// Создаем контракт
-				var contractID int
-				err = pool.QueryRow(ctx, `
-					INSERT INTO contracts (address, owner, type, created_at)
-					VALUES ($1, $2, 'token', NOW())
-					RETURNING id`,
-					coin.ContractAddress, minerWallet.Address,
-				).Scan(&contractID)
-				if err != nil {
-					log.Fatalf("Ошибка создания контракта: %v", err)
-				}
-				fmt.Printf("Создан контракт с ID %d\n", contractID)
-
-				// Создаем токен
-				_, err = pool.Exec(ctx, `
-					INSERT INTO tokens (contract_id, standard, symbol, name, decimals, total_supply)
-					VALUES ($1, $2, $3, $4, $5, $6)`,
-					contractID, coin.Standard, coin.Symbol, coin.Name, coin.Decimals, amount.String())
-				if err != nil {
-					log.Fatalf("Ошибка создания токена: %v", err)
-				}
-				fmt.Printf("Создан токен %s\n", coin.Symbol)
-			} else {
-				// Получаем ID существующего контракта
-				var contractID int
-				err = pool.QueryRow(ctx, "SELECT id FROM contracts WHERE address = $1", coin.ContractAddress).Scan(&contractID)
-				if err != nil {
-					log.Fatalf("Ошибка получения ID контракта: %v", err)
-				}
-				fmt.Printf("Получен ID существующего контракта: %d\n", contractID)
-			}
-
-			// Создаем баланс токена
-			_, err = pool.Exec(ctx, `
+			_, err := pool.Exec(ctx, `
 				INSERT INTO token_balances (token_id, address, balance)
-				SELECT t.id, $1, $2
-				FROM tokens t
-				WHERE t.symbol = $3
+				VALUES (
+					(SELECT t.id FROM tokens t JOIN contracts c ON t.contract_id = c.id WHERE c.address = $1),
+					$2,
+					$3
+				)
 				ON CONFLICT (token_id, address) DO UPDATE
-				SET balance = $2`,
-				minerWallet.Address, amount.String(), coin.Symbol)
+				SET balance = EXCLUDED.balance`,
+				contractAddress, string(minerWallet.Address), amount.String(),
+			)
 			if err != nil {
-				log.Fatalf("Ошибка создания баланса токена: %v", err)
+				log.Fatalf("ошибка создания баланса токена: %v", err)
 			}
-			fmt.Printf("Создан баланс токена %s\n", coin.Symbol)
 
-			blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
+			tx := &core.Transaction{
+				Sender:    "SYSTEM",
+				Recipient: string(minerWallet.Address),
+				Value:     amount,
+				Fee:       big.NewInt(0),
+				Nonce:     0,
+				Type:      "token_mint",
+				Status:    "confirmed",
+				Timestamp: time.Now(),
+				Symbol:    coin.Symbol,
+			}
+			tx.Hash = tx.CalculateHash()
+			err = tx.Save(ctx, pool)
+			if err != nil {
+				log.Fatalf("Ошибка сохранения транзакции начисления токена: %v", err)
+			}
+			if blockchain != nil && blockchain.LatestBlock() != nil && blockchain.LatestBlock().Index == 0 {
+				blockchain.LatestBlock().Transactions = append(blockchain.LatestBlock().Transactions, tx)
+				// Обновляем состояние блокчейна после добавления транзакции
+				if err := blockchain.State.ApplyTransaction(tx); err != nil {
+					log.Printf("Ошибка применения транзакции в генезис-блоке: %v", err)
+				}
+			}
+		}
+
+		// После цикла, если были изменения, обновим coins.json
+		coinsPath := "config/coins.json"
+		coinsFile, err := os.OpenFile(coinsPath, os.O_WRONLY|os.O_TRUNC, 0644)
+		if err == nil {
+			defer coinsFile.Close()
+			json.NewEncoder(coinsFile).Encode(map[string]interface{}{"coins": cfg.Coins})
 		}
 	}
 

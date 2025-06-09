@@ -27,7 +27,7 @@ type Block struct {
 	GasUsed      int64          // Использованный газ
 	GasLimit     int64          // Лимит газа
 	Difficulty   int64          // Сложность блока
-	Nonce        int64          // Нонс блока
+	Nonce        string         // Нонс блока
 	Miner        string         // Адрес майнера
 	Reward       string         // Награда за блок
 	ExtraData    []byte         // Дополнительные данные
@@ -152,7 +152,7 @@ func LoadBlock(ctx context.Context, pool *pgxpool.Pool, hash string) (*Block, er
 		GasUsed:     gasUsed,
 		GasLimit:    gasLimit,
 		Difficulty:  difficulty,
-		Nonce:       nonce,
+		Nonce:       strconv.FormatInt(nonce, 10),
 		Miner:       miner,
 		Reward:      reward,
 		ExtraData:   extraData,
@@ -220,7 +220,7 @@ func (b *Block) CalculateHash() string {
 	sb.WriteString(strconv.FormatInt(b.GasUsed, 10))
 	sb.WriteString(strconv.FormatInt(b.GasLimit, 10))
 	sb.WriteString(strconv.FormatInt(b.Difficulty, 10))
-	sb.WriteString(strconv.FormatInt(b.Nonce, 10))
+	sb.WriteString(b.Nonce)
 	sb.WriteString(b.Miner)
 	sb.WriteString(b.Reward)
 	sb.Write(b.ExtraData)

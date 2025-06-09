@@ -35,16 +35,52 @@ type DeployContractParams struct {
 
 func StartRPCServer(evm *vm.EVM, addr string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/block/latest", LatestBlockHandler(evm))
-	mux.HandleFunc("/contract/deploy", DeployContractHandler(evm))
-	mux.HandleFunc("/contract/call", CallContractHandler(evm))
-	mux.HandleFunc("/contract/send", SendContractTxHandler(evm))
-	mux.HandleFunc("/account/balance", AccountBalanceHandler(evm))
-	mux.HandleFunc("/block/by-number", BlockByNumberHandler(evm))
-	mux.HandleFunc("/tx/send", SendTxHandler(evm))
-	mux.HandleFunc("/tx/status", TxStatusHandler(evm))
-	mux.HandleFunc("/token/universal-call", UniversalTokenCallHandler())
-	log.Printf("RPC Server сервер запущен на %s", addr)
+
+	// Регистрация всех эндпоинтов
+	endpoints := map[string]string{
+		"/block/latest":         "Получить последний блок",
+		"/contract/deploy":      "Деплой контракта",
+		"/contract/call":        "Вызов метода контракта",
+		"/contract/send":        "Отправка транзакции в контракт",
+		"/account/balance":      "Получить баланс аккаунта",
+		"/block/by-number":      "Получить блок по номеру",
+		"/tx/send":              "Отправить транзакцию",
+		"/tx/status":            "Получить статус транзакции",
+		"/token/universal-call": "Универсальный вызов токена",
+	}
+
+	// Регистрация обработчиков
+	for path, _ := range endpoints {
+		switch path {
+		case "/block/latest":
+			mux.HandleFunc(path, LatestBlockHandler(evm))
+		case "/contract/deploy":
+			mux.HandleFunc(path, DeployContractHandler(evm))
+		case "/contract/call":
+			mux.HandleFunc(path, CallContractHandler(evm))
+		case "/contract/send":
+			mux.HandleFunc(path, SendContractTxHandler(evm))
+		case "/account/balance":
+			mux.HandleFunc(path, AccountBalanceHandler(evm))
+		case "/block/by-number":
+			mux.HandleFunc(path, BlockByNumberHandler(evm))
+		case "/tx/send":
+			mux.HandleFunc(path, SendTxHandler(evm))
+		case "/tx/status":
+			mux.HandleFunc(path, TxStatusHandler(evm))
+		case "/token/universal-call":
+			mux.HandleFunc(path, UniversalTokenCallHandler())
+		}
+	}
+
+	// Логирование информации о запуске
+	log.Printf("=== RPC Server запущен на %s ===", addr)
+	log.Println("Доступные эндпоинты:")
+	for path, description := range endpoints {
+		log.Printf("  %s - %s", path, description)
+	}
+	log.Println("===============================")
+
 	return http.ListenAndServe(addr, mux)
 }
 

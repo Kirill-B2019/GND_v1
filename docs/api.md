@@ -1,17 +1,139 @@
 # Документация API ГАНИМЕД
 
-Базовый URL: `http://45.12.72.15:8182`
+Базовый URL: `http://127.0.0.1:8545`
 
-## REST API
+## RPC API
 
-### Получение баланса
+### Доступные эндпоинты
+
+#### Блоки
+- `/block/latest` - Получить последний блок
+- `/block/by-number` - Получить блок по номеру
+
+#### Контракты
+- `/contract/deploy` - Деплой контракта
+- `/contract/call` - Вызов метода контракта
+- `/contract/send` - Отправка транзакции в контракт
+
+#### Аккаунты
+- `/account/balance` - Получить баланс аккаунта
+
+#### Транзакции
+- `/tx/send` - Отправить транзакцию
+- `/tx/status` - Получить статус транзакции
+
+#### Токены
+- `/token/universal-call` - Универсальный вызов токена
+
+### Детальное описание эндпоинтов
+
+#### Получение последнего блока
 ```http
-GET /api/balance/{address}
+GET /block/latest
 ```
-Получает балансы всех токенов для указанного адреса.
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "hash": "0x...",
+        "number": 12345,
+        "timestamp": "2024-03-09T12:00:00Z",
+        "miner": "0x...",
+        "transactions": []
+    }
+}
+```
+
+#### Получение блока по номеру
+```http
+GET /block/by-number?number=12345
+```
 
 **Параметры:**
-- `address` - адрес кошелька
+- `number` - номер блока
+
+**Ответ:** аналогичен `/block/latest`
+
+#### Деплой контракта
+```http
+POST /contract/deploy
+```
+
+**Тело запроса:**
+```json
+{
+    "from": "0x...",
+    "code": "0x...",
+    "args": []
+}
+```
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "contractAddress": "0x...",
+        "transactionHash": "0x..."
+    }
+}
+```
+
+#### Вызов метода контракта
+```http
+POST /contract/call
+```
+
+**Тело запроса:**
+```json
+{
+    "to": "0x...",
+    "data": "0x..."
+}
+```
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": "0x..."
+}
+```
+
+#### Отправка транзакции в контракт
+```http
+POST /contract/send
+```
+
+**Тело запроса:**
+```json
+{
+    "from": "0x...",
+    "to": "0x...",
+    "value": "0x...",
+    "data": "0x..."
+}
+```
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "transactionHash": "0x..."
+    }
+}
+```
+
+#### Получение баланса аккаунта
+```http
+GET /account/balance?address=0x...
+```
+
+**Параметры:**
+- `address` - адрес аккаунта
 
 **Ответ:**
 ```json
@@ -19,40 +141,61 @@ GET /api/balance/{address}
     "success": true,
     "data": {
         "address": "0x...",
-        "balances": [
-            {
-                "symbol": "GND.c",
-                "name": "Ganymede Coin",
-                "decimals": 18,
-                "balance": "1000000000000000000"
-            }
-        ]
+        "balance": "1000000000000000000"
     }
 }
 ```
 
-### Создание кошелька
+#### Отправка транзакции
 ```http
-POST /api/wallet/create
+POST /tx/send
 ```
-Создает новый кошелек.
+
+**Тело запроса:**
+```json
+{
+    "from": "0x...",
+    "to": "0x...",
+    "value": "0x...",
+    "gas": "0x...",
+    "gasPrice": "0x..."
+}
+```
 
 **Ответ:**
 ```json
 {
     "success": true,
     "data": {
-        "address": "0x...",
-        "publicKey": "0x..."
+        "transactionHash": "0x..."
     }
 }
 ```
 
-### Универсальный вызов токена
+#### Получение статуса транзакции
 ```http
-POST /api/token/call
+GET /tx/status?hash=0x...
 ```
-Вызывает метод токена стандарта GNDst-1.
+
+**Параметры:**
+- `hash` - хеш транзакции
+
+**Ответ:**
+```json
+{
+    "success": true,
+    "data": {
+        "hash": "0x...",
+        "status": "confirmed",
+        "blockNumber": 12345
+    }
+}
+```
+
+#### Универсальный вызов токена
+```http
+POST /token/universal-call
+```
 
 **Тело запроса:**
 ```json
@@ -78,69 +221,13 @@ POST /api/token/call
 - `transferOwnership` - передача прав владельца
 - `renounceOwnership` - отказ от прав владельца
 
-## RPC API
-
-### Получение баланса
+**Ответ:**
 ```json
 {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "gnd_getBalance",
-    "params": ["0x...", "latest"]
-}
-```
-
-### Отправка транзакции
-```json
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "gnd_sendTransaction",
-    "params": [{
-        "from": "0x...",
-        "to": "0x...",
-        "value": "0x...",
-        "gas": "0x...",
-        "gasPrice": "0x..."
-    }]
-}
-```
-
-### Вызов контракта
-```json
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "gnd_call",
-    "params": [{
-        "to": "0x...",
-        "data": "0x..."
-    }, "latest"]
-}
-```
-
-## WebSocket API
-
-### Подписка на события
-```json
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "gnd_subscribe",
-    "params": ["newHeads"]
-}
-```
-
-### Подписка на логи
-```json
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "gnd_subscribe",
-    "params": ["logs", {
-        "address": "0x...",
-        "topics": ["0x..."]
-    }]
+    "success": true,
+    "data": {
+        "result": "0x..."
+    }
 }
 ```
 
@@ -154,16 +241,25 @@ POST /api/token/call
 
 ## Примеры использования
 
-### REST API (curl)
+### Получение последнего блока (curl)
 ```bash
-# Получение баланса
-curl http://45.12.72.15:8182/api/balance/0x...
+curl http://127.0.0.1:8545/block/latest
+```
 
-# Создание кошелька
-curl -X POST http://45.12.72.15:8182/api/wallet/create
+### Деплой контракта (curl)
+```bash
+curl -X POST http://127.0.0.1:8545/contract/deploy \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "0x...",
+    "code": "0x...",
+    "args": []
+  }'
+```
 
-# Вызов метода токена
-curl -X POST http://45.12.72.15:8182/api/token/call \
+### Вызов метода токена (curl)
+```bash
+curl -X POST http://127.0.0.1:8545/token/universal-call \
   -H "Content-Type: application/json" \
   -d '{
     "tokenAddr": "0x...",
@@ -172,391 +268,51 @@ curl -X POST http://45.12.72.15:8182/api/token/call \
   }'
 ```
 
-### WebSocket (JavaScript)
-```javascript
-const ws = new WebSocket('ws://45.12.72.15:8182/ws');
+### JavaScript примеры
 
-ws.onopen = () => {
-    ws.send(JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "gnd_subscribe",
-        params: ["newHeads"]
-    }));
-};
-
-ws.onmessage = (event) => {
-    console.log(JSON.parse(event.data));
-};
-```
-
-### RPC (JavaScript)
+#### Получение баланса
 ```javascript
 async function getBalance(address) {
-    const response = await fetch('http://45.12.72.15:8182/rpc', {
-        method: 'POST',
+    const response = await fetch('http://127.0.0.1:8545/account/balance', {
+        method: 'GET',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "gnd_getBalance",
-            params: [address, "latest"]
-        })
+        params: {
+            address: address
+        }
     });
     return await response.json();
 }
 ```
 
-## Стандарт токенов GNDst-1
-
-GND использует собственный стандарт токенов GNDst-1, который включает следующие основные методы:
-
-### Основные методы
-- `transfer(address to, uint256 amount)` - перевод токенов
-- `approve(address spender, uint256 amount)` - разрешение на расход токенов
-- `balanceOf(address account)` - получение баланса
-- `allowance(address owner, address spender)` - проверка разрешения на расход
-- `transferFrom(address from, address to, uint256 amount)` - перевод от имени другого адреса
-
-### Расширенные методы
-- `increaseAllowance(address spender, uint256 addedValue)` - увеличение разрешения
-- `decreaseAllowance(address spender, uint256 subtractedValue)` - уменьшение разрешения
-- `mint(address to, uint256 amount)` - создание новых токенов (только для владельца)
-- `burn(uint256 amount)` - уничтожение токенов
-- `burnFrom(address account, uint256 amount)` - уничтожение токенов с другого адреса
-
-### Административные методы
-- `pause()` - приостановка операций (только для владельца)
-- `unpause()` - возобновление операций (только для владельца)
-- `transferOwnership(address newOwner)` - передача прав владельца
-- `renounceOwnership()` - отказ от прав владельца
-
-### События
-- `Transfer(address indexed from, address indexed to, uint256 value)`
-- `Approval(address indexed owner, address indexed spender, uint256 value)`
-- `Mint(address indexed to, uint256 amount)`
-- `Burn(address indexed from, uint256 amount)`
-- `Paused(address account)`
-- `Unpaused(address account)`
-- `OwnershipTransferred(address indexed previousOwner, address indexed newOwner)`
-
-Нативная монета GND.c также следует стандарту GNDst-1 и имеет 18 десятичных знаков.
-
-# API блокчейна «ГАНИМЕД»
-
-## Общие сведения
-
-- Все взаимодействие с сетью осуществляется через публичные API (REST, JSON-RPC, WebSocket).
-- Все комиссии и операции оплачиваются в GND.
-- Для доступа к приватным методам требуется аутентификация (API-ключ, JWT, OAuth2).
-
----
-
-## 1. REST API
-
-### 1.1. Получение информации о блоках
-
-#### Получить последний блок
-
-GET /block/latest
-
-text
-
-**Пример ответа:**
-{
-"index": 12345,
-"timestamp": 1714820000,
-"prevHash": "0xabc...",
-"hash": "0xdef...",
-"miner": "GND1...",
-"transactions": [ ... ],
-"gasUsed": 90000,
-"gasLimit": 1000000,
-"consensus": "pos"
+#### Отправка транзакции
+```javascript
+async function sendTransaction(tx) {
+    const response = await fetch('http://127.0.0.1:8545/tx/send', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tx)
+    });
+    return await response.json();
 }
+```
 
-text
-
-#### Получить блок по хешу
-
-GET /block/{hash}
-
-text
-
----
-
-### 1.2. Транзакции
-
-#### Отправить транзакцию
-
-POST /tx/send
-Content-Type: application/json
-
-text
-**Тело запроса:**
-{
-"from": "GND1...",
-"to": "GND2...",
-"value": 100,
-"gasPrice": 1,
-"gasLimit": 21000,
-"nonce": 5,
-"type": "transfer",
-"data": "",
-"signature": "..."
+#### Вызов метода контракта
+```javascript
+async function callContract(to, data) {
+    const response = await fetch('http://127.0.0.1:8545/contract/call', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            to: to,
+            data: data
+        })
+    });
+    return await response.json();
 }
-
-text
-**Ответ:**
-{
-"txHash": "0x123..."
-}
-
-text
-
-#### Получить транзакцию по хешу
-
-GET /tx/{hash}
-
-text
-
----
-
-### 1.3. Баланс и nonce
-
-#### Получить баланс
-
-GET /account/{address}/balance
-
-text
-**Ответ:**
-{ "balance": 100000 }
-
-text
-
-#### Получить nonce
-
-GET /account/{address}/nonce
-
-text
-**Ответ:**
-{ "nonce": 6 }
-
-text
-
----
-
-### 1.4. Деплой и вызов смарт-контракта
-
-#### Деплой контракта
-
-POST /contract/deploy
-Content-Type: application/json
-
-text
-**Тело запроса:**
-{
-"from": "GND1...",
-"bytecode": "<hex>",
-"gasLimit": 2000000,
-"gasPrice": 1,
-"nonce": 7,
-"metadata": {
-"standard": "erc20",
-"name": "MyToken",
-"symbol": "MTK",
-"decimals": 18
-},
-"signature": "..."
-}
-
-text
-**Ответ:**
-{
-"contractAddress": "GNDct1..."
-}
-
-text
-
-#### Вызов функции контракта
-
-POST /contract/call
-Content-Type: application/json
-
-text
-**Тело запроса:**
-{
-"from": "GND1...",
-"to": "GNDct1...",
-"data": "<hex>",
-"gasLimit": 80000,
-"gasPrice": 1,
-"nonce": 8,
-"signature": "..."
-}
-
-text
-**Ответ:**
-{
-"result": "...",
-"gasUsed": 50000
-}
-
-text
-
----
-
-## 2. JSON-RPC API
-
-- Все методы вызываются через POST на `/rpc`
-- Формат запроса соответствует стандарту JSON-RPC 2.0
-
-### Пример запроса
-
-{
-"jsonrpc": "2.0",
-"method": "blockchain_latestBlock",
-"params": {},
-"id": 1
-}
-
-text
-
-### Пример ответа
-
-{
-"jsonrpc": "2.0",
-"result": { ... },
-"id": 1
-}
-
-text
-
----
-
-### Основные методы
-
-#### Получить последний блок
-
-- **method:** `blockchain_latestBlock`
-- **params:** `{}`
-
-#### Получить блок по хешу
-
-- **method:** `blockchain_getBlockByHash`
-- **params:** `{ "hash": "0x..." }`
-
-#### Получить баланс
-
-- **method:** `state_getBalance`
-- **params:** `{ "address": "GND1..." }`
-
-#### Отправить транзакцию
-
-- **method:** `blockchain_sendTx`
-- **params:** (см. REST-пример выше)
-
-#### Деплой контракта
-
-- **method:** `contract_deploy`
-- **params:** (см. REST-пример выше)
-
-#### Вызов функции контракта
-
-- **method:** `contract_call`
-- **params:** (см. REST-пример выше)
-
-#### Получить информацию о токене
-
-- **method:** `token_getInfo`
-- **params:** `{ "address": "GNDct1..." }`
-
-#### Вызов метода токена
-
-- **method:** `token_call`
-- **params:** `{ "tokenAddress": "...", "method": "transfer", "args": ["GND2...", 100] }`
-
----
-
-## 3. WebSocket API
-
-- Подключение: `ws://<host>:8090/ws`
-- Сообщения приходят в формате:
-  {
-  "type": "block" | "tx" | "event",
-  "data": { ... }
-  }
-
-text
-- Можно реализовать подписки на адреса, события, типы токенов (расширяется через будущие версии API).
-
----
-
-## 4. Аутентификация и лимитирование
-
-- Для приватных методов используйте заголовок `X-API-Key`.
-- Для публичных методов лимит по IP (100 запросов в минуту по умолчанию).
-- Для production рекомендуется использовать JWT или OAuth2.
-
----
-
-## 5. Примеры сценариев
-
-### 5.1. Деплой ERC-20 токена
-
-1. Скомпилируйте контракт на Solidity (например, в Remix).
-2. Отправьте байткод через `/contract/deploy` с метаданными:
-    - `standard: "erc20"`
-    - `name`, `symbol`, `decimals`
-3. Получите адрес контракта и используйте его для работы с токеном.
-
-### 5.2. Вызов метода transfer у токена
-
-1. Получите ABI и адрес токена.
-2. Сформируйте calldata (например, через web3.js или ganymede-cli).
-3. Отправьте через `/contract/call` или `contract_call` в JSON-RPC.
-
----
-
-## 6. Ошибки API
-
-- Все ошибки возвращаются с HTTP-кодом 4xx/5xx и полем `error` или в формате JSON-RPC:
-  {
-  "jsonrpc": "2.0",
-  "error": { "code": -32000, "message": "Insufficient funds" },
-  "id": 1
-  }
-
-text
-
----
-
-## 7. Расширение и кастомизация
-
-- Для добавления новых стандартов токенов реализуйте интерфейс в модуле токенов.
-- Для интеграции с внешними сервисами используйте REST/JSON-RPC/WebSocket API.
-- Для мониторинга используйте WebSocket и методы `/metrics` (будет реализовано).
-
----
-
-## 8. Безопасность
-
-- Все приватные методы требуют аутентификации.
-- Все транзакции должны быть подписаны приватным ключом отправителя.
-- Для деплоя и вызова контрактов обязательно списание комиссии в GND.
-
----
-
-## 9. Дополнительные ресурсы
-
-- [api.md](api.md) - описание API для работы с токенами
-- [contracts.md](contracts.md) - описание работы со смарт-контрактами
-- [architecture.md](architecture.md) - архитектура блокчейна
-- [consensus.md](consensus.md) - алгоритмы консенсуса
-- [contracts.md](contracts.md) - работа со смарт-контрактами
-- [integration.md](integration.md) - интеграция с GND
----
-
-**API блокчейна «ГАНИМЕД» поддерживает все современные сценарии работы с токенами, смарт-контрактами и внешними сервисами. 
+``` 

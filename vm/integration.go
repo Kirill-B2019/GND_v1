@@ -13,9 +13,7 @@ import (
 )
 
 // DeployGNDst1Token деплоит контракт GNDst1
-func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decimals uint8, totalSupply *big.Int) (string, error) {
-	// Получаем адрес отправителя
-	from := e.GetSender()
+func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decimals uint8, totalSupply *big.Int, from string) (string, error) {
 	if from == "" {
 		return "", fmt.Errorf("не удалось получить адрес отправителя")
 	}

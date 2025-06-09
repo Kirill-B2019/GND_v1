@@ -349,7 +349,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 				http.Error(w, "Invalid or expired API key", http.StatusUnauthorized)
 				return
 			}
-
+			log.Printf("RPC Server сервер запущен на %s", cfg.Server.REST.Port)
 			next.ServeHTTP(w, r)
 		}
 	}
@@ -436,7 +436,11 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	}))
 
 	// Запуск сервера
-	addr := fmt.Sprintf("%s:%d", cfg.Server.REST.Host, cfg.Server.REST.Port)
+	host := cfg.Server.REST.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	addr := fmt.Sprintf("%s:%d", host, cfg.Server.REST.Port)
 	fmt.Printf("Starting REST server on %s\n", addr)
 	if err := http.ListenAndServe(addr, router); err != nil {
 		fmt.Printf("Error starting REST server: %v\n", err)

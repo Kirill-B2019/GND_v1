@@ -12,6 +12,7 @@ import (
 	"GND/tokens/standards/gndst1"
 	"GND/types"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -61,6 +62,13 @@ func (t *Token) ToTokenInfo() *types.TokenInfo {
 // NewToken создает новый токен
 func NewToken(address, symbol, name string, decimals int, totalSupply string, owner, tokenType, standard string, blockID, txID int) *Token {
 	now := time.Now()
+
+	// Если адрес не указан, генерируем новый
+	if address == "" {
+		address = fmt.Sprintf("GNDct%s", GenerateContractAddress())
+		fmt.Printf("[DEBUG] NewToken: сгенерирован новый адрес контракта: %s\n", address)
+	}
+
 	return &Token{
 		Address:     address,
 		Symbol:      symbol,
@@ -82,13 +90,31 @@ func NewToken(address, symbol, name string, decimals int, totalSupply string, ow
 // SaveToDB сохраняет токен в БД
 func (t *Token) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	// Сначала получаем contract_id из таблицы contracts
+	fmt.Printf("[DEBUG] SaveToDB: ищем contract_id по адресу: %s\n", t.Address)
 	var contractID int
 	err := pool.QueryRow(ctx, `
 		SELECT id FROM contracts WHERE address = $1`,
 		t.Address,
 	).Scan(&contractID)
 	if err != nil {
-		return fmt.Errorf("ошибка получения contract_id: %w", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Контракт не существует - создаем его
+			fmt.Printf("[DEBUG] SaveToDB: создаем новый контракт для адреса: %s\n", t.Address)
+			err = pool.QueryRow(ctx, `
+				INSERT INTO contracts (address, owner, type, created_at)
+				VALUES ($1, $2, 'token', NOW())
+				RETURNING id`,
+				t.Address, t.Owner,
+			).Scan(&contractID)
+			if err != nil {
+				fmt.Printf("[ERROR] не удалось создать контракт для address=%s: %v\n", t.Address, err)
+				return fmt.Errorf("ошибка создания контракта: %w", err)
+			}
+			fmt.Printf("[DEBUG] SaveToDB: контракт создан с id=%d\n", contractID)
+		} else {
+			fmt.Printf("[ERROR] contract_id не найден для address=%s: %v\n", t.Address, err)
+			return fmt.Errorf("ошибка получения contract_id: %w", err)
+		}
 	}
 
 	// Затем сохраняем токен
@@ -130,6 +156,7 @@ func (t *Token) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status str
 
 // LoadToken загружает токен из БД по адресу
 func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token, error) {
+	fmt.Printf("[DEBUG] LoadToken: ищем contract_id по адресу: %s\n", address)
 	var id, contractID int
 	var symbol, name, standard string
 	var decimals int
@@ -141,6 +168,7 @@ func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token,
 		address,
 	).Scan(&contractID)
 	if err != nil {
+		fmt.Printf("[ERROR] contract_id не найден для address=%s: %v\n", address, err)
 		return nil, fmt.Errorf("ошибка получения contract_id: %w", err)
 	}
 

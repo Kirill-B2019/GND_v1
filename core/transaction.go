@@ -54,11 +54,8 @@ type Transaction struct {
 	Status     string          `json:"status"`
 	Timestamp  time.Time       `json:"timestamp"`
 	Signature  []byte          `json:"signature"`
-	// Для EVM/совместимости
-	GasPrice *big.Int `json:"gas_price,omitempty"`
-	GasLimit uint64   `json:"gas_limit,omitempty"`
-	Data     []byte   `json:"data,omitempty"`
-	Symbol   string   `json:"symbol,omitempty"`
+	Data       []byte          `json:"data,omitempty"`
+	Symbol     string          `json:"symbol,omitempty"`
 }
 
 // Validate проверяет валидность транзакции
@@ -93,15 +90,19 @@ func NewTransaction(from, to string, value *big.Int, data []byte, nonce uint64, 
 		return nil, fmt.Errorf("invalid recipient address")
 	}
 
+	// Вычисляем fee как gasPrice * gasLimit
+	fee := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
+
 	tx := &Transaction{
 		Sender:    fromAddr.String(),
 		Recipient: toAddr.String(),
 		Value:     value,
-		Fee:       new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit))),
+		Fee:       fee,
 		Nonce:     int64(nonce),
 		Type:      string(TxTypeTransfer),
 		Symbol:    "GND",
 		Timestamp: time.Now(),
+		Data:      data,
 	}
 
 	// Вычисление хеша транзакции
@@ -128,10 +129,6 @@ func (tx *Transaction) CalculateHash() string {
 	sb += string(tx.Payload)
 	sb += tx.Status
 	sb += tx.Timestamp.Format(time.RFC3339Nano)
-	if tx.GasPrice != nil {
-		sb += tx.GasPrice.String()
-	}
-	sb += fmt.Sprintf("%d", tx.GasLimit)
 	sb += string(tx.Data)
 	sb += tx.Symbol
 
@@ -178,11 +175,11 @@ func (tx *Transaction) Verify() bool {
 func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	err := pool.QueryRow(ctx, `
 		INSERT INTO transactions (
-			block_id, hash, sender, recipient, symbol, value, fee, nonce,
+			block_id, hash, sender, recipient, value, fee, nonce,
 			type, contract_id, payload, status, timestamp, signature
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id`,
-		tx.BlockID, tx.Hash, tx.Sender, tx.Recipient, tx.Symbol, tx.Value.String(),
+		tx.BlockID, tx.Hash, tx.Sender, tx.Recipient, tx.Value.String(),
 		tx.Fee.String(), tx.Nonce, tx.Type, tx.ContractID, tx.Payload,
 		tx.Status, tx.Timestamp, tx.Signature,
 	).Scan(&tx.ID)
@@ -234,15 +231,15 @@ func (tx *Transaction) Save(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 		INSERT INTO transactions (
 			id, block_id, hash, sender, recipient, value, fee, nonce,
-			type, symbol, contract_id, payload, status, timestamp
+			type, contract_id, payload, status, timestamp, signature
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8,
 			$9, $10, $11, $12, $13, $14
 		)`,
 		tx.ID, tx.BlockID, tx.Hash, tx.Sender, tx.Recipient,
 		tx.Value.String(), tx.Fee.String(), tx.Nonce,
-		tx.Type, tx.Symbol, tx.ContractID, tx.Payload,
-		tx.Status, tx.Timestamp,
+		tx.Type, tx.ContractID, tx.Payload,
+		tx.Status, tx.Timestamp, tx.Signature,
 	)
 	return err
 }
