@@ -2,6 +2,8 @@ package core
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
+	"math/rand"
 )
 
 // Checksum вычисляет контрольную сумму для payload
@@ -22,4 +24,14 @@ func BytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// GenerateContractAddress генерирует уникальный адрес контракта
+func GenerateContractAddress() string {
+	// Генерируем случайные 16 байт
+	randomBytes := make([]byte, 16)
+	rand.Read(randomBytes)
+
+	// Кодируем в hex
+	return hex.EncodeToString(randomBytes)
 }

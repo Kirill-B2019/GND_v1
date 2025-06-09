@@ -101,8 +101,21 @@ func main() {
 	// 6. Инициализация блокчейна
 	var blockchain *core.Blockchain
 	if !existingAccount {
+		// Создаем генезис-блок
+		genesis := &core.Block{
+			Index:     0,
+			Timestamp: time.Now(),
+			Miner:     string(minerWallet.Address),
+			GasUsed:   0,
+			GasLimit:  10_000_000,
+			Consensus: "poa",
+			Nonce:     "0",
+			Status:    "finalized",
+		}
+		genesis.Hash = genesis.CalculateHash()
+
 		// Первый запуск - инициализируем блокчейн
-		blockchain = core.NewBlockchain(nil, pool)
+		blockchain = core.NewBlockchain(genesis, pool)
 		if err := blockchain.FirstLaunch(ctx, pool, minerWallet, cfg); err != nil {
 			log.Fatalf("Ошибка инициализации блокчейна: %v", err)
 		}
@@ -145,6 +158,12 @@ func main() {
 				amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
 			}
 
+			// Генерируем адрес контракта, если он не указан
+			if coin.ContractAddress == "" {
+				coin.ContractAddress = fmt.Sprintf("GNDct%s", core.GenerateContractAddress())
+			}
+			fmt.Printf("Создаем токен %s с адресом контракта %s\n", coin.Symbol, coin.ContractAddress)
+
 			// Проверяем стандарт токена
 			if coin.Standard == "gndst1" {
 				addr, err := evmInstance.DeployGNDst1Token(ctx, coin.Name, coin.Symbol, uint8(coin.Decimals), amount)
@@ -161,36 +180,42 @@ func main() {
 			if err != nil {
 				log.Fatalf("Ошибка проверки контракта: %v", err)
 			}
+			fmt.Printf("Контракт %s существует: %v\n", coin.ContractAddress, contractExists)
 
 			if !contractExists {
-				_, err = pool.Exec(ctx, `
+				// Создаем контракт
+				var contractID int
+				err = pool.QueryRow(ctx, `
 					INSERT INTO contracts (address, owner, type, created_at)
 					VALUES ($1, $2, 'token', NOW())
-					ON CONFLICT (address) DO NOTHING`,
-					coin.ContractAddress, minerWallet.Address)
+					RETURNING id`,
+					coin.ContractAddress, minerWallet.Address,
+				).Scan(&contractID)
 				if err != nil {
 					log.Fatalf("Ошибка создания контракта: %v", err)
 				}
-			}
+				fmt.Printf("Создан контракт с ID %d\n", contractID)
 
-			// Проверяем существование токена
-			var tokenExists bool
-			err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM tokens WHERE symbol = $1)", coin.Symbol).Scan(&tokenExists)
-			if err != nil {
-				log.Fatalf("Ошибка проверки токена: %v", err)
-			}
-
-			if !tokenExists {
+				// Создаем токен
 				_, err = pool.Exec(ctx, `
 					INSERT INTO tokens (contract_id, standard, symbol, name, decimals, total_supply)
-					SELECT id, $1, $2, $3, $4, $5
-					FROM contracts WHERE address = $6`,
-					coin.Standard, coin.Symbol, coin.Name, coin.Decimals, amount.String(), coin.ContractAddress)
+					VALUES ($1, $2, $3, $4, $5, $6)`,
+					contractID, coin.Standard, coin.Symbol, coin.Name, coin.Decimals, amount.String())
 				if err != nil {
 					log.Fatalf("Ошибка создания токена: %v", err)
 				}
+				fmt.Printf("Создан токен %s\n", coin.Symbol)
+			} else {
+				// Получаем ID существующего контракта
+				var contractID int
+				err = pool.QueryRow(ctx, "SELECT id FROM contracts WHERE address = $1", coin.ContractAddress).Scan(&contractID)
+				if err != nil {
+					log.Fatalf("Ошибка получения ID контракта: %v", err)
+				}
+				fmt.Printf("Получен ID существующего контракта: %d\n", contractID)
 			}
 
+			// Создаем баланс токена
 			_, err = pool.Exec(ctx, `
 				INSERT INTO token_balances (token_id, address, balance)
 				SELECT t.id, $1, $2
@@ -202,6 +227,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Ошибка создания баланса токена: %v", err)
 			}
+			fmt.Printf("Создан баланс токена %s\n", coin.Symbol)
 
 			blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 		}
