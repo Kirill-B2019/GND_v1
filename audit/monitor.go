@@ -41,24 +41,24 @@ func (m *Monitor) CheckTransaction(tx *core.Transaction) {
 	}
 
 	// Перевод самому себе
-	if tx.From == tx.To {
+	if tx.Sender == tx.Recipient {
 		m.AddSuspicious(tx, "Перевод самому себе")
 	}
 
 	// Частые переводы
 	now := time.Now()
-	lastTime, exists := m.lastTxTimestamps[tx.From]
+	lastTime, exists := m.lastTxTimestamps[tx.Sender]
 	if exists && now.Sub(lastTime) < 10*time.Second {
 		m.AddSuspicious(tx, "Частые переводы с одного адреса (возможно, бот-активность)")
 	}
-	m.lastTxTimestamps[tx.From] = now
+	m.lastTxTimestamps[tx.Sender] = now
 
 	// Перевод на новый/неизвестный адрес
-	if !m.knownAddresses[tx.To] {
+	if !m.knownAddresses[tx.Recipient] {
 		m.AddSuspicious(tx, "Перевод на новый/неизвестный адрес")
 	}
-	m.knownAddresses[tx.To] = true
-	m.knownAddresses[tx.From] = true
+	m.knownAddresses[tx.Recipient] = true
+	m.knownAddresses[tx.Sender] = true
 }
 
 // AddSuspicious добавляет подозрительную транзакцию в журнал

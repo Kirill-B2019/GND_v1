@@ -188,16 +188,25 @@ func GetStateNonce(ctx context.Context, pool *pgxpool.Pool, address string, bloc
 	return nonce, nil
 }
 
-// State представляет состояние блокчейна (балансы, данные о транзакциях и т.д.)
+// State представляет текущее состояние блокчейна
 type State struct {
-	pool *pgxpool.Pool
-	mu   sync.RWMutex
+	pool     *pgxpool.Pool
+	mu       sync.RWMutex
+	accounts map[Address]*AccountState
 }
 
-// NewState создает новое состояние, используя пул подключений к PostgreSQL
+// AccountState представляет состояние аккаунта в системе
+type AccountState struct {
+	Address Address
+	Balance *big.Int
+	Nonce   int64
+}
+
+// NewState создает новое состояние
 func NewState(pool *pgxpool.Pool) *State {
 	return &State{
-		pool: pool,
+		pool:     pool,
+		accounts: make(map[Address]*AccountState),
 	}
 }
 
@@ -429,21 +438,17 @@ func (s *State) getTokenID(symbol string) (int, error) {
 
 // ApplyTransaction применяет транзакцию к состоянию
 func (s *State) ApplyTransaction(tx *Transaction) error {
-	from := Address(tx.From)
-	to := Address(tx.To)
-	value := tx.Value
-
-	if value.Sign() == 0 {
-		return nil // нулевая сумма перевода
+	// Проверка баланса отправителя
+	senderBalance := s.GetBalance(tx.GetSenderAddress(), tx.Symbol)
+	if senderBalance.Cmp(tx.Value) < 0 {
+		return fmt.Errorf("insufficient balance")
 	}
 
-	if err := s.SubBalance(from, tx.Symbol, value); err != nil {
-		return fmt.Errorf("не удалось списать средство: %v", err)
-	}
+	// Списание средств с отправителя
+	s.Credit(tx.GetSenderAddress(), tx.Symbol, new(big.Int).Neg(tx.Value))
 
-	if err := s.AddBalance(to, tx.Symbol, value); err != nil {
-		return fmt.Errorf("не удалось зачислить средство: %v", err)
-	}
+	// Зачисление средств получателю
+	s.Credit(tx.GetRecipientAddress(), tx.Symbol, tx.Value)
 
 	return nil
 }
@@ -483,20 +488,16 @@ func (s *State) UpdateNonce(address Address, nonce uint64) error {
 	return err
 }
 
-// GetNonce получает текущий nonce для адреса
-func (s *State) GetNonce(address Address) (uint64, error) {
-	var nonce uint64
-	err := s.pool.QueryRow(
-		context.Background(),
-		"SELECT nonce FROM accounts WHERE address = $1",
-		string(address),
-	).Scan(&nonce)
+// GetNonce возвращает текущий nonce для адреса
+func (s *State) GetNonce(addr Address) int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	if err != nil {
-		return 0, fmt.Errorf("не удалось получить nonce: %v", err)
+	account, exists := s.accounts[addr]
+	if !exists {
+		return 0
 	}
-
-	return nonce, nil
+	return account.Nonce
 }
 
 // ValidateAddress проверяет, существует ли адрес в системе

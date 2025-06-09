@@ -212,8 +212,8 @@ func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockInde
 
 		err := rows.Scan(
 			&tx.Hash,
-			&tx.From,
-			&tx.To,
+			&tx.Sender,
+			&tx.Recipient,
 			&tx.Symbol,
 			&valueStr,
 			&tx.GasPrice,
@@ -295,6 +295,80 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		if err != nil {
 			return fmt.Errorf("ошибка создания баланса токена: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// ProcessTransaction обрабатывает транзакцию
+func (b *Blockchain) ProcessTransaction(tx *Transaction) error {
+	// Проверка баланса отправителя
+	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
+	if senderBalance.Cmp(tx.Value) < 0 {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	// Проверка комиссии
+	if tx.Fee == nil || tx.Fee.Sign() <= 0 {
+		return fmt.Errorf("invalid fee")
+	}
+
+	// Проверка типа транзакции
+	switch tx.Type {
+	case "transfer":
+		return b.processTransfer(tx)
+	case "contract":
+		return b.processContract(tx)
+	default:
+		return fmt.Errorf("unknown transaction type: %s", tx.Type)
+	}
+}
+
+// processTransfer обрабатывает транзакцию перевода
+func (b *Blockchain) processTransfer(tx *Transaction) error {
+	// Проверка баланса отправителя
+	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
+	if senderBalance.Cmp(tx.Value) < 0 {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	// Обновление баланса отправителя
+	b.State.Credit(tx.GetSenderAddress(), tx.Symbol, new(big.Int).Neg(tx.Value))
+
+	// Обновление баланса получателя
+	b.State.Credit(tx.GetRecipientAddress(), tx.Symbol, tx.Value)
+
+	return nil
+}
+
+// processContract обрабатывает транзакцию контракта
+func (b *Blockchain) processContract(tx *Transaction) error {
+	// TODO: Реализовать обработку контрактных транзакций
+	return fmt.Errorf("contract transactions not implemented yet")
+}
+
+// ValidateTransaction проверяет валидность транзакции
+func (b *Blockchain) ValidateTransaction(tx *Transaction) error {
+	// Проверка подписи
+	if !tx.Verify() {
+		return fmt.Errorf("invalid signature")
+	}
+
+	// Проверка баланса отправителя
+	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
+	if senderBalance.Cmp(tx.Value) < 0 {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	// Проверка комиссии
+	if tx.Fee == nil || tx.Fee.Sign() <= 0 {
+		return fmt.Errorf("invalid fee")
+	}
+
+	// Проверка nonce
+	expectedNonce := b.State.GetNonce(tx.GetSenderAddress())
+	if tx.Nonce != expectedNonce {
+		return fmt.Errorf("invalid nonce: expected %d, got %d", expectedNonce, tx.Nonce)
 	}
 
 	return nil
