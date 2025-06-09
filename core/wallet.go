@@ -6,13 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big" // Добавляем импорт math/big
+	"strings"
+	"time"
+
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/ripemd160"
-	"math/big" // Добавляем импорт math/big
-	"strings"
-	"time"
 )
 
 // Допустимые префиксы в байтовом представлении
@@ -171,4 +172,40 @@ func (w *Wallet) PrivateKeyHex() string {
 
 func (w *Wallet) PublicKeyHex() string {
 	return hex.EncodeToString(w.PrivateKey.PubKey().SerializeCompressed())
+}
+
+// LoadWallet загружает существующий кошелек из базы данных
+func LoadWallet(pool *pgxpool.Pool) (*Wallet, error) {
+	var (
+		address       string
+		privateKeyHex string
+	)
+
+	// Получаем последний активный кошелек
+	err := pool.QueryRow(context.Background(), `
+		SELECT w.address, w.private_key
+		FROM wallets w
+		JOIN accounts a ON w.account_id = a.id
+		WHERE w.status = 'active'
+		ORDER BY w.created_at DESC
+		LIMIT 1
+	`).Scan(&address, &privateKeyHex)
+
+	if err != nil {
+		return nil, fmt.Errorf("ошибка загрузки кошелька: %w", err)
+	}
+
+	// Декодируем приватный ключ
+	privateKeyBytes, err := hex.DecodeString(privateKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка декодирования приватного ключа: %w", err)
+	}
+
+	// Создаем объект приватного ключа
+	privKey := secp256k1.PrivKeyFromBytes(privateKeyBytes)
+
+	return &Wallet{
+		PrivateKey: privKey,
+		Address:    Address(address),
+	}, nil
 }

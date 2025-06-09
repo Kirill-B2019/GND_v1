@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"math/big"
 	_ "net/http/pprof"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -73,14 +74,31 @@ func main() {
 	defer pool.Close()
 	go monitorPoolStats(ctx, pool)
 
-	// 4. Генерация кошелька валидатора
-	minerWallet, err := core.NewWallet(pool)
+	// 4. Проверка существующих данных
+	var existingAccount bool
+	err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM accounts LIMIT 1)").Scan(&existingAccount)
 	if err != nil {
-		log.Fatalf("Ошибка генерации кошелька: %v", err)
+		log.Fatalf("Ошибка проверки существующих аккаунтов: %v", err)
 	}
-	fmt.Printf("Адрес genesis-валидатора: %s\n", minerWallet.Address)
 
-	// 5. Инициализация блокчейна
+	// 5. Генерация или загрузка кошелька валидатора
+	var minerWallet *core.Wallet
+	if existingAccount {
+		// Загружаем существующий кошелек
+		minerWallet, err = core.LoadWallet(pool)
+		if err != nil {
+			log.Fatalf("Ошибка загрузки существующего кошелька: %v", err)
+		}
+	} else {
+		// Создаем новый кошелек
+		minerWallet, err = core.NewWallet(pool)
+		if err != nil {
+			log.Fatalf("Ошибка генерации кошелька: %v", err)
+		}
+	}
+	fmt.Printf("Адрес валидатора: %s\n", minerWallet.Address)
+
+	// 6. Инициализация блокчейна
 	var blockchain *core.Blockchain
 	genesisBlock := core.NewBlock(0, "", string(minerWallet.Address), []*core.Transaction{}, cfg.GasLimit, "pos")
 
@@ -93,7 +111,7 @@ func main() {
 	}
 	fmt.Printf("Генезис-блок #%d создан\n", genesisBlock.Index)
 
-	// 6. Кэш множителей для big.Int
+	// 7. Кэш множителей для big.Int
 	decimalsCache := sync.Map{}
 	getDecimalsMultiplier := func(decimals int64) *big.Int {
 		if val, ok := decimalsCache.Load(decimals); ok {
@@ -104,45 +122,90 @@ func main() {
 		return multiplier
 	}
 
-	// 7. Начисление баланса для монет
-	for _, coin := range cfg.Coins {
-		amount := new(big.Int)
-		if coin.TotalSupply != "" {
-			amount.SetString(coin.TotalSupply, 10)
-		} else {
-			amount.SetInt64(1_000_000)
-			amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
-		}
+	// 8. Начисление баланса для монет (только если это новый аккаунт)
+	if !existingAccount {
+		for _, coin := range cfg.Coins {
+			amount := new(big.Int)
+			if coin.TotalSupply != "" {
+				amount.SetString(coin.TotalSupply, 10)
+			} else {
+				amount.SetInt64(1_000_000)
+				amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
+			}
 
-		_, err := pool.Exec(context.Background(), `
-INSERT INTO accounts (address) VALUES ($1)
-ON CONFLICT (address) DO NOTHING`,
-			string(minerWallet.Address))
+			// Проверяем существование контракта
+			var contractExists bool
+			err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM contracts WHERE address = $1)", coin.ContractAddress).Scan(&contractExists)
+			if err != nil {
+				log.Fatalf("Ошибка проверки контракта: %v", err)
+			}
 
-		if err != nil {
-			log.Fatalf("Failed to insert account: %v", err)
+			if !contractExists {
+				// Создаем контракт
+				_, err = pool.Exec(ctx, `
+					INSERT INTO contracts (address, owner, type, created_at)
+					VALUES ($1, $2, 'token', NOW())
+					ON CONFLICT (address) DO NOTHING`,
+					coin.ContractAddress, minerWallet.Address)
+				if err != nil {
+					log.Fatalf("Ошибка создания контракта: %v", err)
+				}
+			}
+
+			// Проверяем существование токена
+			var tokenExists bool
+			err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM tokens WHERE symbol = $1)", coin.Symbol).Scan(&tokenExists)
+			if err != nil {
+				log.Fatalf("Ошибка проверки токена: %v", err)
+			}
+
+			if !tokenExists {
+				// Создаем токен
+				_, err = pool.Exec(ctx, `
+					INSERT INTO tokens (contract_id, standard, symbol, name, decimals, total_supply)
+					SELECT id, 'ERC20', $1, $2, $3, $4
+					FROM contracts WHERE address = $5`,
+					coin.Symbol, coin.Name, coin.Decimals, amount.String(), coin.ContractAddress)
+				if err != nil {
+					log.Fatalf("Ошибка создания токена: %v", err)
+				}
+			}
+
+			// Создаем баланс токена
+			_, err = pool.Exec(ctx, `
+				INSERT INTO token_balances (token_id, address, balance)
+				SELECT t.id, $1, $2
+				FROM tokens t
+				WHERE t.symbol = $3
+				ON CONFLICT (token_id, address) DO UPDATE
+				SET balance = $2`,
+				minerWallet.Address, amount.String(), coin.Symbol)
+			if err != nil {
+				log.Fatalf("Ошибка создания баланса токена: %v", err)
+			}
+
+			blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 		}
-		blockchain.State.Credit(minerWallet.Address, coin.Symbol, amount)
 	}
 
-	// 8. Вывод текущего баланса
+	// 9. Вывод текущего баланса
 	fmt.Printf("Баланс адреса %s:\n", minerWallet.Address)
 	for _, coin := range cfg.Coins {
 		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
 		fmt.Printf("%s: %s  %s. Знаков: %d\n", coin.Name, balance.String(), coin.Symbol, coin.Decimals)
 	}
 
-	// 9. Мемпул
+	// 10. Мемпул
 	mempool := core.NewMempool()
 
-	// 10. EVM
+	// 11. EVM
 	gasLimit := cfg.EVM.GasLimit
 	if gasLimit == 0 {
 		gasLimit = 10_000_000
 	}
 	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: gasLimit})
 
-	// 11. Серверы
+	// 12. Серверы
 	go func() {
 		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
 		if err != nil {
@@ -152,10 +215,10 @@ ON CONFLICT (address) DO NOTHING`,
 	go api.StartRESTServer(blockchain, mempool, cfg, pool)
 	go api.StartWebSocketServer(blockchain, cfg.Server.WS.WSAddr)
 
-	// 12. Обработка транзакций
+	// 13. Обработка транзакций
 	go processTransactions(mempool, cfg.MaxWorkers)
 
-	// 13. Грейсфул-шатдаун
+	// 14. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
@@ -180,6 +243,10 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 
 			tx, err := mempool.Pop()
 			if err != nil {
+				if err.Error() == "timeout" {
+					// Это нормальная ситуация, когда нет транзакций
+					return
+				}
 				logger.Printf("Error popping transaction from mempool: %v", err)
 				return
 			}
