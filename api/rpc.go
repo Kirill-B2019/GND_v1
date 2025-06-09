@@ -1,6 +1,7 @@
 package api
 
 import (
+	"GND/core"
 	_ "GND/tokens"
 	"GND/types"
 	"GND/vm"
@@ -42,6 +43,7 @@ func StartRPCServer(evm *vm.EVM, addr string) error {
 	mux.HandleFunc("/block/by-number", BlockByNumberHandler(evm))
 	mux.HandleFunc("/tx/send", SendTxHandler(evm))
 	mux.HandleFunc("/tx/status", TxStatusHandler(evm))
+	mux.HandleFunc("/token/universal-call", UniversalTokenCallHandler())
 	log.Printf("RPC Server сервер запущен на %s", addr)
 	return http.ListenAndServe(addr, mux)
 }
@@ -215,6 +217,28 @@ func TxStatusHandler(evm *vm.EVM) http.HandlerFunc {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": status})
+	}
+}
+
+// Пример универсального вызова токена через RPC
+func UniversalTokenCallHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var params struct {
+			TokenAddress string        `json:"token_address"`
+			Method       string        `json:"method"`
+			Args         []interface{} `json:"args"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		token := &core.Token{Address: params.TokenAddress}
+		res, err := token.UniversalCall(r.Context(), params.Method, params.Args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"result": res})
 	}
 }
 

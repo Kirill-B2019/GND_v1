@@ -100,16 +100,21 @@ func main() {
 
 	// 6. Инициализация блокчейна
 	var blockchain *core.Blockchain
-	genesisBlock := core.NewBlock(0, "", string(minerWallet.Address), []*core.Transaction{}, cfg.GasLimit, "pos")
-
-	blockchain, err = core.LoadBlockchainFromDB(pool)
-	if err != nil {
-		log.Printf("Не удалось загрузить блокчейн из БД: %v", err)
-		blockchain = core.NewBlockchain(genesisBlock, pool)
+	if !existingAccount {
+		// Первый запуск - инициализируем блокчейн
+		blockchain = core.NewBlockchain(nil, pool)
+		if err := blockchain.FirstLaunch(ctx, pool, minerWallet, cfg); err != nil {
+			log.Fatalf("Ошибка инициализации блокчейна: %v", err)
+		}
+		fmt.Println("Блокчейн успешно инициализирован при первом запуске")
 	} else {
-		fmt.Printf("Блокчейн успешно восстановлен из БД\n")
+		// Загружаем существующий блокчейн
+		blockchain, err = core.LoadBlockchainFromDB(pool)
+		if err != nil {
+			log.Fatalf("Ошибка загрузки блокчейна из БД: %v", err)
+		}
+		fmt.Println("Блокчейн успешно восстановлен из БД")
 	}
-	fmt.Printf("Генезис-блок #%d создан\n", genesisBlock.Index)
 
 	// 7. Кэш множителей для big.Int
 	decimalsCache := sync.Map{}
@@ -122,6 +127,13 @@ func main() {
 		return multiplier
 	}
 
+	// 11. EVM
+	gasLimit := cfg.EVM.GasLimit
+	if gasLimit == 0 {
+		gasLimit = 10_000_000
+	}
+	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: gasLimit})
+
 	// 8. Начисление баланса для монет (только если это новый аккаунт)
 	if !existingAccount {
 		for _, coin := range cfg.Coins {
@@ -133,6 +145,16 @@ func main() {
 				amount = amount.Mul(amount, getDecimalsMultiplier(int64(coin.Decimals)))
 			}
 
+			// Проверяем стандарт токена
+			if coin.Standard == "gndst1" {
+				addr, err := evmInstance.DeployGNDst1Token(ctx, coin.Name, coin.Symbol, uint8(coin.Decimals), amount)
+				if err != nil {
+					log.Fatalf("Ошибка деплоя токена GNDst1: %v", err)
+				}
+				fmt.Printf("GNDst1 токен %s (%s) задеплоен по адресу %s\n", coin.Name, coin.Symbol, addr)
+				continue
+			}
+
 			// Проверяем существование контракта
 			var contractExists bool
 			err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM contracts WHERE address = $1)", coin.ContractAddress).Scan(&contractExists)
@@ -141,7 +163,6 @@ func main() {
 			}
 
 			if !contractExists {
-				// Создаем контракт
 				_, err = pool.Exec(ctx, `
 					INSERT INTO contracts (address, owner, type, created_at)
 					VALUES ($1, $2, 'token', NOW())
@@ -160,18 +181,16 @@ func main() {
 			}
 
 			if !tokenExists {
-				// Создаем токен
 				_, err = pool.Exec(ctx, `
 					INSERT INTO tokens (contract_id, standard, symbol, name, decimals, total_supply)
-					SELECT id, 'ERC20', $1, $2, $3, $4
-					FROM contracts WHERE address = $5`,
-					coin.Symbol, coin.Name, coin.Decimals, amount.String(), coin.ContractAddress)
+					SELECT id, $1, $2, $3, $4, $5
+					FROM contracts WHERE address = $6`,
+					coin.Standard, coin.Symbol, coin.Name, coin.Decimals, amount.String(), coin.ContractAddress)
 				if err != nil {
 					log.Fatalf("Ошибка создания токена: %v", err)
 				}
 			}
 
-			// Создаем баланс токена
 			_, err = pool.Exec(ctx, `
 				INSERT INTO token_balances (token_id, address, balance)
 				SELECT t.id, $1, $2
@@ -197,13 +216,6 @@ func main() {
 
 	// 10. Мемпул
 	mempool := core.NewMempool()
-
-	// 11. EVM
-	gasLimit := cfg.EVM.GasLimit
-	if gasLimit == 0 {
-		gasLimit = 10_000_000
-	}
-	evmInstance := vm.NewEVM(vm.EVMConfig{GasLimit: gasLimit})
 
 	// 12. Серверы
 	go func() {

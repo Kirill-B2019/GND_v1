@@ -64,7 +64,7 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		coretypes.ContractMeta{
 			Name:     params.Name,
 			Symbol:   params.Symbol,
-			Standard: "gndst1",
+			Standard: params.Standard,
 		},
 		1000000, // gas limit
 		1,       // gas price
@@ -106,7 +106,7 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		Symbol:      params.Symbol,
 		Decimals:    params.Decimals,
 		TotalSupply: params.TotalSupply,
-		Standard:    "gndst1",
+		Standard:    params.Standard,
 		CreatedAt:   time.Now().Unix(),
 	}
 

@@ -3,7 +3,6 @@
 package vm
 
 import (
-	"GND/core"
 	"GND/tokens/registry"
 	"GND/tokens/standards/gndst1"
 	"GND/types"
@@ -36,6 +35,7 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 		Owner:       from,
 		Params: map[string]string{
 			"totalSupply": totalSupply.String(),
+			"decimals":    fmt.Sprintf("%d", decimals),
 		},
 	}
 
@@ -56,7 +56,7 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 
 	// Регистрация токена
 	token := gndst1.NewGNDst1(
-		core.Address(addr),
+		addr,
 		name,
 		symbol,
 		decimals,
@@ -70,14 +70,18 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 	// Эмитим событие
 	if e.eventManager != nil {
 		event := &types.Event{
-			Type:        types.EventDeploy,
+			Type:        "TokenDeployed",
 			Contract:    addr,
 			FromAddress: from,
 			Timestamp:   time.Now(),
 			Metadata: map[string]interface{}{
-				"name":   name,
-				"symbol": symbol,
-				"owner":  from,
+				"address":     addr,
+				"name":        name,
+				"symbol":      symbol,
+				"decimals":    decimals,
+				"totalSupply": totalSupply.String(),
+				"standard":    "gndst1",
+				"owner":       from,
 			},
 		}
 		if err := e.eventManager.SaveEvent(ctx, event); err != nil {

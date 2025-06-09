@@ -4,12 +4,19 @@ package api
 
 import (
 	"GND/core"
+	"GND/tokens/interfaces"
+	"GND/tokens/registry"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"net/http"
 	"strings"
+
+	"context"
+	"errors"
+	"math/big"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // APIResponse — унифицированная структура ответа API
@@ -149,13 +156,34 @@ func StartRESTServer(
 		balances := make([]map[string]interface{}, 0, len(config.Coins))
 
 		for _, coin := range config.Coins {
-			balance := bc.State.GetBalance(addr, coin.Symbol)
-			balances = append(balances, map[string]interface{}{
-				"symbol":   coin.Symbol,
-				"name":     coin.Name,
-				"decimals": coin.Decimals,
-				"balance":  balance.String(),
-			})
+			token := &core.Token{Symbol: coin.Symbol, Standard: coin.Standard, Address: coin.ContractAddress}
+			if coin.Standard == "gndst1" {
+				res, err := token.UniversalCall(r.Context(), "balanceOf", address)
+				if err != nil {
+					balances = append(balances, map[string]interface{}{
+						"symbol":   coin.Symbol,
+						"name":     coin.Name,
+						"decimals": coin.Decimals,
+						"balance":  "0",
+						"error":    err.Error(),
+					})
+					continue
+				}
+				balances = append(balances, map[string]interface{}{
+					"symbol":   coin.Symbol,
+					"name":     coin.Name,
+					"decimals": coin.Decimals,
+					"balance":  fmt.Sprintf("%v", res),
+				})
+			} else {
+				balance := bc.State.GetBalance(addr, coin.Symbol)
+				balances = append(balances, map[string]interface{}{
+					"symbol":   coin.Symbol,
+					"name":     coin.Name,
+					"decimals": coin.Decimals,
+					"balance":  balance.String(),
+				})
+			}
 		}
 
 		sendJSON(w, APIResponse{
@@ -206,4 +234,50 @@ func StartRESTServer(
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}
+}
+
+// Пример для обработчика transfer
+func (api *API) handleTransfer(w http.ResponseWriter, r *http.Request) {
+	// ... парсинг запроса ...
+	token, err := registry.GetToken(req.TokenAddress)
+	if err != nil {
+		// ... ошибка ...
+		return
+	}
+	if gnd, ok := token.(interfaces.TokenInterface); ok {
+		err := gnd.Transfer(r.Context(), core.Address(req.From), core.Address(req.To), req.Amount)
+		if err != nil {
+			// ... ошибка ...
+			return
+		}
+		// ... успех ...
+		return
+	}
+	// ... ошибка: unsupported token standard ...
+}
+
+// UniversalTokenCall вызывает метод токена с учетом стандарта
+func UniversalTokenCall(ctx context.Context, tokenAddr string, method string, args ...interface{}) (interface{}, error) {
+	token, err := registry.GetToken(tokenAddr)
+	if err != nil {
+		return nil, err
+	}
+	if gnd, ok := token.(interfaces.TokenInterface); ok {
+		switch method {
+		case "transfer":
+			if len(args) == 3 {
+				return nil, gnd.Transfer(ctx, args[0].(core.Address), args[1].(core.Address), args[2].(*big.Int))
+			}
+		case "approve":
+			if len(args) == 3 {
+				return nil, gnd.Approve(ctx, args[0].(core.Address), args[1].(core.Address), args[2].(*big.Int))
+			}
+		case "balanceOf":
+			if len(args) == 1 {
+				return gnd.GetBalance(ctx, args[0].(core.Address))
+			}
+			// ... другие методы ...
+		}
+	}
+	return nil, errors.New("unsupported token standard or method")
 }

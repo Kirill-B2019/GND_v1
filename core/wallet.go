@@ -30,15 +30,14 @@ type Wallet struct {
 }
 
 func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
+	ctx := context.Background()
 
-	//выбор ID для кошелька
-	err := pool.QueryRow(
-		context.Background(),
-		`INSERT INTO accounts DEFAULT VALUES RETURNING id`,
-	).Scan(&accountID)
+	// Начинаем транзакцию
+	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка создания аккаунта: %w", err)
+		return nil, fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
+	defer tx.Rollback(ctx)
 
 	// Генерация ключей
 	privKey, err := secp256k1.GeneratePrivateKey()
@@ -46,7 +45,7 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 		return nil, fmt.Errorf("ошибка генерации ключа: %w", err)
 	}
 
-	// Формирование адреса (как в оригинале)
+	// Формирование адреса
 	pubKey := privKey.PubKey().SerializeCompressed()
 	shaHash := sha256.Sum256(pubKey)
 	ripemdHasher := ripemd160.New()
@@ -58,18 +57,37 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	if err != nil {
 		return nil, err
 	}
-	checksum := checksum(pubKeyHash)
+	checksum := Checksum(pubKeyHash)
 	fullPayload := append(pubKeyHash, checksum...)
 	encoded := base58.Encode(fullPayload)
 	address := prefix + encoded
 
+	// Проверяем, не существует ли уже такой адрес
+	var exists bool
+	err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM accounts WHERE address = $1)", address).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка проверки существующего адреса: %w", err)
+	}
+	if exists {
+		return nil, fmt.Errorf("адрес %s уже существует", address)
+	}
+
+	// Создаем аккаунт с адресом сразу
+	err = tx.QueryRow(ctx,
+		`INSERT INTO accounts (address) VALUES ($1) RETURNING id`,
+		address,
+	).Scan(&accountID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания аккаунта: %w", err)
+	}
+
 	// Подготовка данных для БД
 	privateKeyBytes := privKey.Serialize()
 	publicKeyHex := hex.EncodeToString(pubKey)
-	privateKeyHex := hex.EncodeToString(privateKeyBytes) // Шифруйте на практике!
+	privateKeyHex := hex.EncodeToString(privateKeyBytes)
 	now := time.Now()
 
-	// SQL-запрос
+	// Создаем кошелек
 	query := `
     INSERT INTO wallets (
         account_id,
@@ -83,9 +101,9 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
     RETURNING id
 `
 	var walletID int
-	err = pool.QueryRow(context.Background(), query,
+	err = tx.QueryRow(ctx, query,
 		accountID,
-		address, // <-- добавлен адрес кошелька
+		address,
 		publicKeyHex,
 		privateKeyHex,
 		now,
@@ -94,7 +112,12 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	).Scan(&walletID)
 
 	if err != nil {
-		return nil, fmt.Errorf("ошибка сохранения в БД: %w", err)
+		return nil, fmt.Errorf("ошибка сохранения кошелька в БД: %w", err)
+	}
+
+	// Фиксируем транзакцию
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("ошибка фиксации транзакции: %w", err)
 	}
 
 	return &Wallet{
@@ -113,15 +136,8 @@ func randomPrefix() (string, error) {
 	return validPrefixes[n.Int64()], nil
 }
 
-func checksum(payload []byte) []byte {
-	first := sha256.Sum256(payload)
-	second := sha256.Sum256(first[:])
-	return second[:4]
-}
-
 func ValidateAddress(address string) bool {
 	// Проверяем префикс
-
 	var prefixLen int
 	switch {
 	case strings.HasPrefix(address, "GNDct"):
@@ -150,7 +166,7 @@ func ValidateAddress(address string) bool {
 	// Проверяем контрольную сумму (Base58Check)
 	payload := decoded[:20]
 	checksumBytes := decoded[20:]
-	return bytesEqual(checksum(payload), checksumBytes)
+	return BytesEqual(Checksum(payload), checksumBytes)
 }
 
 // Безопасное сравнение байтовых срезов

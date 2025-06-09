@@ -49,6 +49,7 @@ type CoinConfig struct {
 	ContractAddress string `json:"contract_address"`
 	CoinLogo        string `json:"coin_logo"`
 	TotalSupply     string `json:"total_supply"`
+	Standard        string `json:"standard"`
 }
 
 type ConsensusPosConfig struct {

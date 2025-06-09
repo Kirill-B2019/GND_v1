@@ -15,6 +15,7 @@ type TokenInfo struct {
 	Decimals    uint8    `json:"decimals"`
 	TotalSupply *big.Int `json:"totalSupply"`
 	Address     string   `json:"address"`
+	Standard    string   `json:"standard"`
 	Bytecode    string   `json:"bytecode,omitempty"`
 }
 
@@ -55,9 +56,11 @@ func (t *TokenInfo) MarshalJSON() ([]byte, error) {
 	type Alias TokenInfo
 	return json.Marshal(&struct {
 		TotalSupply string `json:"totalSupply"`
+		Standard    string `json:"standard"`
 		*Alias
 	}{
 		TotalSupply: t.TotalSupply.String(),
+		Standard:    t.Standard,
 		Alias:       (*Alias)(t),
 	})
 }
@@ -67,6 +70,7 @@ func (t *TokenInfo) UnmarshalJSON(data []byte) error {
 	type Alias TokenInfo
 	aux := &struct {
 		TotalSupply string `json:"totalSupply"`
+		Standard    string `json:"standard"`
 		*Alias
 	}{
 		Alias: (*Alias)(t),
@@ -76,6 +80,7 @@ func (t *TokenInfo) UnmarshalJSON(data []byte) error {
 	}
 	t.TotalSupply = new(big.Int)
 	t.TotalSupply.SetString(aux.TotalSupply, 10)
+	t.Standard = aux.Standard
 	return nil
 }
 

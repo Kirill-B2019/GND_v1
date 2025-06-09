@@ -9,9 +9,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Определяем тип Bytecode как псевдоним для []byte
@@ -41,6 +42,7 @@ type TokenContract struct {
 	name     string
 	symbol   string
 	decimals uint8
+	standard string
 	balances map[core.Address]*big.Int
 	pool     *pgxpool.Pool
 }
@@ -74,6 +76,7 @@ func NewTokenContract(
 		name:     name,
 		symbol:   symbol,
 		decimals: decimals,
+		standard: "gndst1", // Устанавливаем стандарт по умолчанию
 		balances: make(map[core.Address]*big.Int),
 		pool:     pool,
 	}
@@ -188,7 +191,7 @@ func (c *TokenContract) SaveToDB(ctx context.Context) error {
 		INSERT INTO contracts (
 			address, owner, code, abi, created_at, type
 		) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (address) DO NOTHING`,
-		c.address, c.owner, c.bytecode, nil, time.Now(), "erc20")
+		c.address, c.owner, c.bytecode, nil, time.Now(), c.standard)
 	if err != nil {
 		return fmt.Errorf("ошибка сохранения контракта: %v", err)
 	}
@@ -197,20 +200,13 @@ func (c *TokenContract) SaveToDB(ctx context.Context) error {
 	_, err = tx.Exec(ctx, `
 		INSERT INTO tokens (
 			contract_id, standard, symbol, name, decimals, total_supply
-		) VALUES ($1, $2, $3, $4, $5, $6)`,
-		c.address, "gndst1", c.symbol, c.name, c.decimals, c.balances[c.owner].String())
+		) VALUES (
+			(SELECT id FROM contracts WHERE address = $1),
+			$2, $3, $4, $5, $6
+		) ON CONFLICT (symbol) DO NOTHING`,
+		c.address, c.standard, c.symbol, c.name, c.decimals, c.balances[c.owner].String())
 	if err != nil {
 		return fmt.Errorf("ошибка сохранения токена: %v", err)
-	}
-
-	// Сохраняем начальный баланс владельца
-	_, err = tx.Exec(ctx, `
-		INSERT INTO token_balances (
-			token_id, address, balance
-		) VALUES ((SELECT id FROM tokens WHERE symbol = $1), $2, $3)`,
-		c.symbol, c.owner, c.balances[c.owner].String())
-	if err != nil {
-		return fmt.Errorf("ошибка сохранения баланса: %v", err)
 	}
 
 	return tx.Commit(ctx)

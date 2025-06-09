@@ -5,11 +5,12 @@ package registry
 import (
 	"GND/tokens/interfaces"
 	"GND/tokens/standards/gndst1"
-	"GND/tokens/types"
+	"GND/types"
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"sync"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var Tokens = map[string]*gndst1.GNDst1{} // Хранение конкретной реализации GNDst1
@@ -63,9 +64,9 @@ func GetAllTokens() []*types.TokenInfo {
 			Name:        token.GetName(),
 			Symbol:      token.GetSymbol(),
 			Decimals:    token.GetDecimals(),
-			TotalSupply: token.GetTotalSupply(),
+			TotalSupply: token.GetTotalSupply().String(),
 			Address:     addr,
-			Standard:    "gndst1",
+			Standard:    token.GetStandard(),
 		})
 	}
 	return list
@@ -73,7 +74,6 @@ func GetAllTokens() []*types.TokenInfo {
 
 // RegisterToken регистрирует новый токен
 func (r *TokenRegistry) RegisterToken(ctx context.Context, token interfaces.TokenInterface) error {
-	// TODO: Реализовать сохранение в БД
 	addr := token.GetAddress()
 	if addr == "" {
 		return errors.New("некорректный адрес токена")
@@ -84,19 +84,16 @@ func (r *TokenRegistry) RegisterToken(ctx context.Context, token interfaces.Toke
 		return err
 	}
 
-	// TODO: Сохранить в БД
 	return nil
 }
 
 // GetToken возвращает информацию о токене по адресу
 func (r *TokenRegistry) GetToken(ctx context.Context, address string) (interfaces.TokenInterface, error) {
-	// TODO: Реализовать получение из БД
 	return GetToken(address)
 }
 
 // ListTokens возвращает список всех токенов
 func (r *TokenRegistry) ListTokens(ctx context.Context) ([]interfaces.TokenInterface, error) {
-	// TODO: Реализовать получение из БД
 	tokens := GetAllTokens()
 	result := make([]interfaces.TokenInterface, len(tokens))
 	for i, token := range tokens {

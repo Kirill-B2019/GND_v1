@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"log"
 	"math/big"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -235,59 +233,69 @@ func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockInde
 	}
 	return txs, nil
 }
-func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx, `
-		INSERT INTO blocks (
-			hash, prev_hash, timestamp, validator_id, tx_count, state_root, signature
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		b.Hash, b.PrevHash, time.Unix(int64(b.Timestamp), 0),
-		nil, len(b.Transactions), "", "")
 
-	return err
-}
-func (bc *Blockchain) AddBlock(block *Block) {
-	log.Printf("Добавлен новый блок #%d с хешем %s", block.Index, block.Hash)
-	// Ваша текущая логика
-}
+func (bc *Blockchain) AddBlock(block *Block) error {
+	bc.mutex.Lock()
+	defer bc.mutex.Unlock()
 
-// SaveToDB сохраняет всю цепочку блоков в БД внутри транзакции
-func (bc *Blockchain) SaveToDB(ctx context.Context) error {
-	tx, err := bc.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("не удалось начать транзакцию: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	for _, block := range bc.blocks {
-		if err := saveBlockToTx(ctx, tx, block); err != nil {
-			return fmt.Errorf("ошибка при сохранении блока #%d: %w", block.Index, err)
-		}
+	if !bc.validateBlock(block) {
+		return errors.New("блок не прошел валидацию")
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("ошибка при коммите транзакции: %w", err)
-	}
+	bc.blocks = append(bc.blocks, block)
+	bc.applyBlock(block)
 
 	return nil
 }
 
-// saveBlockToTx — внутренний метод для повторного использования
-func saveBlockToTx(ctx context.Context, tx pgx.Tx, block *Block) error {
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO blocks (
-			index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (index) DO NOTHING`,
-		block.Index,
-		block.Hash,
-		block.PrevHash,
-		time.Unix(block.Timestamp, 0),
-		block.Miner,
-		block.GasUsed,
-		block.GasLimit,
-		block.Consensus,
-		block.Nonce,
-	)
-	return err
+// FirstLaunch выполняет инициализацию блокчейна при первом запуске
+func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
+	// Создаем генезис-блок
+	genesis := NewBlock("", 0, string(wallet.Address))
+	genesis.Hash = genesis.CalculateHash()
+	genesis.Consensus = "pos"
+	genesis.Index = 0
+
+	// Создаем токены из конфигурации
+	for _, coin := range cfg.Coins {
+		token := NewToken(
+			coin.ContractAddress,
+			coin.Symbol,
+			coin.Name,
+			coin.Decimals,
+			coin.TotalSupply,
+			string(wallet.Address),
+			"ERC20",
+			coin.Standard,
+			genesis.ID,
+			0,
+		)
+
+		if err := token.SaveToDB(ctx, pool); err != nil {
+			return fmt.Errorf("ошибка создания токена %s: %w", coin.Symbol, err)
+		}
+
+		// Создаем начальный баланс
+		amount := new(big.Int)
+		if coin.TotalSupply != "" {
+			amount.SetString(coin.TotalSupply, 10)
+		} else {
+			amount.SetInt64(1_000_000)
+			multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(coin.Decimals)), nil)
+			amount = amount.Mul(amount, multiplier)
+		}
+
+		_, err := pool.Exec(ctx, `
+			INSERT INTO token_balances (token_id, address, balance)
+			SELECT id, $1, $2
+			FROM tokens WHERE address = $3
+			ON CONFLICT (token_id, address) DO UPDATE
+			SET balance = $2`,
+			string(wallet.Address), amount.String(), coin.ContractAddress)
+		if err != nil {
+			return fmt.Errorf("ошибка создания баланса токена: %w", err)
+		}
+	}
+
+	return nil
 }

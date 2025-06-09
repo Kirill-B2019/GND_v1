@@ -2,12 +2,191 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
 	"sync"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// BlockchainState - структура состояния в блокчейне ГАНИМЕД
+type BlockchainState struct {
+	ID          int       // ID состояния
+	BlockID     int       // ID блока
+	Address     string    // Адрес аккаунта
+	Balance     *big.Int  // Баланс в нативных токенах
+	Nonce       uint64    // Номер последней транзакции
+	StorageRoot string    // Корень хранилища
+	CodeHash    string    // Хеш кода контракта
+	CreatedAt   time.Time // Время создания
+	UpdatedAt   time.Time // Время последнего обновления
+	Metadata    []byte    // Метаданные состояния
+}
+
+// NewBlockchainState создает новое состояние
+func NewBlockchainState(blockID int, address string, balance *big.Int, nonce uint64, storageRoot, codeHash string) *BlockchainState {
+	now := time.Now()
+	return &BlockchainState{
+		BlockID:     blockID,
+		Address:     address,
+		Balance:     balance,
+		Nonce:       nonce,
+		StorageRoot: storageRoot,
+		CodeHash:    codeHash,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Metadata:    []byte{},
+	}
+}
+
+// SaveToDB сохраняет состояние в БД
+func (s *BlockchainState) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	err := pool.QueryRow(ctx, `
+		INSERT INTO states (
+			block_id, address, balance, nonce, storage_root,
+			code_hash, created_at, updated_at, metadata
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id`,
+		s.BlockID, s.Address, s.Balance.String(), s.Nonce, s.StorageRoot,
+		s.CodeHash, s.CreatedAt, s.UpdatedAt, s.Metadata,
+	).Scan(&s.ID)
+
+	if err != nil {
+		return fmt.Errorf("ошибка сохранения состояния: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateBalance обновляет баланс состояния
+func (s *BlockchainState) UpdateBalance(ctx context.Context, pool *pgxpool.Pool, newBalance *big.Int) error {
+	s.Balance = newBalance
+	s.UpdatedAt = time.Now()
+
+	_, err := pool.Exec(ctx, `
+		UPDATE states 
+		SET balance = $1, updated_at = $2
+		WHERE id = $3`,
+		s.Balance.String(), s.UpdatedAt, s.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("ошибка обновления баланса: %w", err)
+	}
+
+	return nil
+}
+
+// IncrementNonce увеличивает nonce состояния
+func (s *BlockchainState) IncrementNonce(ctx context.Context, pool *pgxpool.Pool) error {
+	s.Nonce++
+	s.UpdatedAt = time.Now()
+
+	_, err := pool.Exec(ctx, `
+		UPDATE states 
+		SET nonce = $1, updated_at = $2
+		WHERE id = $3`,
+		s.Nonce, s.UpdatedAt, s.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("ошибка обновления nonce: %w", err)
+	}
+
+	return nil
+}
+
+// LoadBlockchainState загружает состояние из БД по адресу и ID блока
+func LoadBlockchainState(ctx context.Context, pool *pgxpool.Pool, address string, blockID int) (*BlockchainState, error) {
+	var id int
+	var balanceStr string
+	var nonce uint64
+	var storageRoot, codeHash string
+	var createdAt, updatedAt time.Time
+	var metadata []byte
+
+	err := pool.QueryRow(ctx, `
+		SELECT id, balance, nonce, storage_root, code_hash,
+			created_at, updated_at, metadata
+		FROM states
+		WHERE address = $1 AND block_id = $2`,
+		address, blockID,
+	).Scan(&id, &balanceStr, &nonce, &storageRoot, &codeHash,
+		&createdAt, &updatedAt, &metadata)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("состояние не найдено: %s (block %d)", address, blockID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ошибка загрузки состояния: %w", err)
+	}
+
+	balance, ok := new(big.Int).SetString(balanceStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("ошибка парсинга баланса: %s", balanceStr)
+	}
+
+	return &BlockchainState{
+		ID:          id,
+		BlockID:     blockID,
+		Address:     address,
+		Balance:     balance,
+		Nonce:       nonce,
+		StorageRoot: storageRoot,
+		CodeHash:    codeHash,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
+		Metadata:    metadata,
+	}, nil
+}
+
+// GetStateBalance возвращает баланс состояния
+func GetStateBalance(ctx context.Context, pool *pgxpool.Pool, address string, blockID int) (*big.Int, error) {
+	var balanceStr string
+	err := pool.QueryRow(ctx, `
+		SELECT balance
+		FROM states
+		WHERE address = $1 AND block_id = $2`,
+		address, blockID,
+	).Scan(&balanceStr)
+
+	if err == sql.ErrNoRows {
+		return big.NewInt(0), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения баланса: %w", err)
+	}
+
+	balance, ok := new(big.Int).SetString(balanceStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("ошибка парсинга баланса: %s", balanceStr)
+	}
+
+	return balance, nil
+}
+
+// GetStateNonce возвращает nonce состояния
+func GetStateNonce(ctx context.Context, pool *pgxpool.Pool, address string, blockID int) (uint64, error) {
+	var nonce uint64
+	err := pool.QueryRow(ctx, `
+		SELECT nonce
+		FROM states
+		WHERE address = $1 AND block_id = $2`,
+		address, blockID,
+	).Scan(&nonce)
+
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("ошибка получения nonce: %w", err)
+	}
+
+	return nonce, nil
+}
 
 // State представляет состояние блокчейна (балансы, данные о транзакциях и т.д.)
 type State struct {
