@@ -138,6 +138,81 @@ interface IGNDst1 {
 
 ---
 
+### 12. Расширенные функции GNDst-1
+
+#### 12.1. Система снимков (Snapshots)
+Снимки позволяют фиксировать состояние балансов токенов в определенный момент времени. Это полезно для:
+- Голосований в DAO
+- Распределения дивидендов
+- Аудита и отчетности
+
+```solidity
+function snapshot() external returns (uint256);
+function getSnapshotBalance(address user, uint256 snapshotId) external view returns (uint256);
+```
+
+#### 12.2. Система дивидендов
+Позволяет распределять дивиденды между держателями токенов на основе снимков:
+```solidity
+function claimDividends(uint256 snapshotId) external;
+```
+
+#### 12.3. Модульная система
+Позволяет расширять функционал токена без изменения основного контракта:
+```solidity
+function moduleCall(bytes32 moduleId, bytes calldata data) external returns (bytes memory);
+function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external;
+```
+
+#### 12.4. KYC и безопасность
+Все операции с токенами требуют прохождения KYC:
+```solidity
+function setKycStatus(address user, bool status) external;
+function isKycPassed(address user) external view returns (bool);
+```
+
+#### 12.5. Кроссчейн-операции
+Поддержка переводов между разными блокчейнами:
+```solidity
+function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external returns (bool);
+```
+
+### 13. Примеры использования
+
+#### 13.1. Создание снимка и распределение дивидендов
+```solidity
+// Создание снимка
+uint256 snapshotId = token.snapshot();
+
+// Распределение дивидендов
+token.claimDividends(snapshotId);
+```
+
+#### 13.2. Регистрация и использование модуля
+```solidity
+// Регистрация модуля
+token.registerModule(keccak256("voting"), votingModuleAddress, "Voting Module");
+
+// Вызов метода модуля
+bytes memory result = token.moduleCall(keccak256("voting"), abi.encode("vote", proposalId, true));
+```
+
+#### 13.3. Кроссчейн-перевод
+```solidity
+// Перевод токенов в другую сеть
+token.crossChainTransfer("ethereum", recipientAddress, amount);
+```
+
+### 14. Безопасность и рекомендации
+
+1. Все операции с токенами должны проходить через KYC
+2. Модули должны быть тщательно проверены перед регистрацией
+3. Кроссчейн-операции должны использовать проверенные мосты
+4. Снимки должны создаваться только владельцем токена
+5. Дивиденды должны распределяться с учетом всех держателей токенов
+
+---
+
 **GNDst-1 — стандарт для будущего мультицепочечных, модульных и безопасных токенов!**
 [^1]
 

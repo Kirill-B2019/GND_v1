@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -25,6 +26,18 @@ type TokenMeta struct {
 	Description string
 }
 
+// Структуры для снимков и модулей
+type Snapshot struct {
+	ID        uint64
+	Timestamp int64
+	Balances  map[string]*big.Int
+}
+
+type Module struct {
+	Address string
+	Name    string
+}
+
 // GNDst1 реализует стандарт GNDST1 для токенов
 type GNDst1 struct {
 	address     string
@@ -38,6 +51,12 @@ type GNDst1 struct {
 	pool        *pgxpool.Pool
 	kycPassed   map[string]bool
 	bridge      string
+
+	// Новые поля
+	snapshots       map[uint64]*Snapshot
+	currentSnapshot uint64
+	dividends       map[uint64]*big.Int
+	modules         map[string]*Module
 }
 
 func NewGNDst1(
@@ -58,6 +77,9 @@ func NewGNDst1(
 		allowances:  make(map[string]map[string]*big.Int),
 		pool:        pool,
 		kycPassed:   make(map[string]bool),
+		snapshots:   make(map[uint64]*Snapshot),
+		dividends:   make(map[uint64]*big.Int),
+		modules:     make(map[string]*Module),
 	}
 }
 
@@ -282,4 +304,110 @@ func (t *GNDst1) EmitApproval(ctx context.Context, owner, spender string, amount
 // GetStandard возвращает стандарт токена
 func (t *GNDst1) GetStandard() string {
 	return "gndst1"
+}
+
+// Snapshot создает снимок текущих балансов
+func (t *GNDst1) Snapshot(ctx context.Context) (uint64, error) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	t.currentSnapshot++
+	snapshot := &Snapshot{
+		ID:        t.currentSnapshot,
+		Timestamp: time.Now().Unix(),
+		Balances:  make(map[string]*big.Int),
+	}
+
+	// Копируем текущие балансы
+	for addr, balance := range t.balances {
+		snapshot.Balances[addr] = new(big.Int).Set(balance)
+	}
+
+	t.snapshots[t.currentSnapshot] = snapshot
+	return t.currentSnapshot, nil
+}
+
+// GetSnapshotBalance возвращает баланс адреса на момент снимка
+func (t *GNDst1) GetSnapshotBalance(ctx context.Context, address string, snapshotId uint64) (*big.Int, error) {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	snapshot, exists := t.snapshots[snapshotId]
+	if !exists {
+		return nil, errors.New("snapshot not found")
+	}
+
+	balance, exists := snapshot.Balances[address]
+	if !exists {
+		return big.NewInt(0), nil
+	}
+	return balance, nil
+}
+
+// ClaimDividends позволяет получить дивиденды за определенный снимок
+func (t *GNDst1) ClaimDividends(ctx context.Context, snapshotId uint64) error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	snapshot, exists := t.snapshots[snapshotId]
+	if !exists {
+		return errors.New("snapshot not found")
+	}
+
+	dividend, exists := t.dividends[snapshotId]
+	if !exists || dividend.Sign() <= 0 {
+		return errors.New("no dividends available")
+	}
+
+	balance := snapshot.Balances[t.address]
+	if balance == nil || balance.Sign() <= 0 {
+		return errors.New("no balance in snapshot")
+	}
+
+	// Рассчитываем долю дивидендов
+	totalSupply := t.totalSupply
+	if totalSupply.Sign() <= 0 {
+		return errors.New("invalid total supply")
+	}
+
+	share := new(big.Int).Mul(balance, dividend)
+	share.Div(share, totalSupply)
+
+	if share.Sign() <= 0 {
+		return errors.New("dividend share too small")
+	}
+
+	// Переводим дивиденды
+	return t.Transfer(ctx, t.address, t.address, share)
+}
+
+// ModuleCall вызывает метод внешнего модуля
+func (t *GNDst1) ModuleCall(ctx context.Context, moduleId string, data []byte) ([]byte, error) {
+	t.mutex.RLock()
+	module, exists := t.modules[moduleId]
+	t.mutex.RUnlock()
+
+	if !exists {
+		return nil, errors.New("module not found")
+	}
+
+	// TODO: Реализовать вызов модуля через интерфейс
+	return nil, errors.New("module call not implemented")
+}
+
+// RegisterModule регистрирует новый модуль
+func (t *GNDst1) RegisterModule(ctx context.Context, moduleId string, moduleAddress string, name string) error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if _, exists := t.modules[moduleId]; exists {
+		return errors.New("module already exists")
+	}
+
+	t.modules[moduleId] = &Module{
+		Address: moduleAddress,
+		Name:    name,
+	}
+
+	return nil
 }
