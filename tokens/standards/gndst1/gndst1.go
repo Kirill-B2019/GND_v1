@@ -384,7 +384,7 @@ func (t *GNDst1) ClaimDividends(ctx context.Context, snapshotId uint64) error {
 // ModuleCall вызывает метод внешнего модуля
 func (t *GNDst1) ModuleCall(ctx context.Context, moduleId string, data []byte) ([]byte, error) {
 	t.mutex.RLock()
-	module, exists := t.modules[moduleId]
+	_, exists := t.modules[moduleId]
 	t.mutex.RUnlock()
 
 	if !exists {
