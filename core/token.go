@@ -25,7 +25,7 @@ type Token struct {
 	Decimals    int       // Количество десятичных знаков
 	TotalSupply string    // Общее предложение
 	Owner       string    // Владелец токена
-	Type        string    // Тип токена (ERC20, ERC721, etc)
+	Type        string    // Тип токена (gndst-1)
 	Standard    string    // Стандарт токена
 	Status      string    // Статус токена
 	BlockID     int       // ID блока создания
