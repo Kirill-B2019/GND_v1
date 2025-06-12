@@ -57,8 +57,19 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// В продакшене реализуйте строгую проверку домена!
-		return true
+		// Проверка домена
+		origin := r.Header.Get("Origin")
+		allowedOrigins := []string{
+			"https://api.gnd-net.com",
+			"https://gnd-net.com",
+			"http://localhost:8182",
+		}
+		for _, allowed := range allowedOrigins {
+			if origin == allowed {
+				return true
+			}
+		}
+		return false
 	},
 }
 

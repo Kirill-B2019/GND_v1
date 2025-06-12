@@ -37,47 +37,51 @@ func StartRPCServer(evm *vm.EVM, addr string) error {
 	mux := http.NewServeMux()
 
 	// Регистрация всех эндпоинтов
-	endpoints := map[string]string{
-		"/block/latest":         "Получить последний блок",
-		"/contract/deploy":      "Деплой контракта",
-		"/contract/call":        "Вызов метода контракта",
-		"/contract/send":        "Отправка транзакции в контракт",
-		"/account/balance":      "Получить баланс аккаунта",
-		"/block/by-number":      "Получить блок по номеру",
-		"/tx/send":              "Отправить транзакцию",
-		"/tx/status":            "Получить статус транзакции",
-		"/token/universal-call": "Универсальный вызов токена",
+	endpoints := map[string]http.HandlerFunc{
+		"/block/latest":         LatestBlockHandler(evm),
+		"/contract/deploy":      DeployContractHandler(evm),
+		"/contract/call":        CallContractHandler(evm),
+		"/contract/send":        SendContractTxHandler(evm),
+		"/account/balance":      AccountBalanceHandler(evm),
+		"/block/by-number":      BlockByNumberHandler(evm),
+		"/tx/send":              SendTxHandler(evm),
+		"/tx/status":            TxStatusHandler(evm),
+		"/token/universal-call": UniversalTokenCallHandler(),
 	}
 
-	// Регистрация обработчиков
-	for path, _ := range endpoints {
-		switch path {
-		case "/block/latest":
-			mux.HandleFunc(path, LatestBlockHandler(evm))
-		case "/contract/deploy":
-			mux.HandleFunc(path, DeployContractHandler(evm))
-		case "/contract/call":
-			mux.HandleFunc(path, CallContractHandler(evm))
-		case "/contract/send":
-			mux.HandleFunc(path, SendContractTxHandler(evm))
-		case "/account/balance":
-			mux.HandleFunc(path, AccountBalanceHandler(evm))
-		case "/block/by-number":
-			mux.HandleFunc(path, BlockByNumberHandler(evm))
-		case "/tx/send":
-			mux.HandleFunc(path, SendTxHandler(evm))
-		case "/tx/status":
-			mux.HandleFunc(path, TxStatusHandler(evm))
-		case "/token/universal-call":
-			mux.HandleFunc(path, UniversalTokenCallHandler())
+	// Добавляем middleware для CORS и безопасности
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "https://api.gnd-net.com")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+
+		// Security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
 		}
-	}
+
+		// Обработка запроса
+		path := r.URL.Path
+		if handler, ok := endpoints[path]; ok {
+			handler(w, r)
+		} else {
+			http.Error(w, "Not Found", http.StatusNotFound)
+		}
+	})
 
 	// Логирование информации о запуске
 	log.Printf("=== RPC Server запущен на %s ===", addr)
 	log.Println("Доступные эндпоинты:")
-	for path, description := range endpoints {
-		log.Printf("  %s - %s", path, description)
+	for path := range endpoints {
+		log.Printf("  %s", path)
 	}
 	log.Println("===============================")
 

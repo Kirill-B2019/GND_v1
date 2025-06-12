@@ -310,7 +310,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	r.Use(middleware.AuthMiddleware)
 
 	// Serve static files
-	fs := http.FileServer(http.Dir("."))
+	fs := http.FileServer(http.Dir("/var/www/gnd-api"))
 	r.PathPrefix("/").Handler(fs)
 
 	// API маршруты
