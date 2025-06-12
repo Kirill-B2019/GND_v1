@@ -309,8 +309,23 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	r.Use(middleware.RateLimitMiddleware)
 	r.Use(middleware.AuthMiddleware)
 
+	// Serve static files
+	fs := http.FileServer(http.Dir("."))
+	r.PathPrefix("/").Handler(fs)
+
 	// API маршруты
 	api := r.PathPrefix("/api").Subrouter()
+
+	// Health check endpoint
+	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":    "ok",
+			"version":   "1.0.0",
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+	}).Methods("GET")
 
 	// Эндпоинты кошелька
 	api.HandleFunc("/wallet/create", handleCreateWallet).Methods("POST")
