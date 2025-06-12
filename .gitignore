@@ -1,2 +1,16 @@
 /wallets/
 /node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.env
+.venv
+*.egg-info/
+.installed.cfg
+*.egg

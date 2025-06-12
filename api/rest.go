@@ -300,15 +300,17 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	blockchain = bc
 	mempool = mp
 
-	router := mux.NewRouter()
+	r := mux.NewRouter()
 
 	// Middleware
-	router.Use(middleware.CORS)
-	router.Use(middleware.Logger)
-	router.Use(middleware.Recovery)
+	r.Use(RecoverMiddleware)
+	r.Use(middleware.LoggerMiddleware)
+	r.Use(middleware.CORSMiddleware)
+	r.Use(middleware.RateLimitMiddleware)
+	r.Use(middleware.AuthMiddleware)
 
 	// API маршруты
-	api := router.PathPrefix("/api").Subrouter()
+	api := r.PathPrefix("/api").Subrouter()
 
 	// Эндпоинты кошелька
 	api.HandleFunc("/wallet/create", handleCreateWallet).Methods("POST")
@@ -349,7 +351,8 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 				http.Error(w, "Invalid or expired API key", http.StatusUnauthorized)
 				return
 			}
-			log.Printf("RPC Server сервер запущен на %d", cfg.Server.REST.Port)
+			log.Printf("=== REST Server запущен на %s ===", fmt.Sprintf("%s:%d", cfg.Server.REST.Host, cfg.Server.REST.Port))
+			log.Println("Доступные эндпоинты:")
 			next.ServeHTTP(w, r)
 		}
 	}
@@ -435,15 +438,12 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 		json.NewEncoder(w).Encode(resp)
 	}))
 
-	// Запуск сервера
-	host := cfg.Server.REST.Host
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	addr := fmt.Sprintf("%s:%d", host, cfg.Server.REST.Port)
-	fmt.Printf("Starting REST server on %s\n", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
-		fmt.Printf("Error starting REST server: %v\n", err)
+	// Формируем адрес сервера
+	addr := fmt.Sprintf("%s:%d", cfg.Server.REST.Host, cfg.Server.REST.Port)
+	log.Printf("=== REST Server запущен на %s ===", addr)
+	log.Println("Доступные эндпоинты:")
+	if err := http.ListenAndServe(addr, r); err != nil {
+		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}
 }
 

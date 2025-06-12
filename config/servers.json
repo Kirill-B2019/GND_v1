@@ -1,16 +1,17 @@
 {
   "server": {
     "rpc": {
-      "rpc_addr": ":8181",
-      "name": "server RPC"
+      "rpc_addr": "api.gnd-net.com:8181",
+      "name": "RPC Server"
     },
     "rest": {
-      "rest_addr": ":8182",
-      "name": "server REST"
+      "host": "api.gnd-net.com",
+      "port": 8182,
+      "name": "REST Server"
     },
     "ws": {
-      "ws_addr": ":8183",
-      "name": "server WS"
+      "ws_addr": "api.gnd-net.com:8183",
+      "name": "WebSocket Server"
     }
   }
 }

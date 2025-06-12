@@ -110,7 +110,13 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 	})
 
 	addr := cfg.Server.WS.WSAddr
-	log.Printf("Запуск WebSocket сервера на %s", addr)
+	log.Printf("=== WebSocket Server запущен на %s ===", addr)
+	log.Println("Доступные подписки:")
+	log.Println("  - blocks: новые блоки")
+	log.Println("  - transactions: новые транзакции")
+	log.Println("  - events: события контрактов")
+	log.Println("===============================")
+
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Ошибка запуска WebSocket сервера: %v", err)
 	}

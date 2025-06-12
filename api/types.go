@@ -23,3 +23,24 @@ type TransactionResponse struct {
 	Status    string    `json:"status"`
 	Timestamp time.Time `json:"timestamp"`
 }
+
+// TestResult представляет результат теста
+type TestResult struct {
+	Method     string `json:"method"`
+	Status     int    `json:"status"`
+	Error      string `json:"error,omitempty"`
+	Response   string `json:"response,omitempty"`
+	Success    bool   `json:"success"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+// countSuccess подсчитывает количество успешных тестов
+func countSuccess(results []TestResult) int {
+	count := 0
+	for _, r := range results {
+		if r.Success {
+			count++
+		}
+	}
+	return count
+}

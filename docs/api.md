@@ -5,13 +5,13 @@
 Блокчейн ГАНИМЕД предоставляет три типа API:
 - REST API
 - WebSocket API
-- JSON-RPC API
+- RPC API
 
 ## Базовые URL
 
-- REST API: `http://45.12.72.15:8182/api/`
-- WebSocket API: `ws://45.12.72.15:8181/ws`
-- JSON-RPC API: `http://45.12.72.15:8545`
+- REST API: `https://api.gnd-net.com:8182/api/`
+- RPC API: `https://api.gnd-net.com:8181`
+- WebSocket API: `wss://api.gnd-net.com:8183/ws`
 
 ## Аутентификация
 
@@ -29,6 +29,7 @@ Content-Type: application/json
 Response:
 {
     "address": "GND...",
+    "publicKey": "0x...",
     "privateKey": "0x..."
 }
 ```
@@ -44,84 +45,40 @@ Response:
 }
 ```
 
-#### Получение транзакций
+### Токены
+
+#### Универсальный вызов токена
 ```http
-GET /wallet/transactions/{address}
-Query Parameters:
-- page: номер страницы (default: 1)
-- limit: количество транзакций (default: 10)
+POST /token/call
+Content-Type: application/json
+
+{
+    "tokenAddr": "GND...",
+    "method": "transfer|approve|balanceOf",
+    "args": ["from", "to", "amount"] // для transfer
+    "args": ["owner", "spender", "amount"] // для approve
+    "args": ["address"] // для balanceOf
+}
 
 Response:
 {
-    "transactions": [
-        {
-            "hash": "0x...",
-            "from": "GND...",
-            "to": "GND...",
-            "value": "1000000000000000000",
-            "status": "success",
-            "timestamp": 1234567890
-        }
-    ],
-    "total": 100,
-    "page": 1,
-    "limit": 10
+    "success": true
 }
 ```
-
-### Токены
 
 #### Получение баланса токена
 ```http
 GET /token/balance/{address}
-Query Parameters:
-- tokenAddress: адрес токена
+Content-Type: application/json
+
+{
+    "tokenAddr": "GND..."
+}
 
 Response:
 {
     "address": "GND...",
-    "tokenAddress": "GND...",
     "balance": "1000000000000000000"
-}
-```
-
-#### Перевод токенов
-```http
-POST /token/transfer
-Content-Type: application/json
-
-{
-    "from": "GND...",
-    "to": "GND...",
-    "tokenAddress": "GND...",
-    "amount": "1000000000000000000",
-    "privateKey": "0x..."
-}
-
-Response:
-{
-    "hash": "0x...",
-    "status": "success"
-}
-```
-
-#### Одобрение токенов
-```http
-POST /token/approve
-Content-Type: application/json
-
-{
-    "owner": "GND...",
-    "spender": "GND...",
-    "tokenAddress": "GND...",
-    "amount": "1000000000000000000",
-    "privateKey": "0x..."
-}
-
-Response:
-{
-    "hash": "0x...",
-    "status": "success"
 }
 ```
 
@@ -137,30 +94,28 @@ Content-Type: application/json
     "to": "GND...",
     "value": "1000000000000000000",
     "data": "0x...",
+    "nonce": 0,
+    "gasLimit": 1000000,
+    "gasPrice": "1",
     "privateKey": "0x..."
 }
 
 Response:
 {
     "hash": "0x...",
-    "status": "success"
+    "status": "pending",
+    "timestamp": "2024-03-21T12:00:00Z"
 }
 ```
 
-#### Получение информации о транзакции
+#### Получение статуса транзакции
 ```http
 GET /tx/{hash}
 
 Response:
 {
     "hash": "0x...",
-    "from": "GND...",
-    "to": "GND...",
-    "value": "1000000000000000000",
-    "data": "0x...",
-    "status": "success",
-    "blockNumber": 123,
-    "timestamp": 1234567890
+    "status": "success|pending|failed"
 }
 ```
 
@@ -210,6 +165,40 @@ Response:
 }
 ```
 
+## RPC API
+
+### Блоки
+
+#### Получение последнего блока
+```http
+GET /block/latest
+
+Response:
+{
+    "number": 123,
+    "hash": "0x...",
+    "parentHash": "0x...",
+    "timestamp": 1234567890,
+    "transactions": [...],
+    "validator": "GND..."
+}
+```
+
+#### Получение блока по номеру
+```http
+GET /block/by-number?number=123
+
+Response:
+{
+    "number": 123,
+    "hash": "0x...",
+    "parentHash": "0x...",
+    "timestamp": 1234567890,
+    "transactions": [...],
+    "validator": "GND..."
+}
+```
+
 ### Контракты
 
 #### Деплой контракта
@@ -219,16 +208,26 @@ Content-Type: application/json
 
 {
     "from": "GND...",
-    "code": "0x...",
-    "args": ["arg1", "arg2"],
-    "privateKey": "0x..."
+    "bytecode": "0x...",
+    "name": "TestContract",
+    "standard": "ERC20",
+    "owner": "GND...",
+    "compiler": "solc",
+    "version": "1.0.0",
+    "params": {},
+    "description": "Test contract",
+    "metadata_cid": "",
+    "source_code": "",
+    "gas_limit": 1000000,
+    "gas_price": 1,
+    "nonce": 0,
+    "signature": "0x...",
+    "total_supply": "1000000000000000000"
 }
 
 Response:
 {
-    "address": "GND...",
-    "hash": "0x...",
-    "status": "success"
+    "address": "GND..."
 }
 ```
 
@@ -240,31 +239,99 @@ Content-Type: application/json
 {
     "from": "GND...",
     "to": "GND...",
-    "method": "transfer",
-    "args": ["GND...", "1000000000000000000"],
-    "privateKey": "0x..."
+    "data": "0x...",
+    "gas_limit": 1000000,
+    "gas_price": 1,
+    "value": 0,
+    "signature": "0x..."
 }
 
 Response:
 {
-    "hash": "0x...",
-    "status": "success",
     "result": "0x..."
 }
 ```
 
-#### Получение информации о контракте
+#### Отправка транзакции в контракт
 ```http
-GET /contract/{address}
+POST /contract/send
+Content-Type: application/json
+
+{
+    "from": "GND...",
+    "to": "GND...",
+    "data": "0x...",
+    "gas_limit": 1000000,
+    "gas_price": 1,
+    "value": 0,
+    "nonce": 0,
+    "signature": "0x..."
+}
+
+Response:
+{
+    "result": "0x..."
+}
+```
+
+### Аккаунты
+
+#### Получение баланса
+```http
+GET /account/balance?address=GND...
 
 Response:
 {
     "address": "GND...",
-    "creator": "GND...",
-    "creationTx": "0x...",
-    "creationBlock": 123,
-    "code": "0x...",
-    "abi": [...]
+    "balance": "1000000000000000000"
+}
+```
+
+### Транзакции
+
+#### Отправка транзакции
+```http
+POST /tx/send
+Content-Type: application/json
+
+{
+    "raw_tx": "0x..."
+}
+
+Response:
+{
+    "txHash": "0x..."
+}
+```
+
+#### Получение статуса транзакции
+```http
+GET /tx/status?hash=0x...
+
+Response:
+{
+    "status": "success|pending|failed"
+}
+```
+
+### Токены
+
+#### Универсальный вызов токена
+```http
+POST /token/universal-call
+Content-Type: application/json
+
+{
+    "token_address": "GND...",
+    "method": "transfer|approve|balanceOf",
+    "args": ["from", "to", "amount"] // для transfer
+    "args": ["owner", "spender", "amount"] // для approve
+    "args": ["address"] // для balanceOf
+}
+
+Response:
+{
+    "result": "0x..."
 }
 ```
 
@@ -272,7 +339,7 @@ Response:
 
 ### Подключение
 ```javascript
-const ws = new WebSocket('ws://45.12.72.15:8181/ws');
+const ws = new WebSocket('ws://localhost:8183/ws');
 
 ws.onopen = () => {
     ws.send(JSON.stringify({
@@ -287,8 +354,10 @@ ws.onopen = () => {
 #### Новые блоки
 ```javascript
 ws.send(JSON.stringify({
-    type: 'subscribe',
-    channel: 'blocks'
+    jsonrpc: "2.0",
+    method: "gnd_subscribe",
+    params: ["blocks"],
+    id: 1
 }));
 
 ws.onmessage = (event) => {
@@ -302,8 +371,10 @@ ws.onmessage = (event) => {
 #### Новые транзакции
 ```javascript
 ws.send(JSON.stringify({
-    type: 'subscribe',
-    channel: 'transactions'
+    jsonrpc: "2.0",
+    method: "gnd_subscribe",
+    params: ["transactions"],
+    id: 1
 }));
 
 ws.onmessage = (event) => {
@@ -314,93 +385,14 @@ ws.onmessage = (event) => {
 };
 ```
 
-#### Ожидающие транзакции
-```javascript
-ws.send(JSON.stringify({
-    type: 'subscribe',
-    channel: 'pending'
-}));
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'pending') {
-        console.log('Pending transaction:', data.transaction);
-    }
-};
-```
-
-#### События контракта
-```javascript
-ws.send(JSON.stringify({
-    type: 'subscribe',
-    channel: 'events',
-    contract: 'GND...',
-    event: 'Transfer'
-}));
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'event') {
-        console.log('Contract event:', data.event);
-    }
-};
-```
-
 ### Отписка
 ```javascript
 ws.send(JSON.stringify({
-    type: 'unsubscribe',
-    channel: 'blocks'
+    jsonrpc: "2.0",
+    method: "gnd_unsubscribe",
+    params: ["blocks"],
+    id: 1
 }));
-```
-
-## JSON-RPC API
-
-### Методы
-
-#### eth_blockNumber
-```json
-{
-    "jsonrpc": "2.0",
-    "method": "eth_blockNumber",
-    "params": [],
-    "id": 1
-}
-```
-
-#### eth_getBalance
-```json
-{
-    "jsonrpc": "2.0",
-    "method": "eth_getBalance",
-    "params": ["GND...", "latest"],
-    "id": 1
-}
-```
-
-#### eth_sendTransaction
-```json
-{
-    "jsonrpc": "2.0",
-    "method": "eth_sendTransaction",
-    "params": [{
-        "from": "GND...",
-        "to": "GND...",
-        "value": "0xde0b6b3a7640000",
-        "data": "0x..."
-    }],
-    "id": 1
-}
-```
-
-#### eth_getTransactionReceipt
-```json
-{
-    "jsonrpc": "2.0",
-    "method": "eth_getTransactionReceipt",
-    "params": ["0x..."],
-    "id": 1
-}
 ```
 
 ## Коды ошибок
@@ -438,7 +430,7 @@ ws.send(JSON.stringify({
 - 100 сообщений в минуту
 - 1000 сообщений в час
 
-### JSON-RPC API
+### RPC API
 - 100 запросов в минуту
 - 1000 запросов в час
 - 10000 запросов в день
@@ -448,9 +440,9 @@ ws.send(JSON.stringify({
 ### JavaScript
 ```javascript
 const api = new GND.API({
-    rest: 'http://45.12.72.15:8182/api/',
-    ws: 'ws://45.12.72.15:8181/ws',
-    rpc: 'http://45.12.72.15:8545',
+    rest: 'https://api.gnd-net.com:8182/api/',
+    ws: 'wss://api.gnd-net.com:8183/ws',
+    rpc: 'https://api.gnd-net.com:8181',
     apiKey: 'your-api-key'
 });
 
@@ -479,9 +471,9 @@ api.subscribe('blocks', (block) => {
 from gnd import API
 
 api = API(
-    rest='http://45.12.72.15:8182/api/',
-    ws='ws://45.12.72.15:8181/ws',
-    rpc='http://45.12.72.15:8545',
+    rest='https://api.gnd-net.com:8182/api/',
+    ws='wss://api.gnd-net.com:8183/ws',
+    rpc='https://api.gnd-net.com:8181',
     api_key='your-api-key'
 )
 
@@ -508,9 +500,9 @@ api.subscribe('blocks', lambda block: print('New block:', block))
 import "github.com/gnd/api"
 
 config := api.Config{
-    REST:   "http://45.12.72.15:8182/api/",
-    WS:     "ws://45.12.72.15:8181/ws",
-    RPC:    "http://45.12.72.15:8545",
+    REST:   "https://api.gnd-net.com:8182/api/",
+    WS:     "wss://api.gnd-net.com:8183/ws",
+    RPC:    "https://api.gnd-net.com:8181",
     APIKey: "your-api-key",
 }
 
@@ -538,31 +530,728 @@ a.Subscribe("blocks", func(block *api.Block) {
 
 ## Интеграция
 
-### SDK
-- JavaScript/TypeScript
-- Python
-- Go
-- Java
+### JavaScript/TypeScript
+
+```javascript
+class GNDAPI {
+    constructor(config) {
+        this.restUrl = config.rest;
+        this.rpcUrl = config.rpc;
+        this.wsUrl = config.ws;
+        this.apiKey = config.apiKey;
+    }
+
+    async createWallet() {
+        const response = await fetch(`${this.restUrl}/wallet/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': this.apiKey
+            }
+        });
+        return response.json();
+    }
+
+    async getBalance(address) {
+        const response = await fetch(`${this.restUrl}/wallet/balance/${address}`, {
+            headers: {
+                'X-API-Key': this.apiKey
+            }
+        });
+        return response.json();
+    }
+
+    async sendTransaction(tx) {
+        const response = await fetch(`${this.rpcUrl}/tx/send`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': this.apiKey
+            },
+            body: JSON.stringify(tx)
+        });
+        return response.json();
+    }
+
+    async deployContract(params) {
+        const response = await fetch(`${this.rpcUrl}/contract/deploy`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': this.apiKey
+            },
+            body: JSON.stringify(params)
+        });
+        return response.json();
+    }
+
+    async callContract(params) {
+        const response = await fetch(`${this.rpcUrl}/contract/call`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': this.apiKey
+            },
+            body: JSON.stringify(params)
+        });
+        return response.json();
+    }
+
+    async getLatestBlock() {
+        const response = await fetch(`${this.rpcUrl}/block/latest`, {
+            headers: {
+                'X-API-Key': this.apiKey
+            }
+        });
+        return response.json();
+    }
+
+    subscribe(channel, callback) {
+        const ws = new WebSocket(this.wsUrl);
+        
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'auth',
+                apiKey: this.apiKey
+            }));
+            
+            ws.send(JSON.stringify({
+                type: 'subscribe',
+                channel: channel
+            }));
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            callback(data);
+        };
+
+        return {
+            unsubscribe: () => {
+                ws.send(JSON.stringify({
+                    type: 'unsubscribe',
+                    channel: channel
+                }));
+                ws.close();
+            }
+        };
+    }
+}
+
+// Пример использования
+const api = new GNDAPI({
+    rest: 'https://api.gnd-net.com:8182/api/',
+    rpc: 'https://api.gnd-net.com:8181',
+    ws: 'wss://api.gnd-net.com:8183/ws',
+    apiKey: 'your-api-key'
+});
+
+// Создание кошелька
+const wallet = await api.createWallet();
+
+// Получение баланса
+const balance = await api.getBalance(wallet.address);
+
+// Отправка транзакции
+const tx = await api.sendTransaction({
+    from: wallet.address,
+    to: 'GND...',
+    value: '1000000000000000000',
+    data: '0x...',
+    gas_limit: 1000000,
+    gas_price: 1,
+    nonce: 0,
+    signature: '0x...'
+});
+
+// Деплой контракта
+const contract = await api.deployContract({
+    from: wallet.address,
+    bytecode: '0x...',
+    name: 'TestContract',
+    standard: 'ERC20',
+    owner: wallet.address,
+    compiler: 'solc',
+    version: '1.0.0',
+    params: {},
+    description: 'Test contract',
+    metadata_cid: '',
+    source_code: '',
+    gas_limit: 1000000,
+    gas_price: 1,
+    nonce: 0,
+    signature: '0x...',
+    total_supply: '1000000000000000000'
+});
+
+// Вызов контракта
+const result = await api.callContract({
+    from: wallet.address,
+    to: contract.address,
+    data: '0x...',
+    gas_limit: 1000000,
+    gas_price: 1,
+    value: 0,
+    signature: '0x...'
+});
+
+// Подписка на события
+const subscription = api.subscribe('blocks', (block) => {
+    console.log('New block:', block);
+});
+
+// Отписка
+subscription.unsubscribe();
+```
+
+### Python
+
+```python
+import aiohttp
+import asyncio
+import json
+import websockets
+
+class GNDAPI:
+    def __init__(self, config):
+        self.rest_url = config['rest']
+        self.rpc_url = config['rpc']
+        self.ws_url = config['ws']
+        self.api_key = config['api_key']
+
+    async def create_wallet(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.rest_url}/wallet/create",
+                headers={'X-API-Key': self.api_key}
+            ) as response:
+                return await response.json()
+
+    async def get_balance(self, address):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self.rest_url}/wallet/balance/{address}",
+                headers={'X-API-Key': self.api_key}
+            ) as response:
+                return await response.json()
+
+    async def send_transaction(self, tx):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.rpc_url}/tx/send",
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-API-Key': self.api_key
+                },
+                json=tx
+            ) as response:
+                return await response.json()
+
+    async def deploy_contract(self, params):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.rpc_url}/contract/deploy",
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-API-Key': self.api_key
+                },
+                json=params
+            ) as response:
+                return await response.json()
+
+    async def call_contract(self, params):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.rpc_url}/contract/call",
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-API-Key': self.api_key
+                },
+                json=params
+            ) as response:
+                return await response.json()
+
+    async def get_latest_block(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self.rpc_url}/block/latest",
+                headers={'X-API-Key': self.api_key}
+            ) as response:
+                return await response.json()
+
+    async def subscribe(self, channel, callback):
+        async with websockets.connect(self.ws_url) as websocket:
+            # Аутентификация
+            await websocket.send(json.dumps({
+                'type': 'auth',
+                'apiKey': self.api_key
+            }))
+
+            # Подписка
+            await websocket.send(json.dumps({
+                'type': 'subscribe',
+                'channel': channel
+            }))
+
+            while True:
+                data = await websocket.recv()
+                callback(json.loads(data))
+
+# Пример использования
+async def main():
+    api = GNDAPI({
+        'rest': 'https://api.gnd-net.com:8182/api/',
+        'rpc': 'https://api.gnd-net.com:8181',
+        'ws': 'wss://api.gnd-net.com:8183/ws',
+        'api_key': 'your-api-key'
+    })
+
+    # Создание кошелька
+    wallet = await api.create_wallet()
+
+    # Получение баланса
+    balance = await api.get_balance(wallet['address'])
+
+    # Отправка транзакции
+    tx = await api.send_transaction({
+        'from': wallet['address'],
+        'to': 'GND...',
+        'value': '1000000000000000000',
+        'data': '0x...',
+        'gas_limit': 1000000,
+        'gas_price': 1,
+        'nonce': 0,
+        'signature': '0x...'
+    })
+
+    # Деплой контракта
+    contract = await api.deploy_contract({
+        'from': wallet['address'],
+        'bytecode': '0x...',
+        'name': 'TestContract',
+        'standard': 'ERC20',
+        'owner': wallet['address'],
+        'compiler': 'solc',
+        'version': '1.0.0',
+        'params': {},
+        'description': 'Test contract',
+        'metadata_cid': '',
+        'source_code': '',
+        'gas_limit': 1000000,
+        'gas_price': 1,
+        'nonce': 0,
+        'signature': '0x...',
+        'total_supply': '1000000000000000000'
+    })
+
+    # Вызов контракта
+    result = await api.call_contract({
+        'from': wallet['address'],
+        'to': contract['address'],
+        'data': '0x...',
+        'gas_limit': 1000000,
+        'gas_price': 1,
+        'value': 0,
+        'signature': '0x...'
+    })
+
+    # Подписка на события
+    async def on_block(block):
+        print('New block:', block)
+
+    await api.subscribe('blocks', on_block)
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+### Go
+
+```go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "time"
+
+    "github.com/gorilla/websocket"
+)
+
+type GNDAPI struct {
+    restURL  string
+    rpcURL   string
+    wsURL    string
+    apiKey   string
+    client   *http.Client
+}
+
+func NewGNDAPI(config map[string]string) *GNDAPI {
+    return &GNDAPI{
+        restURL: config["rest"],
+        rpcURL:  config["rpc"],
+        wsURL:   config["ws"],
+        apiKey:  config["apiKey"],
+        client:  &http.Client{Timeout: 10 * time.Second},
+    }
+}
+
+func (api *GNDAPI) CreateWallet() (map[string]interface{}, error) {
+    req, err := http.NewRequest("POST", api.restURL+"/wallet/create", nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) GetBalance(address string) (map[string]interface{}, error) {
+    req, err := http.NewRequest("GET", fmt.Sprintf("%s/wallet/balance/%s", api.restURL, address), nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) SendTransaction(tx map[string]interface{}) (map[string]interface{}, error) {
+    body, err := json.Marshal(tx)
+    if err != nil {
+        return nil, err
+    }
+
+    req, err := http.NewRequest("POST", api.rpcURL+"/tx/send", bytes.NewBuffer(body))
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) DeployContract(params map[string]interface{}) (map[string]interface{}, error) {
+    body, err := json.Marshal(params)
+    if err != nil {
+        return nil, err
+    }
+
+    req, err := http.NewRequest("POST", api.rpcURL+"/contract/deploy", bytes.NewBuffer(body))
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) CallContract(params map[string]interface{}) (map[string]interface{}, error) {
+    body, err := json.Marshal(params)
+    if err != nil {
+        return nil, err
+    }
+
+    req, err := http.NewRequest("POST", api.rpcURL+"/contract/call", bytes.NewBuffer(body))
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) GetLatestBlock() (map[string]interface{}, error) {
+    req, err := http.NewRequest("GET", api.rpcURL+"/block/latest", nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("X-API-Key", api.apiKey)
+
+    resp, err := api.client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var result map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+func (api *GNDAPI) Subscribe(channel string, callback func(interface{})) error {
+    c, _, err := websocket.DefaultDialer.Dial(api.wsURL, nil)
+    if err != nil {
+        return err
+    }
+    defer c.Close()
+
+    // Аутентификация
+    auth := map[string]string{
+        "type":   "auth",
+        "apiKey": api.apiKey,
+    }
+    if err := c.WriteJSON(auth); err != nil {
+        return err
+    }
+
+    // Подписка
+    subscribe := map[string]string{
+        "type":    "subscribe",
+        "channel": channel,
+    }
+    if err := c.WriteJSON(subscribe); err != nil {
+        return err
+    }
+
+    for {
+        _, message, err := c.ReadMessage()
+        if err != nil {
+            return err
+        }
+
+        var data interface{}
+        if err := json.Unmarshal(message, &data); err != nil {
+            return err
+        }
+
+        callback(data)
+    }
+}
+
+func main() {
+    api := NewGNDAPI(map[string]string{
+        "rest":   "https://api.gnd-net.com:8182/api/",
+        "rpc":    "https://api.gnd-net.com:8181",
+        "ws":     "wss://api.gnd-net.com:8183/ws",
+        "apiKey": "your-api-key",
+    })
+
+    // Создание кошелька
+    wallet, err := api.CreateWallet()
+    if err != nil {
+        panic(err)
+    }
+
+    // Получение баланса
+    balance, err := api.GetBalance(wallet["address"].(string))
+    if err != nil {
+        panic(err)
+    }
+
+    // Отправка транзакции
+    tx, err := api.SendTransaction(map[string]interface{}{
+        "from":      wallet["address"],
+        "to":        "GND...",
+        "value":     "1000000000000000000",
+        "data":      "0x...",
+        "gas_limit": 1000000,
+        "gas_price": 1,
+        "nonce":     0,
+        "signature": "0x...",
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    // Деплой контракта
+    contract, err := api.DeployContract(map[string]interface{}{
+        "from":         wallet["address"],
+        "bytecode":     "0x...",
+        "name":         "TestContract",
+        "standard":     "ERC20",
+        "owner":        wallet["address"],
+        "compiler":     "solc",
+        "version":      "1.0.0",
+        "params":       map[string]interface{}{},
+        "description":  "Test contract",
+        "metadata_cid": "",
+        "source_code":  "",
+        "gas_limit":    1000000,
+        "gas_price":    1,
+        "nonce":        0,
+        "signature":    "0x...",
+        "total_supply": "1000000000000000000",
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    // Вызов контракта
+    result, err := api.CallContract(map[string]interface{}{
+        "from":      wallet["address"],
+        "to":        contract["address"],
+        "data":      "0x...",
+        "gas_limit": 1000000,
+        "gas_price": 1,
+        "value":     0,
+        "signature": "0x...",
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    // Подписка на события
+    go func() {
+        err := api.Subscribe("blocks", func(data interface{}) {
+            fmt.Printf("New block: %v\n", data)
+        })
+        if err != nil {
+            panic(err)
+        }
+    }()
+
+    // Ожидание завершения
+    select {}
+}
+```
 
 ### Инструменты
-- CLI
-- GUI
-- Мониторинг
-- Аналитика
+
+#### CLI
+
+```bash
+# Создание кошелька
+gnd-cli wallet create
+
+# Получение баланса
+gnd-cli wallet balance GND...
+
+# Отправка транзакции
+gnd-cli tx send --from GND... --to GND... --value 1000000000000000000
+
+# Деплой контракта
+gnd-cli contract deploy --from GND... --bytecode 0x... --name TestContract
+
+# Вызов контракта
+gnd-cli contract call --from GND... --to GND... --data 0x...
+
+# Получение последнего блока
+gnd-cli block latest
+```
+
+#### GUI
+
+Графический интерфейс предоставляет следующие возможности:
+- Создание и управление кошельками
+- Просмотр балансов и транзакций
+- Отправка транзакций
+- Деплой и взаимодействие с контрактами
+- Мониторинг блоков и событий
+- Управление токенами
+
+#### Мониторинг
+
+```bash
+# Запуск мониторинга
+gnd-monitor start
+
+# Просмотр метрик
+gnd-monitor metrics
+
+# Настройка алертов
+gnd-monitor alerts set --metric requests --threshold 1000 --period 1m
+```
+
+#### Аналитика
+
+```bash
+# Запуск аналитики
+gnd-analytics start
+
+# Экспорт данных
+gnd-analytics export --format csv --period 24h
+
+# Генерация отчета
+gnd-analytics report --type daily
+```
 
 ## Обновления
 
 ### Версионирование
-- Семантическое версионирование
-- Обратная совместимость
-- Миграции
-- Обновления
+- Семантическое версионирование (MAJOR.MINOR.PATCH)
+- Обратная совместимость в пределах MAJOR версии
+- Автоматические миграции для MINOR версий
+- Ручные миграции для MAJOR версий
 
 ### Миграции
-- Планирование
-- Тестирование
-- Резервное копирование
-- Откат
+1. Планирование
+   - Анализ изменений
+   - Оценка рисков
+   - Создание плана миграции
+
+2. Тестирование
+   - Тестирование на staging
+   - Проверка обратной совместимости
+   - Тестирование производительности
+
+3. Резервное копирование
+   - Бэкап данных
+   - Бэкап конфигурации
+   - Бэкап состояния
+
+4. Откат
+   - План отката
+   - Триггеры отката
+   - Процедура отката
 
 ## Мониторинг
 
@@ -571,12 +1260,17 @@ a.Subscribe("blocks", func(block *api.Block) {
 - Время ответа
 - Ошибки
 - Использование ресурсов
+- Размер блокчейна
+- Количество транзакций
+- Газ
 
 ### Алерты
 - Превышение лимитов
 - Ошибки
 - Замедление
 - Аномалии
+- Недоступность
+- Атаки
 
 ## Безопасность
 
@@ -585,15 +1279,34 @@ a.Subscribe("blocks", func(block *api.Block) {
 - Конфигурация
 - Доступ
 - Данные
+- Сеть
+- Инфраструктура
 
 ### Мониторинг
 - Активность
 - Аномалии
 - Угрозы
 - Инциденты
+- Доступ
+- Изменения
 
 ### Реагирование
-- Обнаружение
-- Анализ
-- Устранение
-- Профилактика 
+1. Обнаружение
+   - Мониторинг
+   - Алерты
+   - Логи
+
+2. Анализ
+   - Сбор данных
+   - Определение причины
+   - Оценка ущерба
+
+3. Устранение
+   - Блокировка угрозы
+   - Восстановление
+   - Патч
+
+4. Профилактика
+   - Обновление
+   - Усиление защиты
+   - Документирование 
