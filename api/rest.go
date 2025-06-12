@@ -351,7 +351,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 				http.Error(w, "Invalid or expired API key", http.StatusUnauthorized)
 				return
 			}
-			log.Printf("=== REST Server запущен на %s ===", fmt.Sprintf("%s:%d", cfg.Server.REST.Host, cfg.Server.REST.Port))
+			log.Printf("=== REST Server запущен на %s ===", fmt.Sprintf("0.0.0.0:%d", cfg.Server.REST.Port))
 			log.Println("Доступные эндпоинты:")
 			next.ServeHTTP(w, r)
 		}
@@ -439,7 +439,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	}))
 
 	// Формируем адрес сервера
-	addr := fmt.Sprintf("%s:%d", cfg.Server.REST.Host, cfg.Server.REST.Port)
+	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Server.REST.Port)
 	log.Printf("=== REST Server запущен на %s ===", addr)
 	log.Println("Доступные эндпоинты:")
 	if err := http.ListenAndServe(addr, r); err != nil {

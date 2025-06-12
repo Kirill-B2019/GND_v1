@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -109,7 +110,13 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 		go client.readPump(blockchain, mempool)
 	})
 
-	addr := cfg.Server.WS.WSAddr
+	// Извлекаем порт из адреса
+	_, port, err := net.SplitHostPort(cfg.Server.WS.WSAddr)
+	if err != nil {
+		log.Fatalf("Ошибка парсинга адреса WebSocket сервера: %v", err)
+	}
+
+	addr := fmt.Sprintf("0.0.0.0:%s", port)
 	log.Printf("=== WebSocket Server запущен на %s ===", addr)
 	log.Println("Доступные подписки:")
 	log.Println("  - blocks: новые блоки")
