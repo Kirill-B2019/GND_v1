@@ -4,7 +4,6 @@ import (
 	"GND/api"
 	"GND/consensus"
 	"GND/core"
-	"GND/evm"
 	"GND/types"
 	"GND/vm"
 	"context"
@@ -272,26 +271,26 @@ func processContractTransaction(tx *core.Transaction) error {
 	}
 
 	// Create EVM instance
-	evm := evm.NewEVM(state)
+	evm := vm.NewEVM(vm.EVMConfig{
+		State:    state,
+		GasLimit: 1000000, // Default gas limit
+	})
 
 	// Execute transaction in EVM
 	result, err := evm.CallContract(
-		types.Address(tx.Sender),
-		types.Address(tx.Recipient),
+		string(tx.Sender),
+		string(tx.Recipient),
 		tx.Data,
 		tx.GasLimit,
-		tx.GasPrice,
-		tx.Value,
-		tx.Signature,
+		tx.GasPrice.Uint64(),
+		tx.Value.Uint64(),
 	)
 	if err != nil {
 		return fmt.Errorf("EVM execution failed: %v", err)
 	}
 
 	// Update state with result
-	if err := updateStateWithResult(tx, &types.ExecutionResult{
-		ReturnData: result,
-	}); err != nil {
+	if err := updateStateWithResult(tx, result); err != nil {
 		return fmt.Errorf("failed to update state: %v", err)
 	}
 
