@@ -1,508 +1,274 @@
-# Токены в блокчейне ГАНИМЕД
+# Токены GANYMED
 
 ## Обзор
 
-Блокчейн ГАНИМЕД поддерживает стандарт токенов GNDst-1, который расширяет функциональность ERC-20 и TRC-20 стандартов.
+GANYMED поддерживает различные стандарты токенов, включая ERC20, ERC721 и ERC1155. Каждый стандарт имеет свои особенности и области применения.
 
-## GNDst-1 стандарт
+## Стандарты
 
-### Базовые функции
+### ERC20
+Стандарт для взаимозаменяемых токенов (fungible tokens).
 
-#### Баланс и переводы
+#### Основные функции
 ```solidity
-function balanceOf(address account) external view returns (uint256);
-function transfer(address to, uint256 amount) external returns (bool);
-function transferFrom(address from, address to, uint256 amount) external returns (bool);
-```
-
-#### Разрешения
-```solidity
-function approve(address spender, uint256 amount) external returns (bool);
-function allowance(address owner, address spender) external view returns (uint256);
-function increaseAllowance(address spender, uint256 addedValue) external returns (bool);
-function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool);
-```
-
-### Расширенные функции
-
-#### Снимки (Snapshots)
-```solidity
-function snapshot() external returns (uint256);
-function getSnapshotBalance(uint256 snapshotId, address account) external view returns (uint256);
-```
-
-#### Дивиденды
-```solidity
-function claimDividends() external returns (bool);
-function getDividends(address account) external view returns (uint256);
-```
-
-#### Модули
-```solidity
-function registerModule(address module, string memory name) external returns (bool);
-function moduleCall(address module, bytes memory data) external returns (bool);
-```
-
-#### KYC и безопасность
-```solidity
-function setKycStatus(address account, bool status) external returns (bool);
-function isKycPassed(address account) external view returns (bool);
-function pause() external returns (bool);
-function unpause() external returns (bool);
-```
-
-## Создание токена
-
-### Через API
-```http
-POST /token/create
-Content-Type: application/json
-
-{
-    "name": "My Token",
-    "symbol": "MTK",
-    "decimals": 18,
-    "initialSupply": "1000000000000000000000000",
-    "owner": "GND..."
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 ```
 
-### Через смарт-контракт
+#### Пример использования
 ```solidity
-contract MyToken is GNDst1 {
-    constructor(
-        string memory name,
-        string memory symbol,
-        uint8 decimals,
-        uint256 initialSupply,
-        address owner
-    ) GNDst1(name, symbol, decimals, initialSupply, owner) {}
-}
-```
-
-## Операции с токенами
-
-### Получение баланса
-```http
-GET /token/balance/{address}
-```
-
-**Ответ:**
-```json
-{
-    "status": "success",
-    "data": {
-        "balance": "1000000000000000000"
+contract MyToken is ERC20 {
+    constructor() ERC20("My Token", "MTK") {
+        _mint(msg.sender, 1000000 * 10 ** decimals());
     }
 }
 ```
 
-### Перевод токенов
-```http
-POST /token/transfer
-Content-Type: application/json
+### ERC721
+Стандарт для невзаимозаменяемых токенов (non-fungible tokens).
 
-{
-    "tokenAddress": "GND...",
-    "from": "GND...",
-    "to": "GND...",
-    "amount": "1000000000000000000",
-    "privateKey": "..."
-}
-```
-
-### Подтверждение токенов
-```http
-POST /token/approve
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "owner": "GND...",
-    "spender": "GND...",
-    "amount": "1000000000000000000",
-    "privateKey": "..."
-}
-```
-
-## Снимки и дивиденды
-
-### Создание снимка
-```http
-POST /token/snapshot
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "privateKey": "..."
-}
-```
-
-### Получение баланса в снимке
-```http
-GET /token/snapshot/{snapshotId}/balance/{address}
-```
-
-### Получение дивидендов
-```http
-POST /token/claim-dividends
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "account": "GND...",
-    "privateKey": "..."
-}
-```
-
-## Модули
-
-### Регистрация модуля
-```http
-POST /token/register-module
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "module": "GND...",
-    "name": "MyModule",
-    "privateKey": "..."
-}
-```
-
-### Вызов модуля
-```http
-POST /token/module-call
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "module": "GND...",
-    "data": "0x...",
-    "privateKey": "..."
-}
-```
-
-## KYC и безопасность
-
-### Установка KYC статуса
-```http
-POST /token/set-kyc
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "account": "GND...",
-    "status": true,
-    "privateKey": "..."
-}
-```
-
-### Проверка KYC статуса
-```http
-GET /token/kyc/{address}
-```
-
-### Пауза/возобновление
-```http
-POST /token/pause
-Content-Type: application/json
-
-{
-    "tokenAddress": "GND...",
-    "privateKey": "..."
-}
-```
-
-## События
-
-### Transfer
+#### Основные функции
 ```solidity
-event Transfer(address indexed from, address indexed to, uint256 value);
+interface IERC721 {
+    function balanceOf(address owner) external view returns (uint256);
+    function ownerOf(uint256 tokenId) external view returns (address);
+    function safeTransferFrom(address from, address to, uint256 tokenId) external;
+    function transferFrom(address from, address to, uint256 tokenId) external;
+    function approve(address to, uint256 tokenId) external;
+    function getApproved(uint256 tokenId) external view returns (address);
+    function setApprovalForAll(address operator, bool approved) external;
+    function isApprovedForAll(address owner, address operator) external view returns (bool);
+    
+    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
+    event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
+}
 ```
 
-### Approval
+#### Пример использования
 ```solidity
-event Approval(address indexed owner, address indexed spender, uint256 value);
+contract MyNFT is ERC721 {
+    using Counters for Counters.Counter;
+    Counters.Counter private _tokenIds;
+    
+    constructor() ERC721("My NFT", "MNFT") {}
+    
+    function mint(address to) public returns (uint256) {
+        _tokenIds.increment();
+        uint256 newTokenId = _tokenIds.current();
+        _mint(to, newTokenId);
+        return newTokenId;
+    }
+}
 ```
 
-### Snapshot
+### ERC1155
+Стандарт для мультитокенов, поддерживающий как взаимозаменяемые, так и невзаимозаменяемые токены.
+
+#### Основные функции
 ```solidity
-event Snapshot(uint256 indexed id);
+interface IERC1155 {
+    function balanceOf(address account, uint256 id) external view returns (uint256);
+    function balanceOfBatch(address[] calldata accounts, uint256[] calldata ids) external view returns (uint256[] memory);
+    function setApprovalForAll(address operator, bool approved) external;
+    function isApprovedForAll(address account, address operator) external view returns (bool);
+    function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes calldata data) external;
+    function safeBatchTransferFrom(address from, address to, uint256[] calldata ids, uint256[] calldata amounts, bytes calldata data) external;
+    
+    event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value);
+    event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
+    event ApprovalForAll(address indexed account, address indexed operator, bool approved);
+    event URI(string value, uint256 indexed id);
+}
 ```
 
-### DividendsClaimed
+#### Пример использования
 ```solidity
-event DividendsClaimed(address indexed account, uint256 amount);
+contract MyMultiToken is ERC1155 {
+    constructor() ERC1155("") {}
+    
+    function mint(address to, uint256 id, uint256 amount, bytes memory data) public {
+        _mint(to, id, amount, data);
+    }
+    
+    function mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) public {
+        _mintBatch(to, ids, amounts, data);
+    }
+}
 ```
 
-### ModuleRegistered
-```solidity
-event ModuleRegistered(address indexed module, string name);
-```
+## Расширения
 
-### KycStatusChanged
-```solidity
-event KycStatusChanged(address indexed account, bool status);
-```
+### ERC20
+- ERC20Burnable
+- ERC20Capped
+- ERC20Pausable
+- ERC20Snapshot
+- ERC20Votes
 
-### Paused/Unpaused
-```solidity
-event Paused(address account);
-event Unpaused(address account);
-```
+### ERC721
+- ERC721Enumerable
+- ERC721URIStorage
+- ERC721Burnable
+- ERC721Pausable
+- ERC721Votes
+
+### ERC1155
+- ERC1155Burnable
+- ERC1155Pausable
+- ERC1155Supply
 
 ## Безопасность
 
 ### Рекомендации
-- Использовать KYC для всех операций
-- Проверять модули перед регистрацией
-- Осторожно работать со снимками
-- Контролировать дивиденды
+1. Используйте проверенные библиотеки
+2. Проводите аудит кода
+3. Тестируйте контракты
+4. Следите за газами
+5. Используйте безопасные паттерны
 
-### Ограничения
-- Только владелец может паузить токен
-- Только владелец может регистрировать модули
-- Только владелец может менять KYC статусы
-- Требуется KYC для всех операций
+### Паттерны
+1. Checks-Effects-Interactions
+2. Pull over Push
+3. Emergency Stop
+4. Rate Limiting
+5. Access Control
 
-## Примеры использования
+## Интеграция
 
-### JavaScript
+### Web3.js
 ```javascript
-const token = new GNDst1("0x...");
+const Web3 = require('web3');
+const web3 = new Web3('https://api.gnd-net.com:8181');
 
-// Получение баланса
-const balance = await token.balanceOf("0x...");
+const contract = new web3.eth.Contract(ABI, address);
 
-// Перевод токенов
-await token.transfer("0x...", "1000000000000000000");
+async function getBalance(address) {
+    const balance = await contract.methods.balanceOf(address).call();
+    return balance;
+}
 
-// Подтверждение токенов
-await token.approve("0x...", "1000000000000000000");
-
-// Создание снимка
-const snapshotId = await token.snapshot();
-
-// Получение дивидендов
-await token.claimDividends();
-
-// Регистрация модуля
-await token.registerModule("0x...", "MyModule");
-
-// Вызов модуля
-await token.moduleCall("0x...", "0x...");
+async function transfer(to, amount) {
+    const accounts = await web3.eth.getAccounts();
+    await contract.methods.transfer(to, amount).send({from: accounts[0]});
+}
 ```
 
-### Python
-```python
-from gndst1 import GNDst1
+### Ethers.js
+```javascript
+const { ethers } = require('ethers');
+const provider = new ethers.providers.JsonRpcProvider('https://api.gnd-net.com:8181');
 
-token = GNDst1("0x...")
+const contract = new ethers.Contract(address, ABI, provider);
 
-# Получение баланса
-balance = token.balance_of("0x...")
+async function getBalance(address) {
+    const balance = await contract.balanceOf(address);
+    return balance;
+}
 
-# Перевод токенов
-token.transfer("0x...", "1000000000000000000")
-
-# Подтверждение токенов
-token.approve("0x...", "1000000000000000000")
-
-# Создание снимка
-snapshot_id = token.snapshot()
-
-# Получение дивидендов
-token.claim_dividends()
-
-# Регистрация модуля
-token.register_module("0x...", "MyModule")
-
-# Вызов модуля
-token.module_call("0x...", "0x...")
+async function transfer(signer, to, amount) {
+    const contractWithSigner = contract.connect(signer);
+    await contractWithSigner.transfer(to, amount);
+}
 ```
 
----
+## Мониторинг
 
-## 1. Поддерживаемые стандарты токенов
+### События
+```javascript
+contract.on("Transfer", (from, to, amount, event) => {
+    console.log(`Transfer: ${from} -> ${to}: ${amount}`);
+});
+```
 
-### 1.1. ERC-20
+### Метрики
+1. Количество транзакций
+2. Использование газа
+3. Активность контракта
+4. Балансы токенов
+5. События
 
-- Полная совместимость с экосистемой Ethereum.
-- Поддержка стандартных методов: `totalSupply`, `balanceOf`, `transfer`, `approve`, `transferFrom`, `allowance`.
-- Интеграция с кошельками и биржами, использующими стандарт ERC-20.
+## Обновление
 
-### 1.2. TRC-20
-
-- Аналогичный стандарт для интеграции с Tron и другими сетями.
-- Методы и структура идентичны ERC-20.
-
-### 1.3. Кастомные стандарты
-
-- Возможность создания собственных токенов с уникальной бизнес-логикой и интерфейсом.
-- Метаданные контракта содержат описание стандарта (`"standard": "custom"`) и необходимые параметры.
-
----
-
-## 2. Универсальный интерфейс токенов
-
-- Все токены реализуют единый интерфейс, позволяющий добавлять новые стандарты без изменений основного кода блокчейна.
-- В метаданных контракта указывается стандарт: `"erc20"`, `"trc20"` или `"custom"`.
-- Контракты могут одновременно поддерживать несколько стандартов.
-
-**Пример метаданных токена:**
-{
-"standard": "erc20",
-"name": "MyToken",
-"symbol": "MTK",
-"decimals": 18
+### Прокси паттерн
+```solidity
+contract Proxy {
+    address public implementation;
+    
+    function upgrade(address newImplementation) external {
+        implementation = newImplementation;
+    }
+    
+    fallback() external payable {
+        address _impl = implementation;
+        assembly {
+            calldatacopy(0, 0, calldatasize())
+            let result := delegatecall(gas(), _impl, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch result
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
+        }
+    }
 }
+```
 
-text
+### Миграция данных
+1. Создание нового контракта
+2. Копирование состояния
+3. Обновление ссылок
+4. Тестирование
+5. Переключение
 
----
+## Документация
 
-## 3. Работа с токенами через API
-
-### 3.1. Деплой токена
-
-**REST:**
-POST /contract/deploy
-Content-Type: application/json
-
-text
-**Тело запроса:**
-{
-"from": "GND1...",
-"bytecode": "<hex>",
-"gasLimit": 2000000,
-"gasPrice": 1,
-"nonce": 7,
-"metadata": {
-"standard": "erc20",
-"name": "MyToken",
-"symbol": "MTK",
-"decimals": 18
-},
-"signature": "..."
+### NatSpec
+```solidity
+/// @title Simple Token
+/// @author John Doe
+/// @notice This is a simple ERC20 token
+/// @dev All function calls are currently implemented without side effects
+contract SimpleToken {
+    /// @notice Returns the balance of the specified address
+    /// @param account The address to query the balance of
+    /// @return The amount of tokens owned by the specified address
+    function balanceOf(address account) external view returns (uint256) {
+        return _balances[account];
+    }
 }
+```
 
-text
-**Ответ:**
-{
-"contractAddress": "GNDct1..."
-}
+### README
+1. Описание контракта
+2. Установка
+3. Использование
+4. Тестирование
+5. Деплой
+6. Безопасность
+7. Лицензия
 
-text
+## Лицензии
 
-### 3.2. Вызов метода токена
+### MIT
+```solidity
+// SPDX-License-Identifier: MIT
+```
 
-**REST:**
-POST /contract/call
-Content-Type: application/json
+### GPL-3.0
+```solidity
+// SPDX-License-Identifier: GPL-3.0
+```
 
-text
-**Тело запроса:**
-{
-"from": "GND1...",
-"to": "GNDct1...",
-"data": "<hex>",
-"gasLimit": 80000,
-"gasPrice": 1,
-"nonce": 8,
-"signature": "..."
-}
-
-text
-**Ответ:**
-{
-"result": "...",
-"gasUsed": 50000
-}
-
-text
-
-### 3.3. Получить информацию о токене
-
-**JSON-RPC:**
-{
-"jsonrpc": "2.0",
-"method": "token_getInfo",
-"params": { "address": "GNDct1..." },
-"id": 1
-}
-
-text
-**Ответ:**
-{
-"jsonrpc": "2.0",
-"result": {
-"standard": "erc20",
-"name": "MyToken",
-"symbol": "MTK",
-"decimals": 18,
-"totalSupply": "1000000"
-},
-"id": 1
-}
-
-text
-
----
-
-## 4. Примеры использования
-
-### 4.1. Деплой ERC-20 токена
-
-1. Скомпилируйте контракт на Solidity.
-2. Отправьте байткод и метаданные через `/contract/deploy`.
-3. Получите адрес токена и используйте его для операций transfer, approve и др.
-
-### 4.2. Деплой кастомного токена
-
-1. Определите собственные методы и события в контракте.
-2. Укажите `"standard": "custom"` в метаданных.
-3. После деплоя используйте методы согласно вашей бизнес-логике.
-
----
-
-## 5. Комиссии и привязка токенов
-
-- Все операции (деплой, трансфер, взаимодействие с контрактом) оплачиваются в GND.
-- Гибкая настройка комиссий (gas fees) в зависимости от сложности операции.
-- Возможна привязка токенов к GND для обмена или управления средствами (например, через мосты или специальные контракты).
-
----
-
-## 6. Безопасность и валидация
-
-- Перед деплоем обязательна цифровая подпись владельца.
-- Контракт проходит валидацию на соответствие стандарту.
-- Все вызовы функций токенов проходят через VM с контролем газа и sandbox-изоляцией.
-
----
-
-## 7. Расширение стандартов
-
-- Для добавления нового стандарта реализуйте интерфейс токена в модуле tokens/.
-- Зарегистрируйте стандарт через метаданные.
-- Контракты могут поддерживать сразу несколько стандартов (например, ERC-20 + custom).
-
----
-
-## 8. Тестирование и аудит
-
-- Для всех токенов реализуются юнит- и интеграционные тесты.
-- Проводится аудит безопасности, особенно для кастомных стандартов и валидации байткода.
-
----
-
-## 9. Ссылки
-
-- [api.md](api.md) - описание API для работы с токенами
-- [contracts.md](contracts.md) - описание работы со смарт-контрактами
-- [architecture.md](architecture.md) - архитектура блокчейна
-- [consensus.md](consensus.md) - алгоритмы консенсуса
-- [contracts.md](contracts.md) - работа со смарт-контрактами
-- [integration.md](integration.md) - интеграция с GND
----
+### Apache-2.0
+```solidity
+// SPDX-License-Identifier: Apache-2.0
+```
