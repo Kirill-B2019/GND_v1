@@ -1,9 +1,23 @@
 package core
 
 import (
+	"math/big"
 	"sync"
 	"time"
 )
+
+// TransactionTypeMetrics содержит метрики для конкретного типа транзакций
+type TransactionTypeMetrics struct {
+	Count           uint64
+	SuccessCount    uint64
+	FailedCount     uint64
+	TotalFee        *big.Int
+	AverageFee      float64
+	MinFee          *big.Int
+	MaxFee          *big.Int
+	LastMinuteCount uint64
+	LastHourCount   uint64
+}
 
 // Metrics содержит все метрики блокчейна
 type Metrics struct {
@@ -15,6 +29,9 @@ type Metrics struct {
 		BlocksPerMinute  float64
 		AverageBlockTime time.Duration
 		LastBlockTime    time.Time
+		BlockSize        uint64
+		GasUsed          uint64
+		GasLimit         uint64
 	}
 
 	// Метрики транзакций
@@ -23,8 +40,15 @@ type Metrics struct {
 		TransactionsPerMinute float64
 		PendingTransactions   uint64
 		FailedTransactions    uint64
-		AverageGasPrice       float64
-		AverageGasUsed        float64
+		AverageFee            float64
+		MinFee                *big.Int
+		MaxFee                *big.Int
+		TotalFee              *big.Int
+		LastMinuteCount       uint64
+		LastHourCount         uint64
+		TypeMetrics           map[string]*TransactionTypeMetrics // Метрики по типам транзакций
+		StatusMetrics         map[string]uint64                  // Метрики по статусам
+		FeeDistribution       map[string]uint64                  // Распределение комиссий
 	}
 
 	// Метрики сети
@@ -53,6 +77,25 @@ type Metrics struct {
 		MissedBlocks     uint64
 		ForkCount        uint64
 	}
+
+	// Алерты
+	Alerts struct {
+		HighFeeThreshold     *big.Int
+		LowFeeThreshold      *big.Int
+		HighLatencyThreshold time.Duration
+		HighCPUThreshold     float64
+		HighMemoryThreshold  uint64
+		AlertHistory         []Alert
+	}
+}
+
+// Alert представляет собой алерт
+type Alert struct {
+	Type      string
+	Message   string
+	Value     interface{}
+	Threshold interface{}
+	Timestamp time.Time
 }
 
 var (
@@ -66,7 +109,27 @@ func ResetMetrics() {
 	metricsMu.Lock()
 	defer metricsMu.Unlock()
 
-	metrics = &Metrics{}
+	metrics = &Metrics{
+		TransactionMetrics: struct {
+			TotalTransactions     uint64
+			TransactionsPerMinute float64
+			PendingTransactions   uint64
+			FailedTransactions    uint64
+			AverageFee            float64
+			MinFee                *big.Int
+			MaxFee                *big.Int
+			TotalFee              *big.Int
+			LastMinuteCount       uint64
+			LastHourCount         uint64
+			TypeMetrics           map[string]*TransactionTypeMetrics
+			StatusMetrics         map[string]uint64
+			FeeDistribution       map[string]uint64
+		}{
+			TypeMetrics:     make(map[string]*TransactionTypeMetrics),
+			StatusMetrics:   make(map[string]uint64),
+			FeeDistribution: make(map[string]uint64),
+		},
+	}
 	startTime = time.Now()
 }
 
@@ -95,47 +158,113 @@ func (m *Metrics) UpdateTransactionMetrics(tx *Transaction, status string) {
 	m.TransactionMetrics.TotalTransactions++
 	m.TransactionMetrics.TransactionsPerMinute = float64(m.TransactionMetrics.TotalTransactions) / time.Since(startTime).Minutes()
 
+	// Обновляем метрики по статусу
+	m.TransactionMetrics.StatusMetrics[status]++
 	if status == "failed" {
 		m.TransactionMetrics.FailedTransactions++
 	}
 
-	m.TransactionMetrics.AverageGasPrice = (m.TransactionMetrics.AverageGasPrice + float64(tx.GasPrice)) / 2
-	m.TransactionMetrics.AverageGasUsed = (m.TransactionMetrics.AverageGasUsed + float64(tx.GasUsed)) / 2
+	// Обновляем метрики по типу транзакции
+	if tx != nil {
+		// Инициализируем метрики для типа транзакции, если их еще нет
+		if _, exists := m.TransactionMetrics.TypeMetrics[tx.Type]; !exists {
+			m.TransactionMetrics.TypeMetrics[tx.Type] = &TransactionTypeMetrics{
+				MinFee: new(big.Int).Set(tx.Fee),
+				MaxFee: new(big.Int).Set(tx.Fee),
+			}
+		}
+
+		typeMetrics := m.TransactionMetrics.TypeMetrics[tx.Type]
+		typeMetrics.Count++
+		if status == "success" {
+			typeMetrics.SuccessCount++
+		} else {
+			typeMetrics.FailedCount++
+		}
+
+		// Обновляем метрики комиссий
+		if tx.Fee != nil {
+			// Общие метрики комиссий
+			if m.TransactionMetrics.MinFee == nil || tx.Fee.Cmp(m.TransactionMetrics.MinFee) < 0 {
+				m.TransactionMetrics.MinFee = new(big.Int).Set(tx.Fee)
+			}
+			if m.TransactionMetrics.MaxFee == nil || tx.Fee.Cmp(m.TransactionMetrics.MaxFee) > 0 {
+				m.TransactionMetrics.MaxFee = new(big.Int).Set(tx.Fee)
+			}
+			if m.TransactionMetrics.TotalFee == nil {
+				m.TransactionMetrics.TotalFee = new(big.Int)
+			}
+			m.TransactionMetrics.TotalFee.Add(m.TransactionMetrics.TotalFee, tx.Fee)
+			m.TransactionMetrics.AverageFee = float64(m.TransactionMetrics.TotalFee.Uint64()) / float64(m.TransactionMetrics.TotalTransactions)
+
+			// Метрики комиссий по типу транзакции
+			if typeMetrics.MinFee == nil || tx.Fee.Cmp(typeMetrics.MinFee) < 0 {
+				typeMetrics.MinFee = new(big.Int).Set(tx.Fee)
+			}
+			if typeMetrics.MaxFee == nil || tx.Fee.Cmp(typeMetrics.MaxFee) > 0 {
+				typeMetrics.MaxFee = new(big.Int).Set(tx.Fee)
+			}
+			if typeMetrics.TotalFee == nil {
+				typeMetrics.TotalFee = new(big.Int)
+			}
+			typeMetrics.TotalFee.Add(typeMetrics.TotalFee, tx.Fee)
+			typeMetrics.AverageFee = float64(typeMetrics.TotalFee.Uint64()) / float64(typeMetrics.Count)
+
+			// Распределение комиссий
+			feeRange := getFeeRange(tx.Fee)
+			m.TransactionMetrics.FeeDistribution[feeRange]++
+		}
+
+		// Проверяем алерты
+		m.checkAlerts(tx)
+	}
 }
 
-// UpdateNetworkMetrics обновляет метрики сети
-func (m *Metrics) UpdateNetworkMetrics(peers uint64, latency time.Duration, bytesReceived, bytesSent uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NetworkMetrics.ActivePeers = peers
-	m.NetworkMetrics.NetworkLatency = latency
-	m.NetworkMetrics.BytesReceived = bytesReceived
-	m.NetworkMetrics.BytesSent = bytesSent
+// getFeeRange возвращает диапазон комиссии
+func getFeeRange(fee *big.Int) string {
+	if fee == nil {
+		return "unknown"
+	}
+	feeUint := fee.Uint64()
+	switch {
+	case feeUint < 1000:
+		return "low"
+	case feeUint < 10000:
+		return "medium"
+	case feeUint < 100000:
+		return "high"
+	default:
+		return "very_high"
+	}
 }
 
-// UpdatePerformanceMetrics обновляет метрики производительности
-func (m *Metrics) UpdatePerformanceMetrics(cpu, memory, disk uint64, dbLatency, apiLatency time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// checkAlerts проверяет условия для алертов
+func (m *Metrics) checkAlerts(tx *Transaction) {
+	if tx == nil || tx.Fee == nil {
+		return
+	}
 
-	m.PerformanceMetrics.CPUUsage = float64(cpu)
-	m.PerformanceMetrics.MemoryUsage = memory
-	m.PerformanceMetrics.DiskUsage = disk
-	m.PerformanceMetrics.DatabaseLatency = dbLatency
-	m.PerformanceMetrics.APIResponseTime = apiLatency
+	// Проверка высокой комиссии
+	if m.Alerts.HighFeeThreshold != nil && tx.Fee.Cmp(m.Alerts.HighFeeThreshold) > 0 {
+		m.addAlert("high_fee", "Высокая комиссия за транзакцию", tx.Fee, m.Alerts.HighFeeThreshold)
+	}
+
+	// Проверка низкой комиссии
+	if m.Alerts.LowFeeThreshold != nil && tx.Fee.Cmp(m.Alerts.LowFeeThreshold) < 0 {
+		m.addAlert("low_fee", "Низкая комиссия за транзакцию", tx.Fee, m.Alerts.LowFeeThreshold)
+	}
 }
 
-// UpdateConsensusMetrics обновляет метрики консенсуса
-func (m *Metrics) UpdateConsensusMetrics(validators, activeValidators uint64, latency time.Duration, missedBlocks, forks uint64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.ConsensusMetrics.ValidatorsCount = validators
-	m.ConsensusMetrics.ActiveValidators = activeValidators
-	m.ConsensusMetrics.ConsensusLatency = latency
-	m.ConsensusMetrics.MissedBlocks = missedBlocks
-	m.ConsensusMetrics.ForkCount = forks
+// addAlert добавляет новый алерт
+func (m *Metrics) addAlert(alertType, message string, value, threshold interface{}) {
+	alert := Alert{
+		Type:      alertType,
+		Message:   message,
+		Value:     value,
+		Threshold: threshold,
+		Timestamp: time.Now(),
+	}
+	m.Alerts.AlertHistory = append(m.Alerts.AlertHistory, alert)
 }
 
 // GetMetrics возвращает текущие метрики
@@ -143,4 +272,16 @@ func GetMetrics() *Metrics {
 	metricsMu.RLock()
 	defer metricsMu.RUnlock()
 	return metrics
+}
+
+// SetAlertThresholds устанавливает пороговые значения для алертов
+func SetAlertThresholds(highFee, lowFee *big.Int, highLatency time.Duration, highCPU float64, highMemory uint64) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+
+	metrics.Alerts.HighFeeThreshold = highFee
+	metrics.Alerts.LowFeeThreshold = lowFee
+	metrics.Alerts.HighLatencyThreshold = highLatency
+	metrics.Alerts.HighCPUThreshold = highCPU
+	metrics.Alerts.HighMemoryThreshold = highMemory
 }

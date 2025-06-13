@@ -2,7 +2,45 @@
   "server": {
     "rpc": {
       "rpc_addr": "0.0.0.0:8181",
-      "name": "RPC Server"
+      "name": "GND RPC",
+      "version": "1.0.0",
+      "cors": {
+        "allowed_origins": ["*"],
+        "allowed_methods": ["GET", "POST", "PUT", "DELETE"],
+        "allowed_headers": ["Content-Type", "Authorization"],
+        "exposed_headers": ["Content-Length", "X-Request-ID"],
+        "max_age": 86400
+      },
+      "rate_limit": {
+        "enabled": true,
+        "requests_per_second": 100,
+        "burst": 200
+      },
+      "security": {
+        "tls_enabled": true,
+        "cert_file": "certs/server.crt",
+        "key_file": "certs/server.key",
+        "client_auth": "request"
+      },
+      "logging": {
+        "level": "info",
+        "format": "json",
+        "output": "stdout",
+        "file": "logs/rpc.log"
+      },
+      "monitoring": {
+        "enabled": true,
+        "prometheus": {
+          "enabled": true,
+          "path": "/metrics",
+          "port": 9090
+        },
+        "health_check": {
+          "enabled": true,
+          "path": "/health",
+          "interval": "30s"
+        }
+      }
     },
     "rest": {
       "host": "0.0.0.0",
@@ -11,7 +49,45 @@
     },
     "ws": {
       "ws_addr": "0.0.0.0:8183",
-      "name": "WebSocket Server"
+      "name": "GND WebSocket",
+      "version": "1.0.0",
+      "cors": {
+        "allowed_origins": ["*"],
+        "allowed_methods": ["GET", "POST"],
+        "allowed_headers": ["Content-Type", "Authorization"],
+        "exposed_headers": ["Content-Length", "X-Request-ID"],
+        "max_age": 86400
+      },
+      "rate_limit": {
+        "enabled": true,
+        "requests_per_second": 50,
+        "burst": 100
+      },
+      "security": {
+        "tls_enabled": true,
+        "cert_file": "certs/server.crt",
+        "key_file": "certs/server.key",
+        "client_auth": "request"
+      },
+      "logging": {
+        "level": "info",
+        "format": "json",
+        "output": "stdout",
+        "file": "logs/ws.log"
+      },
+      "monitoring": {
+        "enabled": true,
+        "prometheus": {
+          "enabled": true,
+          "path": "/metrics",
+          "port": 9091
+        },
+        "health_check": {
+          "enabled": true,
+          "path": "/health",
+          "interval": "30s"
+        }
+      }
     }
   }
 }

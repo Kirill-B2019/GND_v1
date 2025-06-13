@@ -145,7 +145,7 @@ func CallContractHandler(evm *vm.EVM) func(http.ResponseWriter, *http.Request) {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
-		result, err := evm.CallContract(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value, params.Signature)
+		result, err := evm.CallContract(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -176,7 +176,6 @@ func SendContractTxHandler(evm *vm.EVM) http.HandlerFunc {
 			params.GasLimit,
 			params.GasPrice,
 			params.Value,
-			params.Signature,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -202,9 +201,9 @@ func AccountBalanceHandler(evm *vm.EVM) http.HandlerFunc {
 }
 func LatestBlockHandler(evm *vm.EVM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		block := evm.LatestBlock()
-		if block == nil {
-			http.Error(w, "block not found", http.StatusNotFound)
+		block, err := evm.LatestBlock()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		json.NewEncoder(w).Encode(block)
@@ -227,9 +226,9 @@ func BlockByNumberHandler(evm *vm.EVM) http.HandlerFunc {
 				return
 			}
 		}
-		block := evm.BlockByNumber(params.Number)
-		if block == nil {
-			http.Error(w, "block not found", http.StatusNotFound)
+		block, err := evm.BlockByNumber(params.Number)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		json.NewEncoder(w).Encode(block)

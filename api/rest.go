@@ -6,18 +6,17 @@ import (
 	"GND/core"
 	"GND/tokens/interfaces"
 	"GND/tokens/registry"
+	"GND/types"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
-	"context"
-	"errors"
 	"math/big"
 
-	"GND/api/middleware"
-
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -32,6 +31,7 @@ type APIResponse struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
+	Code    int         `json:"code,omitempty"`
 }
 
 func sendJSON(w http.ResponseWriter, data interface{}, statusCode int) {
@@ -39,12 +39,16 @@ func sendJSON(w http.ResponseWriter, data interface{}, statusCode int) {
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		log.Printf("Ошибка кодирования JSON: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, "Внутренняя ошибка сервера", http.StatusInternalServerError)
 	}
 }
 
 func sendError(w http.ResponseWriter, message string, statusCode int) {
-	sendJSON(w, APIResponse{Success: false, Error: message}, statusCode)
+	sendJSON(w, APIResponse{
+		Success: false,
+		Error:   message,
+		Code:    statusCode,
+	}, statusCode)
 }
 
 // RecoverMiddleware защищает от паник в хендлерах
@@ -52,8 +56,8 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				log.Printf("Recovered from panic: %v", rec)
-				sendError(w, "Internal server error", http.StatusInternalServerError)
+				log.Printf("Восстановление после паники: %v", rec)
+				sendError(w, "Внутренняя ошибка сервера", http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -62,476 +66,539 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 
 // AuthMiddleware — заглушка для проверки API-ключа (в будущем реализовать полноценную проверку)
 
-// Обработчик создания кошелька
-func handleCreateWallet(w http.ResponseWriter, r *http.Request) {
-	wallet, err := core.NewWallet(nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+// Server представляет HTTP сервер
+type Server struct {
+	router *gin.Engine
+	db     *pgxpool.Pool
+	core   *core.Blockchain
+}
 
-	response := struct {
-		Address    string `json:"address"`
-		PublicKey  string `json:"publicKey"`
-		PrivateKey string `json:"privateKey"`
+// NewServer создает новый экземпляр сервера
+func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain) *Server {
+	server := &Server{
+		router: gin.Default(),
+		db:     db,
+		core:   blockchain,
+	}
+	server.setupRoutes()
+	return server
+}
+
+// Start запускает сервер
+func (s *Server) Start(addr string) error {
+	return s.router.Run(addr)
+}
+
+// GetMetrics возвращает текущие метрики блокчейна
+func (s *Server) GetMetrics(c *gin.Context) {
+	metrics := core.GetMetrics()
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    metrics,
+	})
+}
+
+// GetTransactionMetrics возвращает метрики по транзакциям
+func (s *Server) GetTransactionMetrics(c *gin.Context) {
+	metrics := core.GetMetrics()
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    metrics.TransactionMetrics,
+	})
+}
+
+// GetFeeMetrics возвращает метрики по комиссиям
+func (s *Server) GetFeeMetrics(c *gin.Context) {
+	metrics := core.GetMetrics()
+	feeMetrics := struct {
+		AverageFee      float64
+		MinFee          *big.Int
+		MaxFee          *big.Int
+		TotalFee        *big.Int
+		FeeDistribution map[string]uint64
+		TypeMetrics     map[string]*core.TransactionTypeMetrics
 	}{
-		Address:    string(wallet.Address),
-		PublicKey:  wallet.PublicKeyHex(),
-		PrivateKey: wallet.PrivateKeyHex(),
+		AverageFee:      metrics.TransactionMetrics.AverageFee,
+		MinFee:          metrics.TransactionMetrics.MinFee,
+		MaxFee:          metrics.TransactionMetrics.MaxFee,
+		TotalFee:        metrics.TransactionMetrics.TotalFee,
+		FeeDistribution: metrics.TransactionMetrics.FeeDistribution,
+		TypeMetrics:     metrics.TransactionMetrics.TypeMetrics,
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    feeMetrics,
+	})
 }
 
-// Обработчик получения баланса
-func handleGetBalance(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	address := core.Address(vars["address"])
-
-	balance := blockchain.State.GetBalance(address, "GND")
-	response := struct {
-		Address string   `json:"address"`
-		Balance *big.Int `json:"balance"`
-	}{
-		Address: string(address),
-		Balance: balance,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-// Обработчик вызова токена
-func handleTokenCall(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TokenAddr string        `json:"tokenAddr"`
-		Method    string        `json:"method"`
-		Args      []interface{} `json:"args"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	token, err := registry.GetToken(req.TokenAddr)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if gnd, ok := token.(interfaces.TokenInterface); ok {
-		switch req.Method {
-		case "transfer":
-			if len(req.Args) != 3 {
-				http.Error(w, "transfer требует from, to, amount", http.StatusBadRequest)
-				return
-			}
-			from, to := req.Args[0].(string), req.Args[1].(string)
-			amount := req.Args[2].(*big.Int)
-			err := gnd.Transfer(r.Context(), from, to, amount)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		case "approve":
-			if len(req.Args) != 3 {
-				http.Error(w, "approve требует owner, spender, amount", http.StatusBadRequest)
-				return
-			}
-			owner, spender := req.Args[0].(string), req.Args[1].(string)
-			amount := req.Args[2].(*big.Int)
-			err := gnd.Approve(r.Context(), owner, spender, amount)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		default:
-			http.Error(w, "неподдерживаемый метод", http.StatusBadRequest)
-			return
-		}
-	} else {
-		http.Error(w, "токен не реализует интерфейс TokenInterface", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// Обработчик получения баланса токена
-func handleGetTokenBalance(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	address := vars["address"]
-
-	var req struct {
-		TokenAddr string `json:"tokenAddr"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	token, err := registry.GetToken(req.TokenAddr)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if gnd, ok := token.(interfaces.TokenInterface); ok {
-		balance, err := gnd.GetBalance(r.Context(), address)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		response := struct {
-			Address string   `json:"address"`
-			Balance *big.Int `json:"balance"`
-		}{
-			Address: address,
-			Balance: balance,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	} else {
-		http.Error(w, "токен не реализует интерфейс TokenInterface", http.StatusInternalServerError)
-	}
-}
-
-// Обработчик отправки транзакции
-func handleSendTransaction(w http.ResponseWriter, r *http.Request) {
-	var tx core.Transaction
-	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := mempool.Add(&tx); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// Обработчик получения транзакции
-func handleGetTransaction(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	hash := vars["hash"]
-
-	status, err := blockchain.GetTxStatus(hash)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	response := struct {
-		Hash   string `json:"hash"`
-		Status string `json:"status"`
-	}{
-		Hash:   hash,
-		Status: status,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-// Обработчик получения последнего блока
-func handleGetLatestBlock(w http.ResponseWriter, r *http.Request) {
-	block := blockchain.LatestBlock()
-	if block == nil {
-		http.Error(w, "блок не найден", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(block)
-}
-
-// Обработчик получения блока по номеру
-func handleGetBlockByNumber(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	number := vars["number"]
-
-	var blockNumber uint64
-	if _, err := fmt.Sscanf(number, "%d", &blockNumber); err != nil {
-		http.Error(w, "неверный формат номера блока", http.StatusBadRequest)
-		return
-	}
-
-	block := blockchain.GetBlockByNumber(blockNumber)
-	if block == nil {
-		http.Error(w, "блок не найден", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(block)
-}
-
-// Обработчик деплоя контракта
-func handleDeployContract(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Code []byte `json:"code"`
-		ABI  []byte `json:"abi"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// TODO: Реализовать деплой контракта
-	http.Error(w, "деплой контракта пока не реализован", http.StatusNotImplemented)
-}
-
-// Обработчик получения контракта
-func handleGetContract(w http.ResponseWriter, r *http.Request) {
-	// TODO: Реализовать получение контракта
-	http.Error(w, "получение контракта пока не реализовано", http.StatusNotImplemented)
-}
-
-// Обработчик получения метрик
-func handleGetMetrics(w http.ResponseWriter, r *http.Request) {
+// GetAlerts возвращает текущие алерты
+func (s *Server) GetAlerts(c *gin.Context) {
 	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    metrics.Alerts.AlertHistory,
+	})
+}
+
+// SetAlertThresholds устанавливает пороговые значения для алертов
+func (s *Server) SetAlertThresholds(c *gin.Context) {
+	var thresholds struct {
+		HighFee     *big.Int `json:"high_fee"`
+		LowFee      *big.Int `json:"low_fee"`
+		HighLatency int64    `json:"high_latency"`
+		HighCPU     float64  `json:"high_cpu"`
+		HighMemory  uint64   `json:"high_memory"`
+	}
+
+	if err := c.ShouldBindJSON(&thresholds); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат данных",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 
-	sendJSON(w, metrics, http.StatusOK)
+	core.SetAlertThresholds(
+		thresholds.HighFee,
+		thresholds.LowFee,
+		time.Duration(thresholds.HighLatency)*time.Millisecond,
+		thresholds.HighCPU,
+		thresholds.HighMemory,
+	)
+
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    "Пороговые значения обновлены",
+	})
 }
 
-// Обработчик получения метрик блоков
-func handleGetBlockMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, metrics.BlockMetrics, http.StatusOK)
-}
-
-// Обработчик получения метрик транзакций
-func handleGetTransactionMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, metrics.TransactionMetrics, http.StatusOK)
-}
-
-// Обработчик получения метрик сети
-func handleGetNetworkMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, metrics.NetworkMetrics, http.StatusOK)
-}
-
-// Обработчик получения метрик производительности
-func handleGetPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, metrics.PerformanceMetrics, http.StatusOK)
-}
-
-// Обработчик получения метрик консенсуса
-func handleGetConsensusMetrics(w http.ResponseWriter, r *http.Request) {
-	metrics := core.GetMetrics()
-	if metrics == nil {
-		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, metrics.ConsensusMetrics, http.StatusOK)
-}
-
-// Запуск REST сервера
-func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool) {
-	blockchain = bc
-	mempool = mp
-
-	r := mux.NewRouter()
-
-	// Middleware
-	r.Use(RecoverMiddleware)
-	r.Use(middleware.LoggerMiddleware)
-	r.Use(middleware.CORSMiddleware)
-	r.Use(middleware.RateLimitMiddleware)
-	r.Use(middleware.AuthMiddleware)
-
-	// Serve static files
-	fs := http.FileServer(http.Dir("/var/www/gnd-api"))
-	r.PathPrefix("/").Handler(fs)
-
-	// API маршруты
-	api := r.PathPrefix("/api").Subrouter()
-
-	// Health check endpoint
-	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
+// HealthCheck возвращает статус сервера
+func (s *Server) HealthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
 			"status":    "ok",
 			"version":   "1.0.0",
 			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// CreateWallet создает новый кошелек
+func (s *Server) CreateWallet(c *gin.Context) {
+	wallet, err := s.core.CreateWallet()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Ошибка создания кошелька: " + err.Error(),
+			Code:    http.StatusInternalServerError,
 		})
-	}).Methods("GET")
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    wallet,
+	})
+}
 
-	// Эндпоинты кошелька
-	api.HandleFunc("/wallet/create", handleCreateWallet).Methods("POST")
-	api.HandleFunc("/wallet/balance/{address}", handleGetBalance).Methods("GET")
+// GetBalance возвращает баланс кошелька
+func (s *Server) GetBalance(c *gin.Context) {
+	address := c.Param("address")
+	balance := s.core.GetBalance(address, "GND") // Using GND as default symbol
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
+			"address": address,
+			"balance": balance.String(),
+		},
+	})
+}
 
-	// Эндпоинты токенов
-	api.HandleFunc("/token/call", handleTokenCall).Methods("POST")
-	api.HandleFunc("/token/balance/{address}", handleGetTokenBalance).Methods("GET")
-
-	// Эндпоинты транзакций
-	api.HandleFunc("/tx/send", handleSendTransaction).Methods("POST")
-	api.HandleFunc("/tx/{hash}", handleGetTransaction).Methods("GET")
-
-	// Эндпоинты блоков
-	api.HandleFunc("/block/latest", handleGetLatestBlock).Methods("GET")
-	api.HandleFunc("/block/{number}", handleGetBlockByNumber).Methods("GET")
-
-	// Эндпоинты контрактов
-	api.HandleFunc("/contract/deploy", handleDeployContract).Methods("POST")
-	api.HandleFunc("/contract/{address}", handleGetContract).Methods("GET")
-
-	// Метрики
-	api.HandleFunc("/api/metrics", handleGetMetrics).Methods("GET")
-	api.HandleFunc("/api/metrics/blocks", handleGetBlockMetrics).Methods("GET")
-	api.HandleFunc("/api/metrics/transactions", handleGetTransactionMetrics).Methods("GET")
-	api.HandleFunc("/api/metrics/network", handleGetNetworkMetrics).Methods("GET")
-	api.HandleFunc("/api/metrics/performance", handleGetPerformanceMetrics).Methods("GET")
-	api.HandleFunc("/api/metrics/consensus", handleGetConsensusMetrics).Methods("GET")
-
-	// Middleware для проверки API ключа
-	apiKeyMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			apiKey := r.Header.Get("X-API-Key")
-			if apiKey == "" {
-				http.Error(w, "API key required", http.StatusUnauthorized)
-				return
-			}
-
-			// Проверка API ключа в базе данных
-			var exists bool
-			err := pool.QueryRow(r.Context(),
-				"SELECT EXISTS(SELECT 1 FROM api_keys WHERE key = $1 AND expires_at > NOW())",
-				apiKey).Scan(&exists)
-
-			if err != nil || !exists {
-				http.Error(w, "Invalid or expired API key", http.StatusUnauthorized)
-				return
-			}
-			log.Printf("=== REST Server запущен на %s ===", fmt.Sprintf("0.0.0.0:%d", cfg.Server.REST.Port))
-			log.Println("Доступные эндпоинты:")
-			next.ServeHTTP(w, r)
-		}
+// SendTransaction отправляет транзакцию
+func (s *Server) SendTransaction(c *gin.Context) {
+	var txData struct {
+		From      string   `json:"from"`
+		To        string   `json:"to"`
+		Value     *big.Int `json:"value"`
+		Fee       *big.Int `json:"fee"`
+		Nonce     uint64   `json:"nonce"`
+		Type      string   `json:"type"`
+		Data      string   `json:"data"`
+		Signature string   `json:"signature"`
+	}
+	if err := c.ShouldBindJSON(&txData); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат данных транзакции",
+			Code:    http.StatusBadRequest,
+		})
+		return
 	}
 
-	// Обработчик для отправки транзакций
-	api.HandleFunc("/api/v1/transactions", apiKeyMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	fromAddr, err := types.ParseAddress(txData.From)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат адреса отправителя: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	toAddr, err := types.ParseAddress(txData.To)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат адреса получателя: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	tx := &core.Transaction{
+		Sender:    fromAddr,
+		Recipient: toAddr,
+		Value:     txData.Value,
+		Nonce:     int64(txData.Nonce),
+		Data:      []byte(txData.Data),
+		Signature: []byte(txData.Signature),
+		GasLimit:  21000, // Стандартный лимит газа для простой транзакции
+		GasPrice:  txData.Fee,
+	}
+	result, err := s.core.SendTransaction(tx)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Ошибка отправки транзакции: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    result,
+	})
+}
+
+// GetTransaction возвращает информацию о транзакции
+func (s *Server) GetTransaction(c *gin.Context) {
+	hash := c.Param("hash")
+	tx, err := s.core.GetTransaction(hash)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   "Транзакция не найдена: " + err.Error(),
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    tx,
+	})
+}
+
+// GetLatestBlock возвращает последний блок
+func (s *Server) GetLatestBlock(c *gin.Context) {
+	block, err := s.core.GetLatestBlock()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Ошибка получения последнего блока: " + err.Error(),
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    block,
+	})
+}
+
+// GetBlockByNumber возвращает блок по номеру
+func (s *Server) GetBlockByNumber(c *gin.Context) {
+	numberStr := c.Param("number")
+	number, err := strconv.ParseUint(numberStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный номер блока",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	block, err := s.core.GetBlockByNumber(number)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Ошибка получения блока: " + err.Error(),
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	if block == nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   "Блок не найден",
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    block,
+	})
+}
+
+// DeployContract деплоит новый контракт
+func (s *Server) DeployContract(c *gin.Context) {
+	var paramsData struct {
+		From        string                 `json:"from"`
+		Bytecode    string                 `json:"bytecode"`
+		Name        string                 `json:"name"`
+		Standard    string                 `json:"standard"`
+		Owner       string                 `json:"owner"`
+		Compiler    string                 `json:"compiler"`
+		Version     string                 `json:"version"`
+		Params      map[string]interface{} `json:"params"`
+		Description string                 `json:"description"`
+		MetadataCID string                 `json:"metadata_cid"`
+		SourceCode  string                 `json:"source_code"`
+		GasLimit    uint64                 `json:"gas_limit"`
+		GasPrice    *big.Int               `json:"gas_price"`
+		Nonce       uint64                 `json:"nonce"`
+		Signature   string                 `json:"signature"`
+		TotalSupply *big.Int               `json:"total_supply"`
+	}
+	if err := c.ShouldBindJSON(&paramsData); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат данных",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	params := core.ContractParams{
+		From:        paramsData.From,
+		Bytecode:    paramsData.Bytecode,
+		Name:        paramsData.Name,
+		Standard:    paramsData.Standard,
+		Owner:       paramsData.Owner,
+		Compiler:    paramsData.Compiler,
+		Version:     paramsData.Version,
+		Params:      paramsData.Params,
+		Description: paramsData.Description,
+		MetadataCID: paramsData.MetadataCID,
+		SourceCode:  paramsData.SourceCode,
+		GasLimit:    paramsData.GasLimit,
+		GasPrice:    paramsData.GasPrice,
+		Nonce:       paramsData.Nonce,
+		Signature:   paramsData.Signature,
+		TotalSupply: paramsData.TotalSupply,
+	}
+	address, err := s.core.DeployContract(&params)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Ошибка деплоя контракта: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    gin.H{"address": address},
+	})
+}
+
+// GetContract возвращает информацию о контракте
+func (s *Server) GetContract(c *gin.Context) {
+	address := c.Param("address")
+	contract, err := s.core.GetContract(address)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   "Контракт не найден: " + err.Error(),
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    contract,
+	})
+}
+
+func (s *Server) setupRoutes() {
+	api := s.router.Group("/api/v1")
+
+	// Метрики
+	api.GET("/metrics", s.GetMetrics)
+	api.GET("/metrics/transactions", s.GetTransactionMetrics)
+	api.GET("/metrics/fees", s.GetFeeMetrics)
+	api.GET("/alerts", s.GetAlerts)
+	api.POST("/alerts/thresholds", s.SetAlertThresholds)
+
+	// Здоровье
+	api.GET("/health", s.HealthCheck)
+
+	// Кошельки
+	api.POST("/wallet", s.CreateWallet)
+	api.GET("/wallet/:address/balance", s.GetBalance)
+
+	// Транзакции
+	api.POST("/transaction", s.SendTransaction)
+	api.GET("/transaction/:hash", s.GetTransaction)
+
+	// Блоки
+	api.GET("/block/latest", s.GetLatestBlock)
+	api.GET("/block/:number", s.GetBlockByNumber)
+
+	// Контракты
+	api.POST("/contract", s.DeployContract)
+	api.GET("/contract/:address", s.GetContract)
+
+	// Токены
+	api.POST("/token/transfer", func(c *gin.Context) {
+		var req struct {
+			TokenAddress string   `json:"token_address"`
+			From         string   `json:"from"`
+			To           string   `json:"to"`
+			Amount       *big.Int `json:"amount"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Неверный формат данных",
+				Code:    http.StatusBadRequest,
+			})
 			return
 		}
-
-		var req TransactionRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		// Преобразование значения в big.Int
-		value := new(big.Int)
-		value.SetString(req.Value, 10)
-
-		// Преобразование цены газа в big.Int
-		gasPrice := new(big.Int)
-		gasPrice.SetString(req.GasPrice, 10)
-
-		// Создание и подписание транзакции
-		tx, err := core.NewTransaction(
-			req.From,
-			req.To,
-			value,
-			req.Data,
-			req.Nonce,
-			req.GasLimit,
-			gasPrice,
-		)
+		token, err := registry.GetToken(req.TokenAddress)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error creating transaction: %v", err), http.StatusBadRequest)
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Ошибка получения токена: " + err.Error(),
+				Code:    http.StatusInternalServerError,
+			})
 			return
 		}
-
-		// Подписание транзакции
-		if err := tx.Sign(req.PrivateKey); err != nil {
-			http.Error(w, fmt.Sprintf("Error signing transaction: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		// Сохранение транзакции в БД
-		if err := tx.Save(r.Context(), pool); err != nil {
-			http.Error(w, fmt.Sprintf("Error saving transaction: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		// Добавление транзакции в мемпул
-		if err := mempool.Add(tx); err != nil {
-			http.Error(w, fmt.Sprintf("Error adding transaction to mempool: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		// Немедленная обработка транзакции (0 подтверждений)
-		go func() {
-			if err := blockchain.ProcessTransaction(tx); err != nil {
-				fmt.Printf("Error processing transaction: %v\n", err)
-				// Обновление статуса транзакции в случае ошибки
-				if err := tx.UpdateStatus(r.Context(), pool, "failed"); err != nil {
-					fmt.Printf("Error updating transaction status: %v\n", err)
-				}
-			} else {
-				// Обновление статуса транзакции при успешной обработке
-				if err := tx.UpdateStatus(r.Context(), pool, "confirmed"); err != nil {
-					fmt.Printf("Error updating transaction status: %v\n", err)
-				}
+		if gnd, ok := token.(interfaces.TokenInterface); ok {
+			err := gnd.Transfer(c.Request.Context(), req.From, req.To, req.Amount)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Ошибка перевода токенов: " + err.Error(),
+					Code:    http.StatusInternalServerError,
+				})
+				return
 			}
-		}()
-
-		// Отправка ответа
-		resp := TransactionResponse{
-			Hash:      tx.Hash,
-			Status:    "pending",
-			Timestamp: time.Now(),
+			c.JSON(http.StatusOK, APIResponse{
+				Success: true,
+				Data:    "Перевод выполнен успешно",
+			})
+			return
 		}
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неподдерживаемый стандарт токена",
+			Code:    http.StatusBadRequest,
+		})
+	})
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
+	api.POST("/token/approve", func(c *gin.Context) {
+		var req struct {
+			TokenAddress string   `json:"token_address"`
+			Owner        string   `json:"owner"`
+			Spender      string   `json:"spender"`
+			Amount       *big.Int `json:"amount"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Неверный формат данных",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		token, err := registry.GetToken(req.TokenAddress)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Ошибка получения токена: " + err.Error(),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		if gnd, ok := token.(interfaces.TokenInterface); ok {
+			err := gnd.Approve(c.Request.Context(), req.Owner, req.Spender, req.Amount)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Ошибка разрешения перевода: " + err.Error(),
+					Code:    http.StatusInternalServerError,
+				})
+				return
+			}
+			c.JSON(http.StatusOK, APIResponse{
+				Success: true,
+				Data:    "Разрешение выдано успешно",
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неподдерживаемый стандарт токена",
+			Code:    http.StatusBadRequest,
+		})
+	})
 
-	// Формируем адрес сервера
-	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Server.REST.Port)
-	log.Printf("=== REST Server запущен на %s ===", addr)
-	log.Println("Доступные эндпоинты:")
-	if err := http.ListenAndServe(addr, r); err != nil {
+	api.GET("/token/:address/balance/:owner", func(c *gin.Context) {
+		tokenAddress := c.Param("address")
+		owner := c.Param("owner")
+
+		token, err := registry.GetToken(tokenAddress)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Ошибка получения токена: " + err.Error(),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		if gnd, ok := token.(interfaces.TokenInterface); ok {
+			balance, err := gnd.GetBalance(c.Request.Context(), owner)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Ошибка получения баланса: " + err.Error(),
+					Code:    http.StatusInternalServerError,
+				})
+				return
+			}
+			c.JSON(http.StatusOK, APIResponse{
+				Success: true,
+				Data: gin.H{
+					"address": tokenAddress,
+					"owner":   owner,
+					"balance": balance.String(),
+				},
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неподдерживаемый стандарт токена",
+			Code:    http.StatusBadRequest,
+		})
+	})
+}
+
+// StartRESTServer запускает REST API сервер
+func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool) {
+	server := NewServer(pool, bc)
+	if err := server.Start(fmt.Sprintf(":%d", cfg.Server.REST.Port)); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}
 }
@@ -598,57 +665,95 @@ func universalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Пример для обработчика transfer
+// handleTransfer обрабатывает перевод токенов
 func handleTransfer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		TokenAddress string   `json:"tokenAddress"`
+		TokenAddress string   `json:"token_address"`
 		From         string   `json:"from"`
 		To           string   `json:"to"`
 		Amount       *big.Int `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		sendError(w, "Неверный формат данных", http.StatusBadRequest)
 		return
 	}
 	token, err := registry.GetToken(req.TokenAddress)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sendError(w, "Ошибка получения токена: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if gnd, ok := token.(interfaces.TokenInterface); ok {
 		err := gnd.Transfer(r.Context(), req.From, req.To, req.Amount)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			sendError(w, "Ошибка перевода токенов: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		sendJSON(w, APIResponse{
+			Success: true,
+			Data:    "Перевод выполнен успешно",
+		}, http.StatusOK)
 		return
 	}
-	http.Error(w, "unsupported token standard", http.StatusBadRequest)
+	sendError(w, "Неподдерживаемый стандарт токена", http.StatusBadRequest)
 }
 
-// UniversalTokenCall вызывает метод токена с учетом стандарта
-func UniversalTokenCall(ctx context.Context, tokenAddr string, method string, args ...interface{}) (interface{}, error) {
-	token, err := registry.GetToken(tokenAddr)
+// handleTokenApprove обрабатывает разрешение на перевод токенов
+func handleTokenApprove(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TokenAddress string   `json:"token_address"`
+		Owner        string   `json:"owner"`
+		Spender      string   `json:"spender"`
+		Amount       *big.Int `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendError(w, "Неверный формат данных", http.StatusBadRequest)
+		return
+	}
+	token, err := registry.GetToken(req.TokenAddress)
 	if err != nil {
-		return nil, err
+		sendError(w, "Ошибка получения токена: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 	if gnd, ok := token.(interfaces.TokenInterface); ok {
-		switch method {
-		case "transfer":
-			if len(args) == 3 {
-				return nil, gnd.Transfer(ctx, args[0].(string), args[1].(string), args[2].(*big.Int))
-			}
-		case "approve":
-			if len(args) == 3 {
-				return nil, gnd.Approve(ctx, args[0].(string), args[1].(string), args[2].(*big.Int))
-			}
-		case "balanceOf":
-			if len(args) == 1 {
-				return gnd.GetBalance(ctx, args[0].(string))
-			}
-			// ... другие методы ...
+		err := gnd.Approve(r.Context(), req.Owner, req.Spender, req.Amount)
+		if err != nil {
+			sendError(w, "Ошибка разрешения перевода: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
+		sendJSON(w, APIResponse{
+			Success: true,
+			Data:    "Разрешение выдано успешно",
+		}, http.StatusOK)
+		return
 	}
-	return nil, errors.New("unsupported token standard or method")
+	sendError(w, "Неподдерживаемый стандарт токена", http.StatusBadRequest)
+}
+
+// handleGetTokenBalance обрабатывает запрос баланса токена
+func handleGetTokenBalance(w http.ResponseWriter, r *http.Request) {
+	tokenAddress := mux.Vars(r)["address"]
+	owner := mux.Vars(r)["owner"]
+
+	token, err := registry.GetToken(tokenAddress)
+	if err != nil {
+		sendError(w, "Ошибка получения токена: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if gnd, ok := token.(interfaces.TokenInterface); ok {
+		balance, err := gnd.GetBalance(r.Context(), owner)
+		if err != nil {
+			sendError(w, "Ошибка получения баланса: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sendJSON(w, APIResponse{
+			Success: true,
+			Data: gin.H{
+				"address": tokenAddress,
+				"owner":   owner,
+				"balance": balance.String(),
+			},
+		}, http.StatusOK)
+		return
+	}
+	sendError(w, "Неподдерживаемый стандарт токена", http.StatusBadRequest)
 }

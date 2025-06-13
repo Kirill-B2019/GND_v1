@@ -265,8 +265,13 @@ func broadcastBlocks(blockchain *core.Blockchain) {
 
 	for client := range clients {
 		if client.conn != nil {
-			err := client.conn.WriteJSON(blockchain.LatestBlock())
+			block, err := blockchain.LatestBlock()
 			if err != nil {
+				log.Printf("Error getting latest block: %v", err)
+				continue
+			}
+
+			if err := client.conn.WriteJSON(block); err != nil {
 				log.Printf("Error sending block to client: %v", err)
 				client.conn.Close()
 				delete(clients, client)

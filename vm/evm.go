@@ -5,6 +5,7 @@ package vm
 import (
 	"GND/core"
 	"GND/types"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,25 +14,60 @@ import (
 	"sync"
 )
 
-// EVMConfig определяет параметры виртуальной машины
-type EVMConfig struct {
-	Blockchain *core.Blockchain
-	State      core.StateIface
-	GasLimit   uint64            // лимит газа на выполнение одной транзакции/контракта
-	Coins      []core.CoinConfig // доступ к конфигурации монет
+// ExecutionResult represents the result of a contract execution
+type ExecutionResult struct {
+	GasUsed      uint64
+	StateChanges []*StateChange
+	ReturnData   []byte
+	Error        error
 }
 
-// EVM реализует изолированную виртуальную машину для исполнения байткода контрактов
+// StateChange represents a change to the blockchain state
+type StateChange struct {
+	Type    ChangeType
+	Address string
+	Symbol  string
+	Amount  *big.Int
+	Key     []byte
+	Value   []byte
+}
+
+// ChangeType represents the type of state change
+type ChangeType int
+
+const (
+	ChangeTypeBalance ChangeType = iota
+	ChangeTypeStorage
+)
+
+// CoinConfig represents the configuration for a coin
+type CoinConfig struct {
+	Symbol          string
+	ContractAddress string
+	Decimals        uint8
+}
+
+// EVMConfig represents the configuration for the EVM
+type EVMConfig struct {
+	Blockchain core.BlockchainIface
+	State      core.StateIface
+	GasLimit   uint64
+	Coins      []CoinConfig
+}
+
+// EVM represents the Ethereum Virtual Machine
 type EVM struct {
 	config       EVMConfig
 	mutex        sync.RWMutex
 	eventManager types.EventManager
+	ctx          context.Context
 }
 
-// NewEVM создает новый экземпляр EVM
+// NewEVM creates a new EVM instance
 func NewEVM(config EVMConfig) *EVM {
 	return &EVM{
 		config: config,
+		ctx:    context.Background(),
 	}
 }
 
@@ -48,7 +84,7 @@ func (e *EVM) GetSender() string {
 	return e.config.Coins[0].ContractAddress
 }
 
-// DeployContract деплоит байткод контракта, регистрирует его и списывает комиссию в GND
+// DeployContract deploys a contract bytecode, registers it, and deducts the fee in GND
 func (e *EVM) DeployContract(
 	from string,
 	bytecode []byte,
@@ -59,44 +95,44 @@ func (e *EVM) DeployContract(
 	signature string,
 	totalSupply *big.Int,
 ) (string, error) {
-	// Валидация входных параметров
+	// Validate input parameters
 	if len(bytecode) == 0 {
-		return "", errors.New("пустой байткод контракта")
+		return "", errors.New("empty contract bytecode")
 	}
 	if gasLimit == 0 || gasPrice == 0 {
-		return "", errors.New("некорректные параметры газа")
+		return "", errors.New("invalid gas parameters")
 	}
 	if totalSupply == nil {
-		return "", errors.New("totalSupply не может быть nil")
+		return "", errors.New("totalSupply cannot be nil")
 	}
 
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	fromAddr := core.Address(from)
+	fromAddr := types.Address(from)
 	requiredFee := new(big.Int).Mul(
 		new(big.Int).SetUint64(gasLimit),
 		new(big.Int).SetUint64(gasPrice),
 	)
 
 	if len(e.config.Coins) == 0 {
-		return "", errors.New("требуется настройка монеты")
+		return "", errors.New("coin configuration is required")
 	}
 	primarySymbol := e.config.Coins[0].Symbol
 
-	// Проверка баланса
+	// Check balance
 	balance := e.config.State.GetBalance(fromAddr, primarySymbol)
 	if balance.Cmp(requiredFee) < 0 {
-		return "", fmt.Errorf("недостаточно %s для комиссии деплоя (требуется: %s, доступно: %s)",
+		return "", fmt.Errorf("insufficient %s for deployment fee (required: %s, available: %s)",
 			primarySymbol, requiredFee.String(), balance.String())
 	}
 
-	// Генерация адреса контракта с использованием keccak256
+	// Generate contract address using keccak256
 	addr := fmt.Sprintf("GNDct%x", hashBytes(append(bytecode, byte(nonce))))
 
-	// Проверка существования контракта
+	// Check if contract already exists
 	if _, exists := ContractRegistry[core.Address(addr)]; exists {
-		return "", errors.New("контракт с таким адресом уже существует")
+		return "", errors.New("contract with this address already exists")
 	}
 
 	meta.Address = addr
@@ -108,58 +144,61 @@ func (e *EVM) DeployContract(
 		core.Address(from),
 		meta.Name,
 		meta.Symbol,
-		18, // TODO: сделать настраиваемым
+		18, // TODO: make configurable
 		totalSupply,
-		nil, // TODO: добавить pool
+		nil, // TODO: add pool
 	)
 	if err != nil {
-		return "", fmt.Errorf("ошибка создания токен-контракта: %v", err)
+		return "", fmt.Errorf("error creating token contract: %v", err)
 	}
 
-	// Регистрация контракта
+	// Register contract
 	ContractRegistry[contract.address] = contract
 
-	// Списание комиссии
+	// Deduct fee
 	if err := e.config.State.SubBalance(fromAddr, primarySymbol, requiredFee); err != nil {
-		return "", fmt.Errorf("ошибка списания комиссии: %v", err)
+		return "", fmt.Errorf("error deducting fee: %v", err)
 	}
 
 	return addr, nil
 }
 
 // CallContract выполняет функцию контракта
-func (e *EVM) CallContract(
-	from string,
-	to string,
-	data []byte,
-	gasLimit uint64,
-	gasPrice uint64,
-	value uint64,
-	signature string,
-) ([]byte, error) {
-	fromAddr := core.Address(from)
-	toAddr := core.Address(to)
-	return e.config.State.CallStatic(fromAddr, toAddr, data, gasLimit, gasPrice, value)
+func (e *EVM) CallContract(from string, to string, data []byte, gasLimit uint64, gasPrice uint64, value uint64) (*types.ExecutionResult, error) {
+	// Создаем транзакцию
+	tx := &core.Transaction{
+		Sender:    types.Address(from),
+		Recipient: types.Address(to),
+		Data:      data,
+		GasLimit:  gasLimit,
+		GasPrice:  big.NewInt(int64(gasPrice)),
+		Value:     big.NewInt(int64(value)),
+	}
+
+	// Выполняем транзакцию
+	return e.ExecuteTransaction(tx)
 }
 
 // GetBalance возвращает баланс GND для адреса
 func (e *EVM) GetBalance(address string) (*big.Int, error) {
-	primarySymbol := e.config.Coins[0].Symbol
-	addr := core.Address(address)
-	return e.config.State.GetBalance(addr, primarySymbol), nil
+	balance := e.config.State.GetBalance(types.Address(address), e.config.Coins[0].Symbol)
+	if balance == nil {
+		return nil, errors.New("failed to get balance")
+	}
+	return balance, nil
 }
 
 // LatestBlock возвращает последний блок
-func (e *EVM) LatestBlock() *core.Block {
+func (e *EVM) LatestBlock() (*core.Block, error) {
 	return e.config.Blockchain.LatestBlock()
 }
 
 // BlockByNumber возвращает блок по номеру
-func (e *EVM) BlockByNumber(number uint64) *core.Block {
+func (e *EVM) BlockByNumber(number uint64) (*core.Block, error) {
 	return e.config.Blockchain.GetBlockByNumber(number)
 }
 
-// SendRawTransaction отправляет сырую транзакцию
+// SendRawTransaction sends a raw transaction
 func (e *EVM) SendRawTransaction(rawTx []byte) (string, error) {
 	tx, err := core.DecodeRawTransaction(rawTx)
 	if err != nil {
@@ -171,13 +210,69 @@ func (e *EVM) SendRawTransaction(rawTx []byte) (string, error) {
 	return tx.Hash, nil
 }
 
-// GetTxStatus возвращает статус транзакции
+// GetTxStatus returns the transaction status
 func (e *EVM) GetTxStatus(hash string) (string, error) {
 	return e.config.Blockchain.GetTxStatus(hash)
 }
 
-// hashBytes генерирует хеш для адресации
+// hashBytes generates a hash for address
 func hashBytes(data []byte) []byte {
 	hash := sha256.Sum256(data)
 	return hash[:]
+}
+
+// ExecuteTransaction выполняет транзакцию
+func (e *EVM) ExecuteTransaction(tx *core.Transaction) (*types.ExecutionResult, error) {
+	// Проверяем баланс отправителя
+	balance := e.config.State.GetBalance(types.Address(tx.Sender), e.config.Coins[0].Symbol)
+	if balance.Cmp(tx.Value) < 0 {
+		return nil, errors.New("insufficient balance")
+	}
+
+	// Вычитаем баланс отправителя
+	if err := e.config.State.SubBalance(types.Address(tx.Sender), e.config.Coins[0].Symbol, tx.Value); err != nil {
+		return nil, err
+	}
+
+	// Если это вызов контракта
+	if tx.IsContractCall() {
+		// Выполняем статический вызов
+		result, err := e.config.State.CallStatic(tx)
+		if err != nil {
+			// Возвращаем баланс в случае ошибки
+			e.config.State.AddBalance(types.Address(tx.Sender), e.config.Coins[0].Symbol, tx.Value)
+			return nil, err
+		}
+
+		// Проверяем баланс получателя
+		recipientBalance := e.config.State.GetBalance(types.Address(tx.Recipient), e.config.Coins[0].Symbol)
+		if recipientBalance == nil {
+			return nil, errors.New("failed to get recipient balance")
+		}
+
+		// Добавляем транзакцию в блокчейн
+		if err := e.config.Blockchain.AddTx(tx); err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+
+	// Для обычного перевода просто добавляем баланс получателю
+	if err := e.config.State.AddBalance(types.Address(tx.Recipient), e.config.Coins[0].Symbol, tx.Value); err != nil {
+		// Возвращаем баланс отправителю в случае ошибки
+		e.config.State.AddBalance(types.Address(tx.Sender), e.config.Coins[0].Symbol, tx.Value)
+		return nil, err
+	}
+
+	return &types.ExecutionResult{
+		GasUsed: 0, // TODO: Implement gas calculation
+		Error:   nil,
+	}, nil
+}
+
+// GetEVMInstance returns the global EVM instance
+func GetEVMInstance() *EVM {
+	// TODO: Implement singleton pattern
+	return nil
 }

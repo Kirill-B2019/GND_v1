@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -13,37 +14,46 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Block представляет блок в блокчейне ГАНИМЕД
+// Block represents a block in the blockchain
 type Block struct {
-	ID           int            // ID блока
+	ID           int64          // ID блока
 	Hash         string         // Хеш блока
 	PrevHash     string         // Хеш предыдущего блока
 	MerkleRoot   string         // Корень дерева Меркла
 	Timestamp    time.Time      // Временная метка создания блока
-	Height       int64          // Высота блока
-	Version      int            // Версия блока
-	Size         int            // Размер блока в байтах
-	TxCount      int            // Количество транзакций в блоке
-	GasUsed      int64          // Использованный газ
-	GasLimit     int64          // Лимит газа
-	Difficulty   int64          // Сложность блока
-	Nonce        string         // Нонс блока
+	Height       uint64         // Высота блока
+	Version      uint32         // Версия блока
+	Size         uint64         // Размер блока в байтах
+	TxCount      uint32         // Количество транзакций в блоке
+	GasUsed      uint64         // Использованный газ
+	GasLimit     uint64         // Лимит газа
+	Difficulty   uint64         // Сложность блока
+	Nonce        uint64         // Нонс блока
 	Miner        string         // Адрес майнера
-	Reward       string         // Награда за блок
+	Reward       *big.Int       // Награда за блок
 	ExtraData    []byte         // Дополнительные данные
 	CreatedAt    time.Time      // Время создания записи
 	UpdatedAt    time.Time      // Время последнего обновления
 	Status       string         // Статус блока
-	ParentID     *int           // ID родительского блока
+	ParentID     *int64         // ID родительского блока
 	IsOrphaned   bool           // Является ли блок орфаном
 	IsFinalized  bool           // Является ли блок финализированным
 	Index        uint64         // Индекс блока
 	Consensus    string         // Тип консенсуса
+	Header       *BlockHeader   // Заголовок блока
 	Transactions []*Transaction // Транзакции в блоке
 }
 
+// BlockHeader represents a block header
+type BlockHeader struct {
+	Number    uint64
+	Timestamp time.Time
+	Hash      string
+	PrevHash  string
+}
+
 // NewBlock создает новый блок
-func NewBlock(prevHash string, height int64, miner string) *Block {
+func NewBlock(prevHash string, height uint64, miner string) *Block {
 	now := time.Now()
 	return &Block{
 		PrevHash:    prevHash,
@@ -73,7 +83,7 @@ func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		RETURNING id`,
 		b.Hash, b.PrevHash, b.MerkleRoot, b.Timestamp, b.Height,
 		b.Version, b.Size, b.TxCount, b.GasUsed, b.GasLimit,
-		b.Difficulty, b.Nonce, b.Miner, b.Reward, b.ExtraData,
+		b.Difficulty, b.Nonce, b.Miner, b.Reward.String(), b.ExtraData,
 		b.CreatedAt, b.UpdatedAt, b.Status, b.ParentID,
 		b.IsOrphaned, b.IsFinalized,
 	).Scan(&b.ID)
@@ -104,65 +114,90 @@ func (b *Block) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status str
 	return nil
 }
 
-// LoadBlock загружает блок из БД по хешу
-func LoadBlock(ctx context.Context, pool *pgxpool.Pool, hash string) (*Block, error) {
-	var id int
-	var prevHash, merkleRoot, miner, reward string
-	var timestamp, createdAt, updatedAt time.Time
-	var height int64
-	var version, size, txCount int
-	var gasUsed, gasLimit, difficulty, nonce int64
-	var extraData []byte
-	var status string
-	var parentID *int
-	var isOrphaned, isFinalized bool
-
-	err := pool.QueryRow(ctx, `
-		SELECT id, prev_hash, merkle_root, timestamp, height,
-			version, size, tx_count, gas_used, gas_limit,
-			difficulty, nonce, miner, reward, extra_data,
-			created_at, updated_at, status, parent_id,
-			is_orphaned, is_finalized
-		FROM blocks
-		WHERE hash = $1`,
-		hash,
-	).Scan(&id, &prevHash, &merkleRoot, &timestamp, &height,
-		&version, &size, &txCount, &gasUsed, &gasLimit,
-		&difficulty, &nonce, &miner, &reward, &extraData,
-		&createdAt, &updatedAt, &status, &parentID,
-		&isOrphaned, &isFinalized)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("блок не найден: %s", hash)
-	}
+// LoadBlockByHash загружает блок из БД по хешу
+func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
+	var block Block
+	var rewardStr string
+	err := pool.QueryRow(context.Background(), `
+		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
+		FROM blocks WHERE hash = $1`, hash).Scan(
+		&block.ID,
+		&block.Hash,
+		&block.PrevHash,
+		&block.MerkleRoot,
+		&block.Timestamp,
+		&block.Height,
+		&block.Version,
+		&block.Size,
+		&block.TxCount,
+		&block.GasUsed,
+		&block.GasLimit,
+		&block.Difficulty,
+		&block.Nonce,
+		&block.Miner,
+		&rewardStr,
+		&block.ExtraData,
+		&block.CreatedAt,
+		&block.UpdatedAt,
+		&block.Status,
+		&block.ParentID,
+		&block.IsOrphaned,
+		&block.IsFinalized,
+		&block.Index,
+		&block.Consensus,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка загрузки блока: %w", err)
+		return nil, err
 	}
 
-	return &Block{
-		ID:          id,
-		Hash:        hash,
-		PrevHash:    prevHash,
-		MerkleRoot:  merkleRoot,
-		Timestamp:   timestamp,
-		Height:      height,
-		Version:     version,
-		Size:        size,
-		TxCount:     txCount,
-		GasUsed:     gasUsed,
-		GasLimit:    gasLimit,
-		Difficulty:  difficulty,
-		Nonce:       strconv.FormatInt(nonce, 10),
-		Miner:       miner,
-		Reward:      reward,
-		ExtraData:   extraData,
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
-		Status:      status,
-		ParentID:    parentID,
-		IsOrphaned:  isOrphaned,
-		IsFinalized: isFinalized,
-	}, nil
+	// Convert reward string to big.Int
+	block.Reward = new(big.Int)
+	block.Reward.SetString(rewardStr, 10)
+
+	return &block, nil
+}
+
+// LoadBlock загружает блок из БД по высоте
+func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
+	var block Block
+	var rewardStr string
+	err := pool.QueryRow(context.Background(), `
+		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
+		FROM blocks WHERE index = $1`, height).Scan(
+		&block.ID,
+		&block.Hash,
+		&block.PrevHash,
+		&block.MerkleRoot,
+		&block.Timestamp,
+		&block.Height,
+		&block.Version,
+		&block.Size,
+		&block.TxCount,
+		&block.GasUsed,
+		&block.GasLimit,
+		&block.Difficulty,
+		&block.Nonce,
+		&block.Miner,
+		&rewardStr,
+		&block.ExtraData,
+		&block.CreatedAt,
+		&block.UpdatedAt,
+		&block.Status,
+		&block.ParentID,
+		&block.IsOrphaned,
+		&block.IsFinalized,
+		&block.Index,
+		&block.Consensus,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert reward string to big.Int
+	block.Reward = new(big.Int)
+	block.Reward.SetString(rewardStr, 10)
+
+	return &block, nil
 }
 
 // GetBlockByHeight возвращает блок по высоте
@@ -184,28 +219,44 @@ func GetBlockByHeight(ctx context.Context, pool *pgxpool.Pool, height int64) (*B
 		return nil, fmt.Errorf("ошибка получения блока по высоте: %w", err)
 	}
 
-	return LoadBlock(ctx, pool, hash)
+	return LoadBlockByHash(pool, hash)
 }
 
-// GetLatestBlock возвращает последний блок
-func GetLatestBlock(ctx context.Context, pool *pgxpool.Pool) (*Block, error) {
-	var hash string
-	err := pool.QueryRow(ctx, `
-		SELECT hash
-		FROM blocks
-		WHERE is_orphaned = false
-		ORDER BY height DESC, created_at DESC
-		LIMIT 1`,
-	).Scan(&hash)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("блоки не найдены")
-	}
+// GetLatestBlock returns the latest block
+func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
+	var block Block
+	err := pool.QueryRow(context.Background(),
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index DESC LIMIT 1",
+	).Scan(
+		&block.ID,
+		&block.Hash,
+		&block.PrevHash,
+		&block.MerkleRoot,
+		&block.Timestamp,
+		&block.Height,
+		&block.Version,
+		&block.Size,
+		&block.TxCount,
+		&block.GasUsed,
+		&block.GasLimit,
+		&block.Difficulty,
+		&block.Nonce,
+		&block.Miner,
+		&block.Reward,
+		&block.ExtraData,
+		&block.CreatedAt,
+		&block.UpdatedAt,
+		&block.Status,
+		&block.ParentID,
+		&block.IsOrphaned,
+		&block.IsFinalized,
+		&block.Index,
+		&block.Consensus,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка получения последнего блока: %w", err)
+		return nil, fmt.Errorf("failed to get latest block: %v", err)
 	}
-
-	return LoadBlock(ctx, pool, hash)
+	return &block, nil
 }
 
 // CalculateHash вычисляет хеш блока
@@ -214,15 +265,15 @@ func (b *Block) CalculateHash() string {
 	sb.WriteString(b.PrevHash)
 	sb.WriteString(b.MerkleRoot)
 	sb.WriteString(b.Timestamp.Format(time.RFC3339))
-	sb.WriteString(strconv.FormatInt(b.Height, 10))
-	sb.WriteString(strconv.Itoa(b.Version))
-	sb.WriteString(strconv.Itoa(b.TxCount))
-	sb.WriteString(strconv.FormatInt(b.GasUsed, 10))
-	sb.WriteString(strconv.FormatInt(b.GasLimit, 10))
-	sb.WriteString(strconv.FormatInt(b.Difficulty, 10))
-	sb.WriteString(b.Nonce)
+	sb.WriteString(strconv.FormatInt(int64(b.Height), 10))
+	sb.WriteString(strconv.Itoa(int(b.Version)))
+	sb.WriteString(strconv.Itoa(int(b.TxCount)))
+	sb.WriteString(strconv.FormatInt(int64(b.GasUsed), 10))
+	sb.WriteString(strconv.FormatInt(int64(b.GasLimit), 10))
+	sb.WriteString(strconv.FormatInt(int64(b.Difficulty), 10))
+	sb.WriteString(strconv.FormatInt(int64(b.Nonce), 10))
 	sb.WriteString(b.Miner)
-	sb.WriteString(b.Reward)
+	sb.WriteString(b.Reward.String())
 	sb.Write(b.ExtraData)
 
 	hash := sha256.Sum256([]byte(sb.String()))
@@ -235,16 +286,98 @@ func (b *Block) CalculateHashWithoutNonce() string {
 	sb.WriteString(b.PrevHash)
 	sb.WriteString(b.MerkleRoot)
 	sb.WriteString(b.Timestamp.Format(time.RFC3339))
-	sb.WriteString(strconv.FormatInt(b.Height, 10))
-	sb.WriteString(strconv.Itoa(b.Version))
-	sb.WriteString(strconv.Itoa(b.TxCount))
-	sb.WriteString(strconv.FormatInt(b.GasUsed, 10))
-	sb.WriteString(strconv.FormatInt(b.GasLimit, 10))
-	sb.WriteString(strconv.FormatInt(b.Difficulty, 10))
+	sb.WriteString(strconv.FormatInt(int64(b.Height), 10))
+	sb.WriteString(strconv.Itoa(int(b.Version)))
+	sb.WriteString(strconv.Itoa(int(b.TxCount)))
+	sb.WriteString(strconv.FormatInt(int64(b.GasUsed), 10))
+	sb.WriteString(strconv.FormatInt(int64(b.GasLimit), 10))
+	sb.WriteString(strconv.FormatInt(int64(b.Difficulty), 10))
 	sb.WriteString(b.Miner)
-	sb.WriteString(b.Reward)
+	sb.WriteString(b.Reward.String())
 	sb.Write(b.ExtraData)
 
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
+}
+
+// GetBlockByNumber returns a block by its number
+func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
+	var block Block
+	var rewardStr string
+	err := pool.QueryRow(context.Background(),
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
+		number,
+	).Scan(
+		&block.ID,
+		&block.Hash,
+		&block.PrevHash,
+		&block.MerkleRoot,
+		&block.Timestamp,
+		&block.Height,
+		&block.Version,
+		&block.Size,
+		&block.TxCount,
+		&block.GasUsed,
+		&block.GasLimit,
+		&block.Difficulty,
+		&block.Nonce,
+		&block.Miner,
+		&rewardStr,
+		&block.ExtraData,
+		&block.CreatedAt,
+		&block.UpdatedAt,
+		&block.Status,
+		&block.ParentID,
+		&block.IsOrphaned,
+		&block.IsFinalized,
+		&block.Index,
+		&block.Consensus,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block by number: %v", err)
+	}
+
+	// Convert reward string to big.Int
+	block.Reward = new(big.Int)
+	block.Reward.SetString(rewardStr, 10)
+
+	return &block, nil
+}
+
+// GetBlockByHash returns a block by its hash
+func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
+	var block Block
+	err := pool.QueryRow(context.Background(),
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE hash = $1",
+		hash,
+	).Scan(
+		&block.ID,
+		&block.Hash,
+		&block.PrevHash,
+		&block.MerkleRoot,
+		&block.Timestamp,
+		&block.Height,
+		&block.Version,
+		&block.Size,
+		&block.TxCount,
+		&block.GasUsed,
+		&block.GasLimit,
+		&block.Difficulty,
+		&block.Nonce,
+		&block.Miner,
+		&block.Reward,
+		&block.ExtraData,
+		&block.CreatedAt,
+		&block.UpdatedAt,
+		&block.Status,
+		&block.ParentID,
+		&block.IsOrphaned,
+		&block.IsFinalized,
+		&block.Index,
+		&block.Consensus,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block by hash: %v", err)
+	}
+	return &block, nil
 }

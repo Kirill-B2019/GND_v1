@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,6 +35,26 @@ type Contract struct {
 	Runs       int       // Количество запусков оптимизации
 	License    string    // Лицензия контракта
 	Metadata   []byte    // Метаданные контракта
+}
+
+// ContractParams represents parameters for contract deployment
+type ContractParams struct {
+	From        string                 `json:"from"`
+	Bytecode    string                 `json:"bytecode"`
+	Name        string                 `json:"name"`
+	Standard    string                 `json:"standard"`
+	Owner       string                 `json:"owner"`
+	Compiler    string                 `json:"compiler"`
+	Version     string                 `json:"version"`
+	Params      map[string]interface{} `json:"params"`
+	Description string                 `json:"description"`
+	MetadataCID string                 `json:"metadata_cid"`
+	SourceCode  string                 `json:"source_code"`
+	GasLimit    uint64                 `json:"gas_limit"`
+	GasPrice    *big.Int               `json:"gas_price"`
+	Nonce       uint64                 `json:"nonce"`
+	Signature   string                 `json:"signature"`
+	TotalSupply *big.Int               `json:"total_supply"`
 }
 
 // NewContract создает новый контракт

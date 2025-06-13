@@ -4,36 +4,36 @@ import (
 	"math/big"
 )
 
-// EVMInterface определяет интерфейс для виртуальной машины
+// EVMInterface defines the interface for virtual machine
 type EVMInterface interface {
-	// DeployContract деплоит новый контракт
+	// DeployContract deploys a new contract
 	DeployContract(
-		from string,
+		from Address,
 		bytecode []byte,
 		meta ContractMeta,
 		gasLimit uint64,
-		gasPrice uint64,
+		gasPrice *big.Int,
 		nonce uint64,
-		signature string,
+		signature []byte,
 		totalSupply *big.Int,
 	) (string, error)
 
-	// CallContract выполняет вызов контракта
+	// CallContract executes a contract call
 	CallContract(
-		from string,
-		to string,
+		from Address,
+		to Address,
 		data []byte,
 		gasLimit uint64,
-		gasPrice uint64,
-		value uint64,
-		signature string,
+		gasPrice *big.Int,
+		value *big.Int,
+		signature []byte,
 	) ([]byte, error)
 
-	// GetBalance возвращает баланс для адреса
-	GetBalance(address string) (*big.Int, error)
+	// GetBalance returns the balance for an address
+	GetBalance(address Address) (*big.Int, error)
 }
 
-// ContractMeta содержит метаданные контракта
+// ContractMeta contains contract metadata
 type ContractMeta struct {
 	Name        string
 	Symbol      string
@@ -49,14 +49,60 @@ type ContractMeta struct {
 	Bytecode    string
 }
 
-// ContractInterface определяет интерфейс для контракта
+// ContractInterface defines the interface for a contract
 type ContractInterface interface {
-	// Execute выполняет метод контракта
+	// Execute executes a contract method
 	Execute(method string, args []interface{}) (interface{}, error)
 
-	// Address возвращает адрес контракта
+	// Address returns the contract address
 	Address() string
 
-	// Bytecode возвращает байткод контракта
+	// Bytecode returns the contract bytecode
 	Bytecode() []byte
+}
+
+// ExecutionResult represents the result of a contract execution
+type ExecutionResult struct {
+	GasUsed      uint64
+	StateChanges []*StateChange
+	ReturnData   []byte
+	Error        error
+}
+
+// StateChange represents a change to the blockchain state
+type StateChange struct {
+	Type    ChangeType
+	Address string
+	Symbol  string
+	Amount  *big.Int
+	Key     []byte
+	Value   []byte
+}
+
+// ChangeType represents the type of state change
+type ChangeType uint8
+
+const (
+	ChangeTypeBalance ChangeType = iota
+	ChangeTypeStorage
+)
+
+// NewStateChange creates a new state change
+func NewStateChange(changeType ChangeType, address Address, symbol string, amount *big.Int) *StateChange {
+	return &StateChange{
+		Type:    changeType,
+		Address: address.String(),
+		Symbol:  symbol,
+		Amount:  amount,
+	}
+}
+
+// NewStorageChange creates a new storage change
+func NewStorageChange(address Address, key, value []byte) *StateChange {
+	return &StateChange{
+		Type:    ChangeTypeStorage,
+		Address: address.String(),
+		Key:     key,
+		Value:   value,
+	}
 }

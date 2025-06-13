@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"GND/core/crypto"
+	"GND/types"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -38,83 +38,107 @@ const (
 	TxTypeTokenUnpause TxType = "token_unpause"
 )
 
-// Transaction представляет транзакцию в блокчейне
+// Transaction represents a blockchain transaction
 type Transaction struct {
-	ID         int64           `json:"id"`
-	BlockID    sql.NullInt64   `json:"block_id"`
-	Hash       string          `json:"hash"`
-	Sender     string          `json:"sender"`
-	Recipient  string          `json:"recipient"`
-	Value      *big.Int        `json:"value"`
-	Fee        *big.Int        `json:"fee"`
-	Nonce      int64           `json:"nonce"`
-	Type       string          `json:"type"`
-	ContractID sql.NullInt64   `json:"contract_id"`
-	Payload    json.RawMessage `json:"payload"`
-	Status     string          `json:"status"`
-	Timestamp  time.Time       `json:"timestamp"`
-	Signature  []byte          `json:"signature"`
-	Data       []byte          `json:"data,omitempty"`
-	Symbol     string          `json:"symbol,omitempty"`
+	ID         string        `json:"id"`
+	Sender     types.Address `json:"sender"`
+	Recipient  types.Address `json:"recipient"`
+	Value      *big.Int      `json:"value"`
+	Data       []byte        `json:"data"`
+	Nonce      int64         `json:"nonce"`
+	GasLimit   uint64        `json:"gas_limit"`
+	GasPrice   *big.Int      `json:"gas_price"`
+	Signature  []byte        `json:"signature"`
+	Hash       string        `json:"hash"`
+	Fee        *big.Int      `json:"fee"`
+	Type       string        `json:"type"`
+	Status     string        `json:"status"`
+	Timestamp  time.Time     `json:"timestamp"`
+	BlockID    int           `json:"block_id"`
+	ContractID sql.NullInt64 `json:"contract_id"`
+	Payload    []byte        `json:"payload"`
+	Symbol     string        `json:"symbol"`
 }
 
-// Validate проверяет валидность транзакции
+// Validate checks if the transaction is valid
 func (tx *Transaction) Validate() error {
-	if tx.Sender == "" {
-		return fmt.Errorf("empty sender address")
+	if !tx.Sender.IsValid() {
+		return errors.New("invalid sender address")
 	}
-	if tx.Recipient == "" {
-		return fmt.Errorf("empty recipient address")
+	if !tx.Recipient.IsValid() {
+		return errors.New("invalid recipient address")
 	}
 	if tx.Value == nil || tx.Value.Sign() < 0 {
-		return fmt.Errorf("invalid value")
+		return errors.New("invalid value")
 	}
-	if tx.Fee == nil || tx.Fee.Sign() < 0 {
-		return fmt.Errorf("invalid fee")
+	if tx.GasLimit == 0 {
+		return errors.New("gas limit must be greater than 0")
 	}
-	if tx.Nonce < 0 {
-		return fmt.Errorf("invalid nonce")
+	if tx.GasPrice == nil || tx.GasPrice.Sign() <= 0 {
+		return errors.New("invalid gas price")
 	}
 	return nil
 }
 
-// NewTransaction создает новую транзакцию
-func NewTransaction(from, to string, value *big.Int, data []byte, nonce uint64, gasLimit uint64, gasPrice *big.Int) (*Transaction, error) {
-	fromAddr := Address(from)
-	toAddr := Address(to)
-
-	if !fromAddr.IsValid() {
-		return nil, fmt.Errorf("invalid sender address")
-	}
-	if !toAddr.IsValid() {
-		return nil, fmt.Errorf("invalid recipient address")
+// HasSufficientBalance checks if the sender has enough balance for the transaction
+func (tx *Transaction) HasSufficientBalance() bool {
+	state := GetState()
+	if state == nil {
+		return false
 	}
 
-	// Вычисляем fee как gasPrice * gasLimit
-	fee := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasLimit)))
+	requiredBalance := new(big.Int).Mul(tx.Value, big.NewInt(1))
+	gasCost := new(big.Int).Mul(tx.GasPrice, big.NewInt(int64(tx.GasLimit)))
+	requiredBalance.Add(requiredBalance, gasCost)
 
-	tx := &Transaction{
-		Sender:    fromAddr.String(),
-		Recipient: toAddr.String(),
+	balance := state.GetBalance(tx.Sender, "GND")
+	return balance.Cmp(requiredBalance) >= 0
+}
+
+// IsContractCall checks if the transaction is a contract call
+func (tx *Transaction) IsContractCall() bool {
+	return len(tx.Data) > 0
+}
+
+// GetTotalCost calculates the total cost of the transaction including gas
+func (tx *Transaction) GetTotalCost() *big.Int {
+	total := new(big.Int).Set(tx.Value)
+	gasCost := new(big.Int).Mul(tx.GasPrice, big.NewInt(int64(tx.GasLimit)))
+	return total.Add(total, gasCost)
+}
+
+// NewTransaction creates a new transaction
+func NewTransaction(sender, recipient types.Address, value *big.Int, data []byte, nonce uint64, gasLimit uint64, gasPrice *big.Int) (*Transaction, error) {
+	if !sender.IsValid() {
+		return nil, errors.New("invalid sender address")
+	}
+	if !recipient.IsValid() {
+		return nil, errors.New("invalid recipient address")
+	}
+
+	return &Transaction{
+		ID:        generateTransactionID(),
+		Sender:    sender,
+		Recipient: recipient,
 		Value:     value,
-		Fee:       fee,
-		Nonce:     int64(nonce),
-		Type:      string(TxTypeTransfer),
-		Symbol:    "GND",
-		Timestamp: time.Now(),
 		Data:      data,
-	}
+		Nonce:     int64(nonce),
+		GasLimit:  gasLimit,
+		GasPrice:  gasPrice,
+	}, nil
+}
 
-	// Вычисление хеша транзакции
-	tx.Hash = tx.CalculateHash()
-	return tx, nil
+// generateTransactionID generates a unique transaction ID
+func generateTransactionID() string {
+	// TODO: Implement proper ID generation
+	return "tx_" + time.Now().Format("20060102150405")
 }
 
 // CalculateHash вычисляет хеш транзакции
 func (tx *Transaction) CalculateHash() string {
 	var sb string
-	sb += tx.Sender
-	sb += tx.Recipient
+	sb += tx.Sender.String()
+	sb += tx.Recipient.String()
 	if tx.Value != nil {
 		sb += tx.Value.String()
 	}
@@ -179,7 +203,7 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 			type, contract_id, payload, status, timestamp, signature
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id`,
-		tx.BlockID, tx.Hash, tx.Sender, tx.Recipient, tx.Value.String(),
+		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
 		tx.Fee.String(), tx.Nonce, tx.Type, tx.ContractID, tx.Payload,
 		tx.Status, tx.Timestamp, tx.Signature,
 	).Scan(&tx.ID)
@@ -236,7 +260,7 @@ func (tx *Transaction) Save(ctx context.Context, pool *pgxpool.Pool) error {
 			$1, $2, $3, $4, $5, $6, $7, $8,
 			$9, $10, $11, $12, $13, $14
 		)`,
-		tx.ID, tx.BlockID, tx.Hash, tx.Sender, tx.Recipient,
+		tx.ID, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
 		tx.Value.String(), tx.Fee.String(), tx.Nonce,
 		tx.Type, tx.ContractID, tx.Payload,
 		tx.Status, tx.Timestamp, tx.Signature,
@@ -257,11 +281,25 @@ func (tx *Transaction) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, sta
 }
 
 // GetSenderAddress возвращает адрес отправителя как Address
-func (tx *Transaction) GetSenderAddress() Address {
-	return Address(tx.Sender)
+func (tx *Transaction) GetSenderAddress() types.Address {
+	return tx.Sender
 }
 
 // GetRecipientAddress возвращает адрес получателя как Address
-func (tx *Transaction) GetRecipientAddress() Address {
-	return Address(tx.Recipient)
+func (tx *Transaction) GetRecipientAddress() types.Address {
+	return tx.Recipient
+}
+
+// GetState возвращает глобальное состояние блокчейна
+func GetState() *State {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	return globalState
+}
+
+// SetState устанавливает глобальное состояние блокчейна
+func SetState(state *State) {
+	stateMutex.Lock()
+	defer stateMutex.Unlock()
+	globalState = state
 }

@@ -4,6 +4,8 @@ import (
 	"GND/api"
 	"GND/consensus"
 	"GND/core"
+	"GND/evm"
+	"GND/types"
 	"GND/vm"
 	"context"
 	"encoding/json"
@@ -107,7 +109,7 @@ func main() {
 			GasUsed:   0,
 			GasLimit:  10_000_000,
 			Consensus: "poa",
-			Nonce:     "0",
+			Nonce:     0,
 			Status:    "finalized",
 		}
 		genesis.Hash = genesis.CalculateHash()
@@ -130,7 +132,7 @@ func main() {
 		Blockchain: blockchain,
 		State:      blockchain.State,
 		GasLimit:   gasLimit,
-		Coins:      cfg.Coins,
+		Coins:      convertCoinsToInterface(cfg.Coins),
 	})
 
 	// 8. Начисление баланса для монет (только если это новый аккаунт)
@@ -145,7 +147,7 @@ func main() {
 	// 9. Вывод текущего баланса
 	fmt.Printf("Баланс адреса %s:\n", minerWallet.Address)
 	for _, coin := range cfg.Coins {
-		balance := blockchain.State.GetBalance(minerWallet.Address, coin.Symbol)
+		balance := blockchain.State.GetBalance(types.Address(minerWallet.Address), coin.Symbol)
 		fmt.Printf("%s: %s  %s. Знаков: %d\n", coin.Name, balance.String(), coin.Symbol, coin.Decimals)
 	}
 
@@ -198,19 +200,161 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 				return
 			}
 
-			consType := consensus.SelectConsensusForTx(tx.Recipient)
+			consType := consensus.SelectConsensusForTx(string(tx.Recipient))
 			logger.Printf("Processing transaction %s through %s consensus", tx.ID, consType)
 
+			// Process transaction based on consensus type
 			switch consType {
 			case consensus.ConsensusPoS:
-				logger.Printf("Transaction %s: processing through PoS", tx.ID)
+				if err := processPoSTransaction(tx); err != nil {
+					logger.Printf("Error processing PoS transaction %s: %v", tx.ID, err)
+					return
+				}
+				logger.Printf("Successfully processed PoS transaction %s", tx.ID)
 			case consensus.ConsensusPoA:
-				logger.Printf("Transaction %s: processing through PoA", tx.ID)
+				if err := processPoATransaction(tx); err != nil {
+					logger.Printf("Error processing PoA transaction %s: %v", tx.ID, err)
+					return
+				}
+				logger.Printf("Successfully processed PoA transaction %s", tx.ID)
 			default:
 				logger.Printf("Transaction %s: unknown consensus type", tx.ID)
 			}
 		}()
 	}
+}
+
+func processPoSTransaction(tx *core.Transaction) error {
+	// Validate transaction
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("transaction validation failed: %v", err)
+	}
+
+	// Check sender's balance
+	if !tx.HasSufficientBalance() {
+		return fmt.Errorf("insufficient balance for transaction")
+	}
+
+	// Process transaction through EVM if it's a contract call
+	if tx.IsContractCall() {
+		return processContractTransaction(tx)
+	}
+
+	// Process regular transfer
+	return processTransferTransaction(tx)
+}
+
+func processPoATransaction(tx *core.Transaction) error {
+	// Validate transaction
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("transaction validation failed: %v", err)
+	}
+
+	// Check sender's balance
+	if !tx.HasSufficientBalance() {
+		return fmt.Errorf("insufficient balance for transaction")
+	}
+
+	// Process transaction through EVM if it's a contract call
+	if tx.IsContractCall() {
+		return processContractTransaction(tx)
+	}
+
+	// Process regular transfer
+	return processTransferTransaction(tx)
+}
+
+func processContractTransaction(tx *core.Transaction) error {
+	// Get state
+	state := core.GetState()
+	if state == nil {
+		return fmt.Errorf("state not available")
+	}
+
+	// Create EVM instance
+	evm := evm.NewEVM(state)
+
+	// Execute transaction in EVM
+	result, err := evm.CallContract(
+		types.Address(tx.Sender),
+		types.Address(tx.Recipient),
+		tx.Data,
+		tx.GasLimit,
+		tx.GasPrice,
+		tx.Value,
+		tx.Signature,
+	)
+	if err != nil {
+		return fmt.Errorf("EVM execution failed: %v", err)
+	}
+
+	// Update state with result
+	if err := updateStateWithResult(tx, &types.ExecutionResult{
+		ReturnData: result,
+	}); err != nil {
+		return fmt.Errorf("failed to update state: %v", err)
+	}
+
+	return nil
+}
+
+func processTransferTransaction(tx *core.Transaction) error {
+	// Update balances
+	if err := updateBalances(tx); err != nil {
+		return fmt.Errorf("failed to update balances: %v", err)
+	}
+
+	return nil
+}
+
+func updateBalances(tx *core.Transaction) error {
+	// Get state
+	state := core.GetState()
+	if state == nil {
+		return fmt.Errorf("state not available")
+	}
+
+	// Update sender's balance
+	if err := state.SubBalance(tx.Sender, "GND", tx.Value); err != nil {
+		return err
+	}
+
+	// Update recipient's balance
+	if err := state.AddBalance(tx.Recipient, "GND", tx.Value); err != nil {
+		// Revert sender's balance if recipient update fails
+		state.AddBalance(tx.Sender, "GND", tx.Value)
+		return err
+	}
+
+	return nil
+}
+
+func updateStateWithResult(tx *core.Transaction, result *types.ExecutionResult) error {
+	// Get state
+	state := core.GetState()
+	if state == nil {
+		return fmt.Errorf("state not available")
+	}
+
+	// Update state with execution result
+	if err := state.ApplyExecutionResult(tx, result); err != nil {
+		return fmt.Errorf("failed to apply execution result: %v", err)
+	}
+
+	return nil
+}
+
+// Функция для конвертации []core.CoinConfig в []vm.CoinConfig
+func convertCoinsToInterface(coins []core.CoinConfig) []vm.CoinConfig {
+	result := make([]vm.CoinConfig, len(coins))
+	for i, coin := range coins {
+		result[i] = vm.CoinConfig{
+			Symbol:          coin.Symbol,
+			ContractAddress: coin.ContractAddress,
+			Decimals:        uint8(coin.Decimals),
+		}
+	}
+	return result
 }
 
 // Мониторинг пула подключений к БД

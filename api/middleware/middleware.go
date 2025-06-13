@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -9,12 +10,31 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// ErrorResponse структура для ответов с ошибками
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// sendError отправляет JSON ответ с ошибкой
+func sendError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(ErrorResponse{
+		Error:   http.StatusText(code),
+		Code:    code,
+		Message: message,
+	})
+}
+
 // CORS middleware для обработки CORS заголовков
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -30,16 +50,35 @@ func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		next.ServeHTTP(w, r)
+		// Создаем ResponseWriter для перехвата статуса ответа
+		rw := &responseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
 
+		next.ServeHTTP(rw, r)
+
+		duration := time.Since(start)
 		log.Printf(
-			"%s %s %s %v",
+			"[%s] %s %s %d %v",
 			r.Method,
 			r.RequestURI,
 			r.RemoteAddr,
-			time.Since(start),
+			rw.statusCode,
+			duration,
 		)
 	})
+}
+
+// responseWriter для перехвата статуса ответа
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
 
 // Recovery middleware для обработки паники
@@ -47,8 +86,8 @@ func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("panic: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				log.Printf("Паника: %v", err)
+				sendError(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
 			}
 		}()
 
@@ -92,7 +131,7 @@ func RateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := r.RemoteAddr
 		if !limiter.getLimiter(ip).Allow() {
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+			sendError(w, http.StatusTooManyRequests, "Слишком много запросов. Пожалуйста, подождите.")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -104,14 +143,14 @@ func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-API-Key")
 		if apiKey == "" {
-			http.Error(w, "API key required", http.StatusUnauthorized)
+			sendError(w, http.StatusUnauthorized, "Требуется API ключ")
 			return
 		}
 
 		// TODO: Добавить проверку API ключа в базе данных
 		// Временная заглушка для тестирования
 		if apiKey != "test-api-key" {
-			http.Error(w, "Invalid API key", http.StatusUnauthorized)
+			sendError(w, http.StatusUnauthorized, "Неверный API ключ")
 			return
 		}
 
@@ -119,10 +158,25 @@ func Auth(next http.Handler) http.Handler {
 	})
 }
 
+// ValidateContentType middleware для проверки Content-Type
+func ValidateContentType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" || r.Method == "PUT" {
+			contentType := r.Header.Get("Content-Type")
+			if contentType != "application/json" {
+				sendError(w, http.StatusUnsupportedMediaType, "Требуется Content-Type: application/json")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Экспортируем middleware функции с правильными именами
 var (
-	LoggerMiddleware    = Logger
-	CORSMiddleware      = CORS
-	RateLimitMiddleware = RateLimit
-	AuthMiddleware      = Auth
+	LoggerMiddleware              = Logger
+	CORSMiddleware                = CORS
+	RateLimitMiddleware           = RateLimit
+	AuthMiddleware                = Auth
+	ValidateContentTypeMiddleware = ValidateContentType
 )

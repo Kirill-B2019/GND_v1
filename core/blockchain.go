@@ -2,51 +2,120 @@ package core
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"sync"
+
+	"GND/types"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Blockchain - основная структура цепочки блоков
+// Blockchain represents the blockchain structure
 type Blockchain struct {
-	blocks  []*Block      // Все блоки цепочки
-	State   StateIface    // Состояние (балансы, аккаунты) теперь интерфейс
-	mempool *Mempool      // Пул неподтвержденных транзакций
-	mutex   sync.RWMutex  // Mutex для потокобезопасного доступа к блокам
-	pool    *pgxpool.Pool // Подключение к БД
+	Genesis *Block
+	State   StateIface
+	Pool    *pgxpool.Pool
+	Blocks  []*Block
+	Mempool *Mempool
+	mutex   sync.Mutex
 }
 
-// NewBlockchain создает новую цепочку с генезис-блоком и сохраняет его в БД
+// NewBlockchain creates a new blockchain
 func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
-	bc := &Blockchain{
-		blocks:  []*Block{genesis},
-		State:   NewState(pool), // NewState возвращает *State, который реализует StateIface
-		mempool: NewMempool(),
-		pool:    pool,
+	return &Blockchain{
+		Genesis: genesis,
+		State:   NewState(),
+		Pool:    pool,
+		Blocks:  []*Block{genesis},
+		Mempool: NewMempool(),
 	}
+}
 
-	// Сохраняем генезис-блок в БД
-	err := bc.storeBlock(genesis)
+// LoadBlockchainFromDB loads blockchain from database
+func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
+	// Загружаем генезис-блок
+	genesis, err := GetBlockByNumber(pool, 0)
 	if err != nil {
-		log.Printf("Не удалось сохранить генезис-блок: %v", err)
+		return nil, fmt.Errorf("failed to load genesis block: %v", err)
 	}
 
-	// Применяем транзакции из генезис-блока
-	bc.applyBlock(genesis)
-	return bc
+	return &Blockchain{
+		Genesis: genesis,
+		State:   NewState(),
+		Pool:    pool,
+		Blocks:  []*Block{genesis},
+		Mempool: NewMempool(),
+	}, nil
+}
+
+// GetBlockByNumber returns a block by its number
+func (bc *Blockchain) GetBlockByNumber(number uint64) (*Block, error) {
+	return GetBlockByNumber(bc.Pool, number)
+}
+
+// GetBlockByHash returns a block by its hash
+func (bc *Blockchain) GetBlockByHash(hash string) (*Block, error) {
+	return GetBlockByHash(bc.Pool, hash)
+}
+
+// GetLatestBlock returns the latest block
+func (bc *Blockchain) GetLatestBlock() (*Block, error) {
+	return GetLatestBlock(bc.Pool)
+}
+
+// AddTransaction adds a transaction to the blockchain
+func (bc *Blockchain) AddTransaction(tx *Transaction) error {
+	// Проверяем транзакцию
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("invalid transaction: %v", err)
+	}
+
+	// Проверяем баланс отправителя
+	if !tx.HasSufficientBalance() {
+		return errors.New("insufficient balance")
+	}
+
+	// Применяем транзакцию к состоянию
+	if err := bc.State.ApplyTransaction(tx); err != nil {
+		return fmt.Errorf("failed to apply transaction: %v", err)
+	}
+
+	return nil
+}
+
+// FirstLaunch initializes blockchain on first launch
+func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
+	// Сохраняем генезис-блок
+	if err := bc.Genesis.SaveToDB(ctx, pool); err != nil {
+		return fmt.Errorf("failed to save genesis block: %v", err)
+	}
+
+	// Инициализируем состояние
+	state := NewState()
+	bc.State = state
+
+	// Начисляем начальный баланс для всех монет
+	for _, coin := range cfg.Coins {
+		amount := new(big.Int)
+		amount.SetString(coin.TotalSupply, 10)
+		if err := state.Credit(types.Address(wallet.Address), coin.Symbol, amount); err != nil {
+			return fmt.Errorf("failed to add initial balance for %s: %v", coin.Symbol, err)
+		}
+	}
+
+	return nil
 }
 
 // storeBlock сохраняет блок в таблице blocks
 func (bc *Blockchain) storeBlock(block *Block) error {
-	if bc.pool == nil {
+	if bc.Pool == nil {
 		// В тестах или без БД пропускаем запись
 		return nil
 	}
-	_, err := bc.pool.Exec(context.Background(), `
+	_, err := bc.Pool.Exec(context.Background(), `
 		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (index) DO NOTHING`,
@@ -68,7 +137,6 @@ func (bc *Blockchain) validateBlock(block *Block) bool {
 
 // applyBlock применяет все транзакции из блока к состоянию
 func (bc *Blockchain) applyBlock(block *Block) {
-
 	for _, tx := range block.Transactions {
 		if err := bc.State.ApplyTransaction(tx); err != nil {
 			fmt.Printf("Транзакция %s не прошла, пропущена: %v\n", tx.Hash, err)
@@ -76,59 +144,27 @@ func (bc *Blockchain) applyBlock(block *Block) {
 	}
 }
 
-// GetBlockByHash находит блок по хешу
-func (bc *Blockchain) GetBlockByHash(hash string) *Block {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	for _, b := range bc.blocks {
-		if b.Hash == hash {
-			return b
-		}
-	}
-	return nil
-}
-
-// GetBlockByNumber возвращает блок по номеру (индексу)
-func (bc *Blockchain) GetBlockByNumber(number uint64) *Block {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	if number >= uint64(len(bc.blocks)) {
-		return nil
-	}
-	return bc.blocks[number]
-}
-
 // Height возвращает текущую высоту цепочки
 func (bc *Blockchain) Height() uint64 {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-	return uint64(len(bc.blocks) - 1)
+	return uint64(len(bc.Blocks) - 1)
 }
 
 // AllBlocks возвращает копию всех блоков (для API)
 func (bc *Blockchain) AllBlocks() []*Block {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	blocksCopy := make([]*Block, len(bc.blocks))
-	copy(blocksCopy, bc.blocks)
+	blocksCopy := make([]*Block, len(bc.Blocks))
+	copy(blocksCopy, bc.Blocks)
 	return blocksCopy
 }
 
 // AddTx добавляет транзакцию в мемпул
 func (bc *Blockchain) AddTx(tx *Transaction) error {
-	bc.mempool.Add(tx)
+	bc.Mempool.Add(tx)
 	return nil
 }
 
 // GetTxStatus возвращает статус транзакции: confirmed / pending / not found
 func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	for _, block := range bc.blocks {
+	for _, block := range bc.Blocks {
 		for _, tx := range block.Transactions {
 			if tx.Hash == hash {
 				return "confirmed", nil
@@ -136,7 +172,7 @@ func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
 		}
 	}
 
-	if bc.mempool.Exists(hash) {
+	if bc.Mempool.Exists(hash) {
 		return "pending", nil
 	}
 
@@ -144,57 +180,11 @@ func (bc *Blockchain) GetTxStatus(hash string) (string, error) {
 }
 
 // LatestBlock возвращает последний блок
-func (bc *Blockchain) LatestBlock() *Block {
-	bc.mutex.RLock()
-	defer bc.mutex.RUnlock()
-
-	if len(bc.blocks) == 0 {
-		return nil
+func (bc *Blockchain) LatestBlock() (*Block, error) {
+	if len(bc.Blocks) == 0 {
+		return nil, errors.New("no blocks in blockchain")
 	}
-	return bc.blocks[len(bc.blocks)-1]
-}
-
-// LoadBlockchainFromDB загружает блокчейн из базы данных
-func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
-	ctx := context.Background()
-	bc := &Blockchain{
-		blocks:  []*Block{},
-		State:   NewState(pool), // StateIface
-		mempool: NewMempool(),
-		pool:    pool,
-	}
-
-	// Загрузка блоков
-	rows, err := pool.Query(ctx, `
-		SELECT index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce 
-		FROM blocks ORDER BY index ASC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var b Block
-		err := rows.Scan(
-			&b.Index, &b.Hash, &b.PrevHash, &b.Timestamp,
-			&b.Miner, &b.GasUsed, &b.GasLimit, &b.Consensus, &b.Nonce,
-		)
-		if err != nil {
-			return nil, err
-		}
-		b.Transactions, err = loadTransactionsForBlock(ctx, pool, b.Index)
-		if err != nil {
-			return nil, err
-		}
-		bc.blocks = append(bc.blocks, &b)
-	}
-
-	// Применяем транзакции ко всем блокам
-	for _, block := range bc.blocks {
-		bc.applyBlock(block)
-	}
-
-	return bc, nil
+	return bc.Blocks[len(bc.Blocks)-1], nil
 }
 
 // loadTransactionsForBlock загружает транзакции для конкретного блока
@@ -253,153 +243,162 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 	defer bc.mutex.Unlock()
 
 	if !bc.validateBlock(block) {
-		return errors.New("неверный блок")
+		return errors.New("invalid block")
 	}
 
-	bc.blocks = append(bc.blocks, block)
+	// Сохраняем блок в БД
+	if err := bc.storeBlock(block); err != nil {
+		return fmt.Errorf("failed to store block: %v", err)
+	}
+
+	// Применяем транзакции
 	bc.applyBlock(block)
 
-	// Обновляем метрики
-	metrics.UpdateBlockMetrics(block)
-
-	// Обновляем метрики транзакций
-	for _, tx := range block.Transactions {
-		metrics.UpdateTransactionMetrics(tx, "success")
-	}
-
-	return bc.storeBlock(block)
-}
-
-// FirstLaunch выполняет инициализацию блокчейна при первом запуске
-func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
-	// Создаем генезис-блок
-	genesis := NewBlock("", 0, string(wallet.Address))
-	genesis.Hash = genesis.CalculateHash()
-	genesis.Consensus = "pos"
-	genesis.Index = 0
-
-	// Создаем токены из конфигурации
-	for _, coin := range cfg.Coins {
-		contractAddress := coin.ContractAddress
-		if contractAddress == "" {
-			contractAddress = fmt.Sprintf("GNDct%s", GenerateContractAddress())
-			coin.ContractAddress = contractAddress
-		}
-		token := NewToken(
-			contractAddress,
-			coin.Symbol,
-			coin.Name,
-			coin.Decimals,
-			coin.TotalSupply,
-			string(wallet.Address),
-			"gndst1",
-			coin.Standard,
-			genesis.ID,
-			0,
-		)
-
-		if err := token.SaveToDB(ctx, pool); err != nil {
-			return fmt.Errorf("ошибка создания токена %s: %w", coin.Symbol, err)
-		}
-
-		// Создаем начальный баланс
-		amount := new(big.Int)
-		if coin.TotalSupply != "" {
-			amount.SetString(coin.TotalSupply, 10)
-		} else {
-			amount.SetInt64(1_000_000)
-			multiplier := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(coin.Decimals)), nil)
-			amount = amount.Mul(amount, multiplier)
-		}
-
-		_, err := pool.Exec(ctx, `
-			INSERT INTO token_balances (token_id, address, balance)
-			VALUES (
-				(SELECT t.id FROM tokens t JOIN contracts c ON t.contract_id = c.id WHERE c.address = $1),
-				$2,
-				$3
-			)
-			ON CONFLICT (token_id, address) DO UPDATE
-			SET balance = EXCLUDED.balance`,
-			contractAddress, string(wallet.Address), amount.String())
-		if err != nil {
-			return fmt.Errorf("ошибка создания баланса токена: %w", err)
-		}
-	}
+	// Добавляем блок в цепочку
+	bc.Blocks = append(bc.Blocks, block)
 
 	return nil
 }
 
 // ProcessTransaction обрабатывает транзакцию
-func (b *Blockchain) ProcessTransaction(tx *Transaction) error {
-	// Проверка баланса отправителя
-	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
-	if senderBalance.Cmp(tx.Value) < 0 {
-		return fmt.Errorf("insufficient balance")
+func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
+	if err := bc.ValidateTransaction(tx); err != nil {
+		return err
 	}
 
-	// Проверка комиссии
-	if tx.Fee == nil || tx.Fee.Sign() <= 0 {
-		return fmt.Errorf("invalid fee")
+	if tx.IsContractCall() {
+		return bc.processContract(tx)
 	}
 
-	// Проверка типа транзакции
-	switch tx.Type {
-	case "transfer":
-		return b.processTransfer(tx)
-	case "contract":
-		return b.processContract(tx)
-	default:
-		return fmt.Errorf("unknown transaction type: %s", tx.Type)
-	}
+	return bc.processTransfer(tx)
 }
 
-// processTransfer обрабатывает транзакцию перевода
-func (b *Blockchain) processTransfer(tx *Transaction) error {
-	// Проверка баланса отправителя
-	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
-	if senderBalance.Cmp(tx.Value) < 0 {
-		return fmt.Errorf("insufficient balance")
+// processTransfer обрабатывает обычный перевод
+func (bc *Blockchain) processTransfer(tx *Transaction) error {
+	// Проверяем баланс отправителя
+	if !tx.HasSufficientBalance() {
+		return errors.New("insufficient balance")
 	}
 
-	// Обновление баланса отправителя
-	b.State.Credit(tx.GetSenderAddress(), tx.Symbol, new(big.Int).Neg(tx.Value))
+	// Выполняем перевод
+	if err := bc.State.SubBalance(types.Address(tx.Sender), "GND", tx.Value); err != nil {
+		return err
+	}
 
-	// Обновление баланса получателя
-	b.State.Credit(tx.GetRecipientAddress(), tx.Symbol, tx.Value)
+	if err := bc.State.AddBalance(types.Address(tx.Recipient), "GND", tx.Value); err != nil {
+		// Откатываем списание если не удалось начислить
+		bc.State.AddBalance(types.Address(tx.Sender), "GND", tx.Value)
+		return err
+	}
 
 	return nil
 }
 
-// processContract обрабатывает транзакцию контракта
-func (b *Blockchain) processContract(tx *Transaction) error {
-	// TODO: Реализовать обработку контрактных транзакций
-	return fmt.Errorf("contract transactions not implemented yet")
+// processContract обрабатывает вызов контракта
+func (bc *Blockchain) processContract(tx *Transaction) error {
+	// TODO: Реализовать обработку вызова контракта
+	return errors.New("contract calls not implemented")
 }
 
-// ValidateTransaction проверяет валидность транзакции
-func (b *Blockchain) ValidateTransaction(tx *Transaction) error {
-	// Проверка подписи
-	if !tx.Verify() {
-		return fmt.Errorf("invalid signature")
+// ValidateTransaction проверяет транзакцию
+func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
+	if err := tx.Validate(); err != nil {
+		return err
 	}
 
-	// Проверка баланса отправителя
-	senderBalance := b.State.GetBalance(tx.GetSenderAddress(), tx.Symbol)
-	if senderBalance.Cmp(tx.Value) < 0 {
-		return fmt.Errorf("insufficient balance")
+	// Проверяем баланс отправителя
+	if !tx.HasSufficientBalance() {
+		return errors.New("insufficient balance")
 	}
 
-	// Проверка комиссии
-	if tx.Fee == nil || tx.Fee.Sign() <= 0 {
-		return fmt.Errorf("invalid fee")
-	}
-
-	// Проверка nonce
-	expectedNonce := b.State.GetNonce(tx.GetSenderAddress())
+	// Проверяем nonce
+	expectedNonce := bc.State.GetNonce(types.Address(tx.Sender))
 	if tx.Nonce != expectedNonce {
 		return fmt.Errorf("invalid nonce: expected %d, got %d", expectedNonce, tx.Nonce)
 	}
 
 	return nil
+}
+
+// CreateWallet создает новый кошелек
+func (bc *Blockchain) CreateWallet() (*Wallet, error) {
+	return NewWallet(bc.Pool)
+}
+
+// GetBalance возвращает баланс адреса
+func (bc *Blockchain) GetBalance(address string, symbol string) *big.Int {
+	return bc.State.GetBalance(types.Address(address), symbol)
+}
+
+// SendTransaction отправляет транзакцию
+func (bc *Blockchain) SendTransaction(tx *Transaction) (string, error) {
+	if err := bc.ProcessTransaction(tx); err != nil {
+		return "", err
+	}
+	return tx.Hash, nil
+}
+
+// GetTransaction возвращает транзакцию по хешу
+func (bc *Blockchain) GetTransaction(hash string) (*Transaction, error) {
+	// Ищем в блоках
+	for _, block := range bc.Blocks {
+		for _, tx := range block.Transactions {
+			if tx.Hash == hash {
+				return tx, nil
+			}
+		}
+	}
+
+	// Ищем в мемпуле
+	tx, err := bc.Mempool.GetTransaction(hash)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
+		return tx, nil
+	}
+
+	return nil, errors.New("transaction not found")
+}
+
+// DeployContract deploys a new contract
+func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
+	// Convert bytecode from hex string to bytes
+	bytecode, err := hex.DecodeString(params.Bytecode)
+	if err != nil {
+		return "", fmt.Errorf("invalid bytecode: %v", err)
+	}
+
+	// Create new contract
+	contract := NewContract(
+		params.From,
+		params.Owner,
+		bytecode,
+		nil, // ABI will be added later
+		params.Standard,
+		params.Version,
+		0, // blockID will be set when block is created
+		0, // txID will be set when transaction is created
+	)
+
+	// Save contract to database
+	if err := contract.SaveToDB(context.Background(), bc.Pool); err != nil {
+		return "", fmt.Errorf("failed to save contract: %v", err)
+	}
+
+	return contract.Address, nil
+}
+
+// GetContract returns contract information by address
+func (bc *Blockchain) GetContract(address string) (*Contract, error) {
+	return GetContractByAddress(context.Background(), bc.Pool, address)
+}
+
+// toStringMap converts map[string]interface{} to map[string]string
+func toStringMap(m map[string]interface{}) map[string]string {
+	result := make(map[string]string)
+	for k, v := range m {
+		result[k] = fmt.Sprintf("%v", v)
+	}
+	return result
 }
