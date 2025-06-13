@@ -149,7 +149,7 @@ func Auth(next http.Handler) http.Handler {
 
 		// TODO: Добавить проверку API ключа в базе данных
 		// Временная заглушка для тестирования
-		if apiKey != "test-api-key" {
+		if apiKey != "ganymede-demo-key" {
 			sendError(w, http.StatusUnauthorized, "Неверный API ключ")
 			return
 		}
@@ -180,3 +180,8 @@ var (
 	AuthMiddleware                = Auth
 	ValidateContentTypeMiddleware = ValidateContentType
 )
+
+func validateAPIKey(key string) bool {
+	// Для примера: разрешен только ключ "ganymede-demo-key"
+	return key == "ganymede-demo-key"
+}
