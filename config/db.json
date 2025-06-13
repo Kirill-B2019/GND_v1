@@ -3,7 +3,7 @@
     "host": "45.12.72.15",
     "port": 5432,
     "user": "gnduser",
-    "password": "Titan!@Day",
+    "password": "",
     "dbname": "gnd_db",
     "sslmode": "require",
     "max_conns": 20,
