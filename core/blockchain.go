@@ -247,18 +247,27 @@ func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockInde
 	return txs, nil
 }
 
+// AddBlock добавляет новый блок в цепочку
 func (bc *Blockchain) AddBlock(block *Block) error {
 	bc.mutex.Lock()
 	defer bc.mutex.Unlock()
 
 	if !bc.validateBlock(block) {
-		return errors.New("блок не прошел валидацию")
+		return errors.New("неверный блок")
 	}
 
 	bc.blocks = append(bc.blocks, block)
 	bc.applyBlock(block)
 
-	return nil
+	// Обновляем метрики
+	metrics.UpdateBlockMetrics(block)
+
+	// Обновляем метрики транзакций
+	for _, tx := range block.Transactions {
+		metrics.UpdateTransactionMetrics(tx, "success")
+	}
+
+	return bc.storeBlock(block)
 }
 
 // FirstLaunch выполняет инициализацию блокчейна при первом запуске

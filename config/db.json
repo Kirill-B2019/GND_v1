@@ -5,7 +5,7 @@
     "user": "gnduser",
     "password": "Titan!@Day",
     "dbname": "gnd_db",
-    "sslmode": "disable",
+    "sslmode": "require",
     "max_conns": 20,
     "min_conns": 5,
     "max_conn_lifetime": 1800000000000,

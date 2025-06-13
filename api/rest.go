@@ -295,6 +295,72 @@ func handleGetContract(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "получение контракта пока не реализовано", http.StatusNotImplemented)
 }
 
+// Обработчик получения метрик
+func handleGetMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics, http.StatusOK)
+}
+
+// Обработчик получения метрик блоков
+func handleGetBlockMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics.BlockMetrics, http.StatusOK)
+}
+
+// Обработчик получения метрик транзакций
+func handleGetTransactionMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics.TransactionMetrics, http.StatusOK)
+}
+
+// Обработчик получения метрик сети
+func handleGetNetworkMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics.NetworkMetrics, http.StatusOK)
+}
+
+// Обработчик получения метрик производительности
+func handleGetPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics.PerformanceMetrics, http.StatusOK)
+}
+
+// Обработчик получения метрик консенсуса
+func handleGetConsensusMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := core.GetMetrics()
+	if metrics == nil {
+		sendError(w, "Метрики недоступны", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, metrics.ConsensusMetrics, http.StatusOK)
+}
+
 // Запуск REST сервера
 func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool) {
 	blockchain = bc
@@ -346,6 +412,14 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	// Эндпоинты контрактов
 	api.HandleFunc("/contract/deploy", handleDeployContract).Methods("POST")
 	api.HandleFunc("/contract/{address}", handleGetContract).Methods("GET")
+
+	// Метрики
+	api.HandleFunc("/api/metrics", handleGetMetrics).Methods("GET")
+	api.HandleFunc("/api/metrics/blocks", handleGetBlockMetrics).Methods("GET")
+	api.HandleFunc("/api/metrics/transactions", handleGetTransactionMetrics).Methods("GET")
+	api.HandleFunc("/api/metrics/network", handleGetNetworkMetrics).Methods("GET")
+	api.HandleFunc("/api/metrics/performance", handleGetPerformanceMetrics).Methods("GET")
+	api.HandleFunc("/api/metrics/consensus", handleGetConsensusMetrics).Methods("GET")
 
 	// Middleware для проверки API ключа
 	apiKeyMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
