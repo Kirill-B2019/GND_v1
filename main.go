@@ -1,12 +1,14 @@
 package main
 
 import (
-	"api"
-	"consensus"
+	"GND/api"
+	"GND/consensus"
+	"GND/core"
+	"GND/evm"
+	"GND/types"
+	"GND/vm"
 	"context"
-	"core"
 	"encoding/json"
-	"evm"
 	"fmt"
 	"log"
 	_ "net/http/pprof"
@@ -14,8 +16,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"types"
-	"vm"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
