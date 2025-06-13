@@ -1,0 +1,46 @@
+---
+description: Работа с базами данных проекта GND — PostgreSQL, схема, конфиг, pool
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# База данных проекта GND
+
+## Источники истины
+
+- **Документация**: `docs/database.md` — полное описание LevelDB, Redis, PostgreSQL, таблиц, индексов и примеров.
+- **Конфиг**: `config/db.json` (секция `database`) и тип `core.DBConfig` в `core/config.go`.
+- **Подключение**: пул PostgreSQL создаётся в `core/pool.go` (`InitDBPool`), используется `pgxpool.Pool` (jackc/pgx/v5).
+
+## Стек хранения
+
+| Назначение        | Технология   | Где в коде/конфиге                    |
+|-------------------|-------------|----------------------------------------|
+| Блоки, транзакции | LevelDB     | docs/database.md                      |
+| Кэш               | Redis       | docs/database.md                      |
+| Индексы, метаданные | PostgreSQL | config/db.json, core/pool.go, core/*.go |
+
+## PostgreSQL — структура
+
+Таблицы и поля по `docs/database.md`:
+
+- **blocks** — number (PK), hash, parent_hash, timestamp, validator, transactions_count, gas_used, gas_limit, size, created_at
+- **transactions** — hash (PK), block_number (FK→blocks), block_hash, from_address, to_address, value, gas_*, nonce, status, created_at
+- **accounts** — address (PK), balance, nonce, code_hash, created_at, updated_at
+- **contracts** — address (PK), creator, creation_tx, creation_block (FK), code, abi, created_at
+
+При добавлении полей или таблиц: обновлять миграции и `docs/database.md`.
+
+## Конфигурация подключения
+
+- Тип: `core.DBConfig` (Host, Port, User, Password, DBName, SSLMode, MaxConns, MinConns, MaxConnLifetime, MaxConnIdleTime).
+- Строка подключения собирается в `core/pool.go`: `postgres://user:password@host:port/dbname?sslmode=...`
+- Пароли и секреты не хардкодить: использовать переменные окружения или конфиг вне репозитория.
+
+## Использование в коде
+
+- Работа с БД через пул (`*pgxpool.Pool`), передаётся в state и другие компоненты из `main.go`.
+- Модули, использующие БД: `core/state.go`, `core/account.go`, `core/contract.go`, `core/event.go`, `core/transaction.go`, `core/token.go`, `core/blockchain.go`.
+- При написании запросов учитывать существующие индексы (blocks: number, hash, timestamp, validator; transactions: hash, block_number, from_address, to_address, status; accounts: address, balance, nonce; contracts: address, creator, creation_block).
+
+Перед изменениями схемы или запросов сверяться с `docs/database.md` и текущими запросами в перечисленных файлах.

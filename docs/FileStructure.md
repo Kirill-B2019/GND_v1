@@ -1,89 +1,69 @@
-
 # Архитектура и структура файлов блокчейна «ГАНИМЕД»
+
+> **Единое описание структуры для IDE:** актуальное дерево каталогов и краткое назначение модулей хранятся в [.cursor/PROJECT_STRUCTURE.md](../.cursor/PROJECT_STRUCTURE.md). При изменении структуры проекта обновляйте и этот файл, и указанный.
 
 ## Общая структура проекта
 
-## Структура файлов блокчейна «ГАНИМЕД»
+Ниже — актуальная структура каталогов и ключевых файлов (синхронизирована с `.cursor/PROJECT_STRUCTURE.md`).
 
 ```
-
-GND/
-│--- go.mod
-│--- go.sum
-│--- main.go
-│--- README.md
-│--- config/
-│    └── config.json
-│--- core/
-│    ├── block.go
-│    ├── blockchain.go
-│    ├── config.go
-│    ├── fees.go
-│    ├── logger.go
-│    ├── mempool.go
-│    ├── state.go
-│    ├── transaction.go
-│    ├── utils.go
-│    └── wallet.go
-│--- consensus/
-│    ├── consensus.go
-│    ├── manager.go
-│    ├── poa.go
-│    └── pos.go
-│--- api/
-│    ├── middleware.go
-│    ├── rest.go
-│    ├── rpc.go
-│    └── websocket.go
-│--- tokens/
-│    ├── custom.go
-│    ├── erc20.go
-│    ├── registry.go
-│    ├── token.go
-│    └── trc20.go
-│--- contracts/
-│    ├── README.md
-│    ├── gndtoken/
-│    │    ├── OracleExample.sol
-│    │    └── SimpleGNDToken.sol
-│    ├── interfaces/
-│    │    └── ISimpleGNDToken.sol
-│    └── ...
-│--- integration/
-│    ├── address.go
-│    ├── bridges.go
-│    ├── ipfs.go
-│    └── oracles.go
-│--- monitoring/
-│    ├── alerts.go
-│    ├── events.go
-│    └── metrics.go
-│--- docs/
-│    ├── api.md
-│    ├── architecture.md
-│    ├── consensus.md
-│    ├── contracts.md
-│    ├── integration.md
-│    └── tokens.md
-│--- ui/
-│    ├── devpanel/
-│    ├── explorer/
-│    └── wallet/
-│--- tests/
-│    ├── integration/
-│    ├── load/
-│    ├── security/
-│    └── unit/
-│--- audit/
-│--- utils/
-│    └── address.go
-│--- vm/
-│    ├── compiler.go
-│    ├── contracts.go
-│    ├── evm.go
-│    ├── interface.go
-│    └── sandbox.go
-
+GND_v1/
+├── main.go, main_test.go
+├── go.mod, go.sum
+├── README.md
+├── config/
+│   ├── config.json
+│   ├── db.json
+│   ├── consensus.json
+│   ├── evm.json
+│   ├── coins.json
+│   ├── servers.json
+│   └── req.conf
+├── core/
+│   ├── block.go, blockchain.go, config.go, pool.go, state.go
+│   ├── transaction.go, mempool.go, wallet.go, account.go
+│   ├── contract.go, token.go, event.go, events.go
+│   ├── address.go, fees.go, interfaces.go, logger.go, utils.go, metrics.go
+│   ├── wallet_test.go
+│   └── crypto/keys.go
+├── types/
+│   ├── 00_address.go, state.go, token.go, evm.go, events.go
+├── consensus/
+│   ├── consensus.go, manager.go, poa.go, pos.go
+├── api/
+│   ├── rest.go, rpc.go, websocket.go, middleware.go, types.go, constants.go
+│   ├── api_test.go, api_token_test.go, api_wallet_test.go
+│   └── middleware/gin.go, middleware.go
+├── tokens/
+│   ├── types.go, metadata.go
+│   ├── interfaces/token.go
+│   ├── types/token.go
+│   ├── registry/registry.go, registry_test.go
+│   ├── deployer/deployer.go, compiler.go
+│   ├── handlers/balance.go, info.go
+│   ├── standards/gndst1/ (gndst1.go, тесты, abi, sol)
+│   └── utils/helpers.go, events.go
+├── vm/
+│   ├── evm.go, contracts.go, sandbox.go, cache.go, events.go, integration.go
+│   └── compiler/compiler.go
+├── integration/
+│   ├── address.go, bridges.go, ipfs.go, oracles.go
+├── monitoring/
+│   ├── metrics.go, events.go, alerts.go
+├── audit/
+│   ├── audit_report.go, monitor.go, rules.go, security_checks.go
+│   ├── integration_test.go, README.md, external_tools.md
+│   └── examples/sample_report.md
+├── utils/
+│   ├── handlers.go, handlers_test.go
+├── db/
+│   ├── db.sql, console_21.sql, dump0906.sql
+│   └── migrations/001_create_events_table.sql
+└── docs/
+    ├── FileStructure.md (этот файл), README.md, architecture.md
+    ├── api.md, consensus.md, contracts.md, database.md, events.md
+    ├── integration.md, tokens.md, websocket_api.md, GNDst-1.md, wallwt.md
+    └── arhitech_gnd_step1.md, diagramDB.drawio, diagram.png
 ```
 
 ---
@@ -100,12 +80,16 @@ GND/
 
 ### **core/**
 - **block.go, blockchain.go** — структуры блоков, логика построения цепи, добавление и валидация блоков.
-- **state.go** — текущее состояние сети (балансы, nonce, стейкинг).
-- **wallet.go** — генерация кошельков, работа с приватными ключами, формирование адресов.
+- **state.go** — текущее состояние сети (балансы, nonce, стейкинг), работа с БД.
+- **pool.go** — инициализация пула PostgreSQL (InitDBPool, pgxpool).
+- **wallet.go** — генерация и загрузка кошельков, работа с приватными ключами.
 - **transaction.go, mempool.go** — обработка транзакций, хранение неподтверждённых транзакций.
-- **config.go** — загрузка и парсинг конфигурации.
-- **fees.go** — расчет и применение комиссий.
-- **logger.go, utils.go** — вспомогательные функции, логирование.
+- **account.go, contract.go, token.go, event.go, events.go** — аккаунты, контракты, токены, события (с доступом к БД).
+- **address.go, interfaces.go** — адреса, интерфейсы BlockchainIface, StateIface.
+- **config.go** — загрузка и парсинг конфигурации (в т.ч. DBConfig).
+- **fees.go** — расчёт и применение комиссий.
+- **logger.go, utils.go, metrics.go** — логирование, утилиты, метрики.
+- **crypto/keys.go** — криптографические ключи.
 
 **Взаимодействие:**  
 `main.go` использует методы из `core` для создания блокчейна, управления кошельками, обработки транзакций и состояния.
@@ -126,7 +110,8 @@ GND/
 - **rest.go** — REST API для доступа к блокам, отправки транзакций, получения информации.
 - **rpc.go** — JSON-RPC API для работы с контрактами и токенами.
 - **websocket.go** — WebSocket сервер для real-time событий (новые блоки, транзакции).
-- **middleware.go** — аутентификация, лимитирование, аудит.
+- **middleware.go** — подключение middleware; **middleware/** (gin.go, middleware.go) — аутентификация, лимитирование, аудит.
+- **types.go, constants.go** — типы и константы API.
 
 **Взаимодействие:**  
 API обращается к методам `core` и консенсуса, предоставляет внешний интерфейс для пользователей, кошельков, dApp.
@@ -135,22 +120,26 @@ API обращается к методам `core` и консенсуса, пр�
 ---
 
 ### **tokens/**
-- **gndst1.go, erc20.go, trc20.go, custom.go** — поддержка стандартных и кастомных токенов.
-- **registry.go** — реестр токенов.
-- **token.go** — универсальный интерфейс токенов.
+- **types.go, metadata.go** — типы и метаданные токенов.
+- **interfaces/token.go** — интерфейсы токенов.
+- **registry/** — реестр токенов (registry.go, тесты).
+- **deployer/** — деплой и компиляция контрактов токенов.
+- **handlers/** — обработчики баланса и информации по токенам (balance.go, info.go).
+- **standards/gndst1/** — стандарт GNDst-1 (gndst1.go, тесты, ABI, Solidity).
+- **utils/** — хелперы и события.
 
 **Взаимодействие:**  
 Токены регистрируются и управляются через API и ядро, используются в смарт-контрактах и пользовательских операциях.
 
 ---
 
-### **contracts/**
-- **gndtoken/** — примеры и шаблоны смарт-контрактов GND (Solidity).
-- **interfaces/** — интерфейсы для контрактов.
-- **README.md** — документация по работе с контрактами.
+### **vm/**
+- **evm.go, contracts.go, sandbox.go** — EVM, контракты, изолированное выполнение.
+- **cache.go, events.go, integration.go** — кэш, события, интеграция с ядром.
+- **compiler/compiler.go** — компиляция контрактов.
 
 **Взаимодействие:**  
-Контракты деплоятся и вызываются через виртуальную машину (vm/), взаимодействуют с токенами и ядром.
+Исполнение смарт-контрактов, интеграция с core и types.
 
 ---
 
@@ -173,26 +162,16 @@ API обращается к методам `core` и консенсуса, пр�
 
 ---
 
-### **ui/**
-- **explorer/** — обозреватель блоков и транзакций.
-- **wallet/** — веб-кошелек для управления адресами и токенами.
-- **devpanel/** — панель разработчика для работы с контрактами.
+### **db/**
+- SQL-скрипты (db.sql, дампы), миграции (migrations/).
 
 **Взаимодействие:**  
-UI взаимодействует с REST, RPC и WebSocket API для получения данных и управления кошельками.
+Используются при инициализации и обновлении схемы PostgreSQL (см. docs/database.md, core/pool.go).
 
 ---
 
 ### **docs/**
 - Документация по архитектуре, API, контрактам, токенам, консенсусу и интеграциям.
-
----
-
-### **tests/**
-- **integration/** — интеграционные тесты.
-- **load/** — нагрузочные тесты.
-- **security/** — тесты безопасности.
-- **unit/** — юнит-тесты.
 
 ---
 
@@ -215,11 +194,12 @@ UI взаимодействует с REST, RPC и WebSocket API для полу�
 
 ## Рекомендации для новых разработчиков
 
+- Актуальное дерево структуры — в **.cursor/PROJECT_STRUCTURE.md** (единое описание для IDE); при изменении структуры обновляйте его и этот файл.
 - Начинайте с **README.md** и документации в **docs/** — там описаны архитектура, API, принципы работы.
 - Изучите **main.go** для понимания порядка инициализации и запуска системы.
-- Для разработки смарт-контрактов — используйте шаблоны и тесты в **contracts/**.
+- Для разработки смарт-контрактов — смотрите **tokens/standards/gndst1/** и **vm/**.
 - Для интеграции с внешними системами — смотрите **integration/** и соответствующие разделы документации.
-- Для UI и пользовательских сценариев — используйте REST и WebSocket API, описанные в **api/** и **docs/api.md**.
+- Для клиентских сценариев — используйте REST и WebSocket API, описанные в **api/** и **docs/api.md**.
 
 ---
 

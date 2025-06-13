@@ -1,274 +1,176 @@
-# Токены GANYMED
+# Токены в ГАНИМЕД
 
 ## Обзор
 
-GANYMED поддерживает различные стандарты токенов, включая ERC20, ERC721 и ERC1155. Каждый стандарт имеет свои особенности и области применения.
+ГАНИМЕД поддерживает собственный стандарт токенов GNDst-1, а также стандартные токены ERC20, ERC721 и ERC1155. GNDst-1 представляет собой расширенный стандарт, совместимый с ERC-20 и TRC-20, с дополнительными возможностями для управления токенами и интеграции с платформой.
 
-## Стандарты
+## GNDst-1
 
-### ERC20
-Стандарт для взаимозаменяемых токенов (fungible tokens).
+### Основные характеристики
+- Совместимость с ERC-20 и TRC-20
+- Кросс-чейн трансферы
+- KYC интеграция
+- Модульная система расширений
+- Снимки балансов и дивиденды
+- Управление правами доступа
 
-#### Основные функции
+### Интерфейс
 ```solidity
-interface IERC20 {
+interface IGNDst1 {
+    // Базовые методы ERC-20/TRC-20
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
     function allowance(address owner, address spender) external view returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+
+    // Расширенные методы GNDst-1
+    function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external returns (bool);
+    function setKycStatus(address user, bool status) external;
+    function isKycPassed(address user) external view returns (bool);
+    function moduleCall(bytes32 moduleId, bytes calldata data) external returns (bytes memory);
+    function snapshot() external returns (uint256);
+    function getSnapshotBalance(address user, uint256 snapshotId) external view returns (uint256);
+    function claimDividends(uint256 snapshotId) external;
+    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external;
 }
 ```
 
-#### Пример использования
+### События
 ```solidity
-contract MyToken is ERC20 {
-    constructor() ERC20("My Token", "MTK") {
-        _mint(msg.sender, 1000000 * 10 ** decimals());
-    }
-}
+event Transfer(address indexed from, address indexed to, uint256 value);
+event Approval(address indexed owner, address indexed spender, uint256 value);
+event CrossChainTransfer(address indexed from, string targetChain, address indexed to, uint256 value);
+event KycStatusChanged(address indexed user, bool status);
+event ModuleCall(bytes32 indexed moduleId, address indexed caller);
+event SnapshotCreated(uint256 indexed snapshotId, uint256 timestamp);
+event DividendClaimed(address indexed user, uint256 amount, uint256 snapshotId);
+event ModuleRegistered(bytes32 indexed moduleId, address indexed moduleAddress, string name);
 ```
 
-### ERC721
-Стандарт для невзаимозаменяемых токенов (non-fungible tokens).
+### Особенности
 
-#### Основные функции
-```solidity
-interface IERC721 {
-    function balanceOf(address owner) external view returns (uint256);
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function safeTransferFrom(address from, address to, uint256 tokenId) external;
-    function transferFrom(address from, address to, uint256 tokenId) external;
-    function approve(address to, uint256 tokenId) external;
-    function getApproved(uint256 tokenId) external view returns (address);
-    function setApprovalForAll(address operator, bool approved) external;
-    function isApprovedForAll(address owner, address operator) external view returns (bool);
-    
-    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
-    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
-    event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
-}
-```
+#### Кросс-чейн трансферы
+- Поддержка трансферов между разными блокчейнами
+- Интеграция с мостами
+- Безопасная передача токенов
 
-#### Пример использования
-```solidity
-contract MyNFT is ERC721 {
-    using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
-    
-    constructor() ERC721("My NFT", "MNFT") {}
-    
-    function mint(address to) public returns (uint256) {
-        _tokenIds.increment();
-        uint256 newTokenId = _tokenIds.current();
-        _mint(to, newTokenId);
-        return newTokenId;
-    }
-}
-```
+#### KYC интеграция
+- Управление статусом KYC пользователей
+- Ограничение операций для неподтвержденных адресов
+- Интеграция с внешними KYC провайдерами
 
-### ERC1155
-Стандарт для мультитокенов, поддерживающий как взаимозаменяемые, так и невзаимозаменяемые токены.
+#### Модульная система
+- Регистрация новых модулей
+- Расширение функциональности токена
+- Изолированное выполнение модулей
 
-#### Основные функции
-```solidity
-interface IERC1155 {
-    function balanceOf(address account, uint256 id) external view returns (uint256);
-    function balanceOfBatch(address[] calldata accounts, uint256[] calldata ids) external view returns (uint256[] memory);
-    function setApprovalForAll(address operator, bool approved) external;
-    function isApprovedForAll(address account, address operator) external view returns (bool);
-    function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes calldata data) external;
-    function safeBatchTransferFrom(address from, address to, uint256[] calldata ids, uint256[] calldata amounts, bytes calldata data) external;
-    
-    event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value);
-    event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
-    event ApprovalForAll(address indexed account, address indexed operator, bool approved);
-    event URI(string value, uint256 indexed id);
-}
-```
+#### Снимки и дивиденды
+- Создание снимков балансов
+- Распределение дивидендов
+- Отслеживание истории балансов
 
-#### Пример использования
-```solidity
-contract MyMultiToken is ERC1155 {
-    constructor() ERC1155("") {}
-    
-    function mint(address to, uint256 id, uint256 amount, bytes memory data) public {
-        _mint(to, id, amount, data);
-    }
-    
-    function mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) public {
-        _mintBatch(to, ids, amounts, data);
-    }
-}
-```
-
-## Расширения
+## Стандартные токены
 
 ### ERC20
-- ERC20Burnable
-- ERC20Capped
-- ERC20Pausable
-- ERC20Snapshot
-- ERC20Votes
+- Базовый стандарт для взаимозаменяемых токенов
+- Поддержка всех стандартных методов
+- Совместимость с существующими инструментами
 
 ### ERC721
-- ERC721Enumerable
-- ERC721URIStorage
-- ERC721Burnable
-- ERC721Pausable
-- ERC721Votes
+- Стандарт для невзаимозаменяемых токенов (NFT)
+- Уникальные идентификаторы
+- Метаданные и URI
 
 ### ERC1155
-- ERC1155Burnable
-- ERC1155Pausable
-- ERC1155Supply
+- Мульти-токен стандарт
+- Эффективные батч-операции
+- Гибридные токены
+
+## Интеграция
+
+### Создание токена
+```solidity
+// Создание GNDst-1 токена
+contract MyToken is GNDst1Token {
+    constructor(uint256 initialSupply, address bridgeAddress) 
+        GNDst1Token(initialSupply, bridgeAddress) {
+    }
+}
+```
+
+### Использование API
+```javascript
+// Создание токена
+const token = await api.createToken({
+    name: "MyToken",
+    symbol: "MTK",
+    decimals: 18,
+    totalSupply: "1000000000000000000000000",
+    standard: "GNDst-1"
+});
+
+// Трансфер токенов
+await token.transfer(recipient, amount);
+
+// Кросс-чейн трансфер
+await token.crossChainTransfer("ethereum", recipient, amount);
+```
 
 ## Безопасность
 
 ### Рекомендации
-1. Используйте проверенные библиотеки
-2. Проводите аудит кода
-3. Тестируйте контракты
-4. Следите за газами
-5. Используйте безопасные паттерны
+- Использование проверенных библиотек
+- Аудит кода
+- Тестирование
+- Мониторинг газа
+- Безопасные паттерны
 
-### Паттерны
-1. Checks-Effects-Interactions
-2. Pull over Push
-3. Emergency Stop
-4. Rate Limiting
-5. Access Control
-
-## Интеграция
-
-### Web3.js
-```javascript
-const Web3 = require('web3');
-const web3 = new Web3('https://api.gnd-net.com:8181');
-
-const contract = new web3.eth.Contract(ABI, address);
-
-async function getBalance(address) {
-    const balance = await contract.methods.balanceOf(address).call();
-    return balance;
-}
-
-async function transfer(to, amount) {
-    const accounts = await web3.eth.getAccounts();
-    await contract.methods.transfer(to, amount).send({from: accounts[0]});
-}
-```
-
-### Ethers.js
-```javascript
-const { ethers } = require('ethers');
-const provider = new ethers.providers.JsonRpcProvider('https://api.gnd-net.com:8181');
-
-const contract = new ethers.Contract(address, ABI, provider);
-
-async function getBalance(address) {
-    const balance = await contract.balanceOf(address);
-    return balance;
-}
-
-async function transfer(signer, to, amount) {
-    const contractWithSigner = contract.connect(signer);
-    await contractWithSigner.transfer(to, amount);
-}
-```
+### Аудит
+- Проверка кода
+- Тестирование безопасности
+- Анализ уязвимостей
+- Рекомендации по улучшению
 
 ## Мониторинг
 
-### События
-```javascript
-contract.on("Transfer", (from, to, amount, event) => {
-    console.log(`Transfer: ${from} -> ${to}: ${amount}`);
-});
-```
-
 ### Метрики
-1. Количество транзакций
-2. Использование газа
-3. Активность контракта
-4. Балансы токенов
-5. События
+- Количество транзакций
+- Объем трансферов
+- Активность токенов
+- Использование газа
+- События
 
-## Обновление
+### Алерты
+- Аномальная активность
+- Большие трансферы
+- Ошибки контрактов
+- Проблемы с газом
 
-### Прокси паттерн
-```solidity
-contract Proxy {
-    address public implementation;
-    
-    function upgrade(address newImplementation) external {
-        implementation = newImplementation;
-    }
-    
-    fallback() external payable {
-        address _impl = implementation;
-        assembly {
-            calldatacopy(0, 0, calldatasize())
-            let result := delegatecall(gas(), _impl, 0, calldatasize(), 0, 0)
-            returndatacopy(0, 0, returndatasize())
-            switch result
-            case 0 { revert(0, returndatasize()) }
-            default { return(0, returndatasize()) }
-        }
-    }
-}
-```
+## Обновления
 
-### Миграция данных
-1. Создание нового контракта
-2. Копирование состояния
-3. Обновление ссылок
-4. Тестирование
-5. Переключение
+### Версионирование
+- Семантическое версионирование
+- Обратная совместимость
+- Миграции
+
+### Процесс
+1. Планирование
+2. Тестирование
+3. Аудит
+4. Развертывание
+5. Мониторинг
 
 ## Документация
 
-### NatSpec
-```solidity
-/// @title Simple Token
-/// @author John Doe
-/// @notice This is a simple ERC20 token
-/// @dev All function calls are currently implemented without side effects
-contract SimpleToken {
-    /// @notice Returns the balance of the specified address
-    /// @param account The address to query the balance of
-    /// @return The amount of tokens owned by the specified address
-    function balanceOf(address account) external view returns (uint256) {
-        return _balances[account];
-    }
-}
-```
+### Стандарты
+- [GNDst-1](GNDst-1.md)
+- [ERC20](https://eips.ethereum.org/EIPS/eip-20)
+- [ERC721](https://eips.ethereum.org/EIPS/eip-721)
+- [ERC1155](https://eips.ethereum.org/EIPS/eip-1155)
 
-### README
-1. Описание контракта
-2. Установка
-3. Использование
-4. Тестирование
-5. Деплой
-6. Безопасность
-7. Лицензия
-
-## Лицензии
-
-### MIT
-```solidity
-// SPDX-License-Identifier: MIT
-```
-
-### GPL-3.0
-```solidity
-// SPDX-License-Identifier: GPL-3.0
-```
-
-### Apache-2.0
-```solidity
-// SPDX-License-Identifier: Apache-2.0
-```
+### Примеры
+- [Примеры контрактов](../tokens/standards/gndst1/)
+- [Тесты](../tokens/standards/gndst1/gndst1_test.go)
+- [Интеграция](../integration/)

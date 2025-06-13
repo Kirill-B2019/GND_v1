@@ -1,0 +1,37 @@
+---
+description: Стандарты Go и использование существующих модулей GND
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go-код в проекте GND
+
+## Использование существующего кода
+
+- **Импорты**: использовать типы и пакеты проекта — `GND/core`, `GND/types`, `GND/api`, `GND/tokens/*`, `GND/vm`, `GND/consensus`, `GND/monitoring`, `GND/audit`, `GND/integration`.
+- **Интерфейсы**: перед введением новых абстракций проверять `core/interfaces.go`, `tokens/interfaces/`, `types/` — использовать `BlockchainIface`, `StateIface` и др. там, где они подходят.
+- **Типы адресов и токенов**: использовать `types.Address`, типы из `types/token.go`, `types/state.go`, `types/evm.go` вместо собственных структур там, где это уместно.
+- **Логирование и ошибки**: ориентироваться на существующие паттерны в `core/logger.go` и обработку ошибок в api/middleware и handlers.
+
+## Стиль и структура
+
+- Следовать принятой в проекте структуре пакетов: не смешивать слои (core не должен импортировать api, api импортирует core/types).
+- Тесты рядом с кодом (`*_test.go`); при необходимости — в `audit/`, `tests/`.
+- Комментарии к экспортируемым типам и функциям — на русском, в формате godoc.
+
+## Пример
+
+```go
+// ✅ Использовать существующие типы
+import (
+    "GND/core"
+    "GND/types"
+)
+
+func processTx(tx *core.Transaction, state core.StateIface) error {
+    addr := tx.From() // types.Address из core/transaction
+    // ...
+}
+```
+
+При добавлении новых методов к блокчейну, состоянию или API — проверять совместимость с существующими интерфейсами и обработчиками в `api/`, `tokens/handlers/`.
