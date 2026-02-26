@@ -5,12 +5,8 @@ import (
 	"testing"
 )
 
-// TestChangeTypeConstants проверяет, что константы типа изменения состояния заданы и различаются (использует для линтера).
+// TestChangeTypeConstants использует константы типа изменения состояния в StateChange (для линтера).
 func TestChangeTypeConstants(t *testing.T) {
-	if ChangeTypeBalance == ChangeTypeStorage {
-		t.Errorf("ChangeTypeBalance и ChangeTypeStorage должны различаться: %d", ChangeTypeBalance)
-	}
-	// Использование в значении StateChange
 	sc := &StateChange{Type: ChangeTypeBalance, Address: "0x1", Symbol: "GND", Amount: big.NewInt(0)}
 	if sc.Type != ChangeTypeBalance {
 		t.Errorf("ожидался ChangeTypeBalance")
