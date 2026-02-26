@@ -5,7 +5,9 @@
 
 -- =============================================================================
 -- 1. Функция для триггера events (если ещё не создана миграцией 001)
+-- plpgsql — встроенный процедурный язык PostgreSQL (не требует CREATE LANGUAGE).
 -- =============================================================================
+-- noinspection SqlResolve
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -87,8 +89,8 @@ DO $$ BEGIN
         ALTER TABLE public.blocks ADD COLUMN is_finalized BOOLEAN DEFAULT FALSE;
     END IF; END $$;
 
--- Синхронизация height с index при наличии данных (одноразово)
-UPDATE public.blocks SET height = index WHERE height IS NULL AND index IS NOT NULL;
+-- Синхронизация height с index при наличии данных (одноразово; index в blocks NOT NULL)
+UPDATE public.blocks SET height = index WHERE height IS NULL;
 
 -- =============================================================================
 -- 4. Транзакции (transactions): signature, is_verified (core/transaction.go)
