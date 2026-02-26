@@ -522,6 +522,7 @@ func (s *Server) setupRoutes() {
 	api.GET("/metrics", s.GetMetrics)
 	api.GET("/metrics/transactions", s.GetTransactionMetrics)
 	api.GET("/metrics/fees", s.GetFeeMetrics)
+	api.GET("/fees", s.GetFeeMetrics) // алиас для удобства
 	api.GET("/alerts", s.GetAlerts)
 	api.POST("/alerts/thresholds", s.SetAlertThresholds)
 
@@ -703,6 +704,10 @@ func (s *Server) GetMempool(c *gin.Context) {
 
 // StartRESTServer запускает REST API сервер. evmInstance используется для деплоя токенов (POST /token/deploy); если nil — эндпоинт возвращает 503.
 func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool, evmInstance *vm.EVM) {
+	// Инициализируем метрики блоков из текущей цепи (LastBlockTime, TotalBlocks и т.д.)
+	if latest, err := bc.GetLatestBlock(); err == nil {
+		core.InitBlockMetricsFromBlock(latest)
+	}
 	var tokenDeployer *deployer.Deployer
 	if evmInstance != nil && pool != nil {
 		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))

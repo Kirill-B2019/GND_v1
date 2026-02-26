@@ -274,6 +274,26 @@ func GetMetrics() *Metrics {
 	return metrics
 }
 
+// InitBlockMetricsFromBlock заполняет метрики блоков из текущего состояния цепи (при старте ноды).
+// Если latest == nil, метрики не меняются.
+func InitBlockMetricsFromBlock(latest *Block) {
+	if latest == nil {
+		return
+	}
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+
+	metrics.BlockMetrics.TotalBlocks = latest.Height + 1
+	metrics.BlockMetrics.LastBlockTime = latest.Timestamp
+	metrics.BlockMetrics.BlockSize = latest.Size
+	metrics.BlockMetrics.GasUsed = latest.GasUsed
+	metrics.BlockMetrics.GasLimit = latest.GasLimit
+	elapsed := time.Since(startTime).Minutes()
+	if elapsed > 0 {
+		metrics.BlockMetrics.BlocksPerMinute = float64(metrics.BlockMetrics.TotalBlocks) / elapsed
+	}
+}
+
 // SetAlertThresholds устанавливает пороговые значения для алертов
 func SetAlertThresholds(highFee, lowFee *big.Int, highLatency time.Duration, highCPU float64, highMemory uint64) {
 	metricsMu.Lock()
