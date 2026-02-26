@@ -236,7 +236,7 @@ func (t *GNDst1) Meta() TokenMeta {
 	return TokenMeta{
 		Address:     "", // TODO: Добавить адрес токена при необходимости
 		Owner:       "",
-		Standard:    "gndst1",
+		Standard:    "GND-st1",
 		Name:        t.name,
 		Symbol:      t.symbol,
 		Decimals:    t.decimals,
@@ -301,9 +301,9 @@ func (t *GNDst1) EmitApproval(ctx context.Context, owner, spender string, amount
 	return nil
 }
 
-// GetStandard возвращает стандарт токена
+// GetStandard возвращает стандарт токена (GND-st1 — ГАНИМЕД)
 func (t *GNDst1) GetStandard() string {
-	return "gndst1"
+	return "GND-st1"
 }
 
 // Snapshot создает снимок текущих балансов

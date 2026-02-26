@@ -76,7 +76,7 @@ func NewTokenContract(
 		name:     name,
 		symbol:   symbol,
 		decimals: decimals,
-		standard: "gndst1", // Устанавливаем стандарт по умолчанию
+		standard: "GND-st1", // Стандарт токенов/контрактов ГАНИМЕД
 		balances: make(map[core.Address]*big.Int),
 		pool:     pool,
 	}
@@ -279,7 +279,7 @@ func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int)
 	// Создаем метаданные контракта
 	metadata := compiler.ContractMetadata{
 		Name:        name,
-		Standard:    "gndst1",
+		Standard:    "GND-st1",
 		Version:     "1.0.0",
 		Compiler:    "solc",
 		Description: fmt.Sprintf("Token %s (%s)", name, symbol),

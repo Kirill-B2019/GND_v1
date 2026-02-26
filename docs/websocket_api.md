@@ -7,7 +7,7 @@ WebSocket API ГАНИМЕД предоставляет возможность �
 ## Базовый URL
 
 ```
-ws://45.12.72.15:8181/ws
+ws://31.128.41.155:8183/ws
 ```
 
 ## Аутентификация
@@ -249,7 +249,7 @@ ws://45.12.72.15:8181/ws
 
 ### JavaScript
 ```javascript
-const ws = new WebSocket('ws://45.12.72.15:8181/ws');
+const ws = new WebSocket('ws://31.128.41.155:8183/ws');
 
 ws.onopen = () => {
     // Аутентификация
@@ -362,7 +362,7 @@ def on_open(ws):
 def run_websocket():
     websocket.enableTrace(True)
     ws = websocket.WebSocketApp(
-        'ws://45.12.72.15:8181/ws',
+        'ws://31.128.41.155:8183/ws',
         on_message=on_message,
         on_error=on_error,
         on_close=on_close,
@@ -403,7 +403,7 @@ func main() {
     interrupt := make(chan os.Signal, 1)
     signal.Notify(interrupt, os.Interrupt)
 
-    u := url.URL{Scheme: "ws", Host: "45.12.72.15:8181", Path: "/ws"}
+    u := url.URL{Scheme: "ws", Host: "31.128.41.155:8183", Path: "/ws"}
     log.Printf("connecting to %s", u.String())
 
     c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)

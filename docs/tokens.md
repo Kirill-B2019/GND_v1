@@ -108,7 +108,7 @@ const token = await api.createToken({
     symbol: "MTK",
     decimals: 18,
     totalSupply: "1000000000000000000000000",
-    standard: "GNDst-1"
+    standard: "GND-st1"
 });
 
 // Трансфер токенов

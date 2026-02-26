@@ -14,8 +14,8 @@ npm install @ganymed/sdk
 // Инициализация
 const { Ganymed } = require('@ganymed/sdk');
 const gnd = new Ganymed({
-  rpcUrl: 'http://45.12.72.15:8545',
-  wsUrl: 'ws://45.12.72.15:8181/ws',
+  rpcUrl: 'http://31.128.41.155:8181',
+  wsUrl: 'ws://31.128.41.155:8183/ws',
   apiKey: 'your-api-key'
 });
 
@@ -48,8 +48,8 @@ pip install ganymed-sdk
 from ganymed import Ganymed
 
 gnd = Ganymed(
-    rpc_url='http://45.12.72.15:8545',
-    ws_url='ws://45.12.72.15:8181/ws',
+    rpc_url='http://31.128.41.155:8181',
+    ws_url='ws://31.128.41.155:8183/ws',
     api_key='your-api-key'
 )
 
@@ -87,8 +87,8 @@ import (
 
 func main() {
     gnd := sdk.NewGanymed(&sdk.Config{
-        RPCURL:  "http://45.12.72.15:8545",
-        WSURL:   "ws://45.12.72.15:8181/ws",
+        RPCURL:  "http://31.128.41.155:8181",
+        WSURL:   "ws://31.128.41.155:8183/ws",
         APIKey:  "your-api-key",
     })
 
@@ -138,8 +138,8 @@ import com.ganymed.sdk.Config;
 public class Main {
     public static void main(String[] args) {
         Ganymed gnd = new Ganymed(new Config(
-            "http://45.12.72.15:8545",
-            "ws://45.12.72.15:8181/ws",
+            "http://31.128.41.155:8181",
+            "ws://31.128.41.155:8183/ws",
             "your-api-key"
         ));
 
@@ -178,8 +178,8 @@ sudo mv gnd-cli /usr/local/bin/
 gnd-cli config init
 gnd-cli config set api-key your-api-key
 gnd-cli config set network mainnet
-gnd-cli config set rpc-url http://45.12.72.15:8545
-gnd-cli config set ws-url ws://45.12.72.15:8181/ws
+gnd-cli config set rpc-url http://31.128.41.155:8181
+gnd-cli config set ws-url ws://31.128.41.155:8183/ws
 
 # Создание кошелька
 gnd-cli wallet create
@@ -218,27 +218,27 @@ gnd-analytics
 ### REST API
 ```bash
 # Базовый URL
-http://45.12.72.15:8182/api/
+http://31.128.41.155:8182/api/v1
 
 # Аутентификация
-curl -H "X-API-Key: your-api-key" http://45.12.72.15:8182/api/wallet/balance/GND...
+curl -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/balance/GND...
 
 # Создание кошелька
-curl -X POST -H "X-API-Key: your-api-key" http://45.12.72.15:8182/api/wallet/create
+curl -X POST -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/create
 
 # Получение баланса
-curl -H "X-API-Key: your-api-key" http://45.12.72.15:8182/api/wallet/balance/GND...
+curl -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/balance/GND...
 
 # Отправка транзакции
 curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   -d '{"from":"GND...","to":"GND...","value":"1","unit":"ether"}' \
-  http://45.12.72.15:8182/api/wallet/send
+  http://31.128.41.155:8182/api/v1/wallet/send
 ```
 
 ### WebSocket API
 ```javascript
 // Подключение
-const ws = new WebSocket('ws://45.12.72.15:8181/ws');
+const ws = new WebSocket('ws://31.128.41.155:8183/ws');
 
 // Аутентификация
 ws.send(JSON.stringify({
@@ -262,25 +262,25 @@ ws.onmessage = (event) => {
 ### JSON-RPC API
 ```javascript
 // Базовый URL
-http://45.12.72.15:8545
+http://31.128.41.155:8181
 
 // Аутентификация
 curl -X POST -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-  http://45.12.72.15:8545
+  http://31.128.41.155:8181
 
 // Получение баланса
 curl -X POST -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"jsonrpc":"2.0","method":"eth_getBalance","params":["GND...","latest"],"id":1}' \
-  http://45.12.72.15:8545
+  http://31.128.41.155:8181
 
 // Отправка транзакции
 curl -X POST -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"jsonrpc":"2.0","method":"eth_sendTransaction","params":[{"from":"GND...","to":"GND...","value":"0xde0b6b3a7640000"}],"id":1}' \
-  http://45.12.72.15:8545
+  http://31.128.41.155:8181
 ```
 
 ## Обновления

@@ -16,7 +16,7 @@ import (
 // ContractMetadata содержит метаданные смарт-контракта
 type ContractMetadata struct {
 	Name        string                 `json:"name"`
-	Standard    string                 `json:"standard"` // "gndst1", "erc20", "trc20", "custom"
+	Standard    string                 `json:"standard"` // "GND-st1", "erc20", "trc20", "custom"
 	Owner       string                 `json:"owner"`
 	Compiler    string                 `json:"compiler"`
 	Version     string                 `json:"version"`
@@ -115,10 +115,9 @@ func removeDir(dir string) error {
 func ValidateContract(result *CompileResult) error {
 	standard := strings.ToLower(result.Metadata.Standard)
 	switch standard {
-	case "gndst1":
-		// Проверка для GNDST1 стандарта
+	case "gnd-st1", "gndst1": // GND-st1 — стандарт токенов/контрактов ГАНИМЕД; gndst1 — устаревшее
 		if !strings.Contains(result.ABI, "transfer") || !strings.Contains(result.ABI, "balanceOf") {
-			return errors.New("contract does not implement GNDST1 interface")
+			return errors.New("contract does not implement GND-st1 interface")
 		}
 	case "erc20":
 		if !strings.Contains(result.ABI, "transfer") || !strings.Contains(result.ABI, "balanceOf") {

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// DeployGNDst1Token деплоит контракт GNDst1
+// DeployGNDst1Token деплоит контракт по стандарту GND-st1 (ГАНИМЕД)
 func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decimals uint8, totalSupply *big.Int, from string) (string, error) {
 	if from == "" {
 		return "", fmt.Errorf("не удалось получить адрес отправителя")
@@ -29,7 +29,7 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 		Name:        name,
 		Symbol:      symbol,
 		Description: fmt.Sprintf("%s Token Contract", name),
-		Standard:    "gndst1",
+		Standard:    "GND-st1",
 		Owner:       from,
 		Params: map[string]string{
 			"totalSupply": totalSupply.String(),
@@ -78,7 +78,7 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 				"symbol":      symbol,
 				"decimals":    decimals,
 				"totalSupply": totalSupply.String(),
-				"standard":    "gndst1",
+				"standard":    "GND-st1",
 				"owner":       from,
 			},
 		}

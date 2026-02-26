@@ -17,7 +17,7 @@ import (
 
 // setupTestDB создает тестовое подключение к реальной тестовой базе PostgreSQL
 func setupTestDB(t *testing.T) (*pgxpool.Pool, sqlmock.Sqlmock) {
-	connStr := "postgres://gnduser:Titan!@Day@45.12.72.15:5432/gnd_db"
+	connStr := "postgres://gnduser:Titan!@Day@31.128.41.155:5432/gnd_db"
 	pool, err := pgxpool.New(context.Background(), connStr)
 	if err != nil {
 		t.Fatalf("Failed to create connection pool: %v", err)

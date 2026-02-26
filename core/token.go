@@ -25,7 +25,7 @@ type Token struct {
 	Decimals    int       // Количество десятичных знаков
 	TotalSupply string    // Общее предложение
 	Owner       string    // Владелец токена
-	Type        string    // Тип токена (gndst-1)
+	Type        string    // Тип токена (GND-st1)
 	Standard    string    // Стандарт токена
 	Status      string    // Статус токена
 	BlockID     int       // ID блока создания
@@ -303,13 +303,13 @@ func GetTokenBalance(ctx context.Context, pool *pgxpool.Pool, tokenAddress, acco
 	return balance, nil
 }
 
-// Прокси-методы для токенов стандарта gndst1
+// Прокси-методы для токенов стандарта GND-st1 (Ганимед)
 func (t *Token) IsGNDst1() bool {
-	return t.Standard == "gndst1"
+	return t.Standard == "GND-st1" || t.Standard == "gndst1" // gndst1 — устаревшее, для совместимости с БД
 }
 
 func (t *Token) GNDst1Instance() *gndst1.GNDst1 {
-	if t.Standard != "gndst1" {
+	if !t.IsGNDst1() {
 		return nil
 	}
 	inst, err := registry.GetToken(t.Address)

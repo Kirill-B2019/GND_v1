@@ -2,14 +2,14 @@
 
 ## Обзор
 
-Блокчейн ГАНИМЕД предоставляет три типа API:
+Публичный API блокчейна ГАНИМЕД доступен по домену **api.gnd-net.com**. Предоставляются три типа API:
 - REST API
 - WebSocket API
 - RPC API
 
-## Базовые URL
+## Базовые URL (api.gnd-net.com)
 
-- REST API: `https://api.gnd-net.com:8182/api/`
+- REST API: `https://api.gnd-net.com/api/v1` (при прокси без порта; с портом: `https://api.gnd-net.com:8182/api/v1`)
 - RPC API: `https://api.gnd-net.com:8181`
 - WebSocket API: `wss://api.gnd-net.com:8183/ws`
 
@@ -440,7 +440,7 @@ ws.send(JSON.stringify({
 ### JavaScript
 ```javascript
 const api = new GND.API({
-    rest: 'https://api.gnd-net.com:8182/api/',
+    rest: 'https://api.gnd-net.com/api/v1',
     ws: 'wss://api.gnd-net.com:8183/ws',
     rpc: 'https://api.gnd-net.com:8181',
     apiKey: 'your-api-key'
@@ -471,7 +471,7 @@ api.subscribe('blocks', (block) => {
 from gnd import API
 
 api = API(
-    rest='https://api.gnd-net.com:8182/api/',
+    rest='https://api.gnd-net.com/api/v1',
     ws='wss://api.gnd-net.com:8183/ws',
     rpc='https://api.gnd-net.com:8181',
     api_key='your-api-key'
@@ -500,7 +500,7 @@ api.subscribe('blocks', lambda block: print('New block:', block))
 import "github.com/gnd/api"
 
 config := api.Config{
-    REST:   "https://api.gnd-net.com:8182/api/",
+    REST:   "https://api.gnd-net.com/api/v1",
     WS:     "wss://api.gnd-net.com:8183/ws",
     RPC:    "https://api.gnd-net.com:8181",
     APIKey: "your-api-key",
@@ -640,7 +640,7 @@ class GNDAPI {
 
 // Пример использования
 const api = new GNDAPI({
-    rest: 'https://api.gnd-net.com:8182/api/',
+    rest: 'https://api.gnd-net.com/api/v1',
     rpc: 'https://api.gnd-net.com:8181',
     ws: 'wss://api.gnd-net.com:8183/ws',
     apiKey: 'your-api-key'
@@ -800,7 +800,7 @@ class GNDAPI:
 # Пример использования
 async def main():
     api = GNDAPI({
-        'rest': 'https://api.gnd-net.com:8182/api/',
+        'rest': 'https://api.gnd-net.com/api/v1',
         'rpc': 'https://api.gnd-net.com:8181',
         'ws': 'wss://api.gnd-net.com:8183/ws',
         'api_key': 'your-api-key'
@@ -1079,7 +1079,7 @@ func (api *GNDAPI) Subscribe(channel string, callback func(interface{})) error {
 
 func main() {
     api := NewGNDAPI(map[string]string{
-        "rest":   "https://api.gnd-net.com:8182/api/",
+        "rest":   "https://api.gnd-net.com/api/v1",
         "rpc":    "https://api.gnd-net.com:8181",
         "ws":     "wss://api.gnd-net.com:8183/ws",
         "apiKey": "your-api-key",
