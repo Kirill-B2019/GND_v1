@@ -14,7 +14,7 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql; -- noinspection SqlResolve (plpgsql — встроенный язык PostgreSQL)
 
 -- =============================================================================
 -- 2. Таблица states (core/state.go: BlockchainState)
