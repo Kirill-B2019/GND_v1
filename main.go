@@ -164,7 +164,7 @@ func main() {
 			fmt.Printf("Ошибка запуска RPCServer %s:\n", err)
 		}
 	}()
-	go api.StartRESTServer(blockchain, mempool, cfg, pool)
+	go api.StartRESTServer(blockchain, mempool, cfg, pool, evmInstance)
 	go api.StartWebSocketServer(blockchain, mempool, cfg)
 
 	// 13. Обработка транзакций

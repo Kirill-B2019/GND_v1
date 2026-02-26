@@ -116,6 +116,30 @@ curl -s "https://main-node.gnd-net.com/api/v1/contract/GND..."
 
 ---
 
+## Создание токена (требуется X-API-Key)
+
+Запрос из внешней системы с ключом API. Подробная логика: [api-token-deploy.md](api-token-deploy.md).
+
+```bash
+# Деплой токена (обязателен заголовок X-API-Key)
+curl -s -X POST "https://main-node.gnd-net.com/api/v1/token/deploy" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{
+    "name": "Test Token",
+    "symbol": "TST",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000",
+    "owner": "GND9jbK6Vca5VcZxATt3zb9yz5KQeMwjHFrz",
+    "standard": "GND-st1"
+  }'
+
+# Ответ при успехе: { "success": true, "data": { "address": "...", "name", "symbol", "decimals", "total_supply", "standard" } }
+# 401 — неверный или отсутствующий X-API-Key; 503 — сервис деплоя недоступен
+```
+
+---
+
 ## Токены (GND-st1)
 
 ```bash

@@ -106,6 +106,8 @@
 Подробная документация доступна в директории `docs/`:
 - [Архитектура](docs/architecture.md)
 - [API](docs/api.md) (подключение: **main-node.gnd-net.com**; документация: **api.gnd-net.com**)
+- [Запросы API (примеры)](docs/api-requests.md) — в т.ч. создание токена по X-API-Key
+- [Создание и регистрация токена через API](docs/api-token-deploy.md) — логика для внешних систем
 - [Смарт-контракты](docs/contracts.md)
 - [Токены](docs/tokens.md)
 - [Безопасность](docs/security.md)

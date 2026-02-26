@@ -14,7 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Tokens — реестр метаданных токенов по адресу (для расширения; основной реестр в tokens/registry).
 var Tokens = map[string]*tokens.TokenInfo{}
+
+func init() { _ = Tokens }
 
 type TokenMeta struct {
 	Address     string
@@ -83,6 +86,19 @@ func NewGNDst1(
 	}
 }
 
+// SetInitialBalance задаёт начальный баланс владельца (для деплоя; вызывается после NewGNDst1).
+func (t *GNDst1) SetInitialBalance(owner string, amount *big.Int) {
+	if amount == nil || amount.Sign() <= 0 {
+		return
+	}
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.balances == nil {
+		t.balances = make(map[string]*big.Int)
+	}
+	t.balances[owner] = new(big.Int).Set(amount)
+}
+
 // --- Базовые методы ---
 func (t *GNDst1) GetAddress() string       { return t.address }
 func (t *GNDst1) GetName() string          { return t.name }
@@ -91,7 +107,7 @@ func (t *GNDst1) GetDecimals() uint8       { return t.decimals }
 func (t *GNDst1) GetTotalSupply() *big.Int { return t.totalSupply }
 
 // GetBalance возвращает баланс токенов для адреса
-func (t *GNDst1) GetBalance(ctx context.Context, address string) (*big.Int, error) {
+func (t *GNDst1) GetBalance(_ context.Context, address string) (*big.Int, error) {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
@@ -135,7 +151,7 @@ func (t *GNDst1) Transfer(ctx context.Context, from, to string, amount *big.Int)
 }
 
 // Allowance возвращает количество токенов, которое spender может потратить от имени owner
-func (t *GNDst1) Allowance(ctx context.Context, owner, spender string) (*big.Int, error) {
+func (t *GNDst1) Allowance(_ context.Context, owner, spender string) (*big.Int, error) {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
@@ -200,7 +216,7 @@ func (t *GNDst1) TransferFrom(ctx context.Context, from string, to string, amoun
 }
 
 // --- Расширенные методы GNDst-1 ---
-func (t *GNDst1) CrossChainTransfer(ctx context.Context, targetChain string, to string, amount *big.Int) error {
+func (t *GNDst1) CrossChainTransfer(ctx context.Context, _ string, to string, amount *big.Int) error {
 	if amount.Sign() <= 0 {
 		return errors.New("amount must be positive")
 	}
@@ -290,13 +306,13 @@ func (t *GNDst1) BridgeTransfer(ctx context.Context, amount *big.Int) error {
 }
 
 // EmitTransfer эмитит событие перевода токенов
-func (t *GNDst1) EmitTransfer(ctx context.Context, from, to string, amount *big.Int) error {
+func (t *GNDst1) EmitTransfer(_ context.Context, _, _ string, _ *big.Int) error {
 	// TODO: Реализовать эмиссию события
 	return nil
 }
 
 // EmitApproval эмитит событие разрешения расходования токенов
-func (t *GNDst1) EmitApproval(ctx context.Context, owner, spender string, amount *big.Int) error {
+func (t *GNDst1) EmitApproval(_ context.Context, _, _ string, _ *big.Int) error {
 	// TODO: Реализовать эмиссию события
 	return nil
 }
@@ -307,7 +323,7 @@ func (t *GNDst1) GetStandard() string {
 }
 
 // Snapshot создает снимок текущих балансов
-func (t *GNDst1) Snapshot(ctx context.Context) (uint64, error) {
+func (t *GNDst1) Snapshot(_ context.Context) (uint64, error) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
@@ -328,7 +344,7 @@ func (t *GNDst1) Snapshot(ctx context.Context) (uint64, error) {
 }
 
 // GetSnapshotBalance возвращает баланс адреса на момент снимка
-func (t *GNDst1) GetSnapshotBalance(ctx context.Context, address string, snapshotId uint64) (*big.Int, error) {
+func (t *GNDst1) GetSnapshotBalance(_ context.Context, address string, snapshotId uint64) (*big.Int, error) {
 	t.mutex.RLock()
 	defer t.mutex.RUnlock()
 
@@ -382,7 +398,7 @@ func (t *GNDst1) ClaimDividends(ctx context.Context, snapshotId uint64) error {
 }
 
 // ModuleCall вызывает метод внешнего модуля
-func (t *GNDst1) ModuleCall(ctx context.Context, moduleId string, data []byte) ([]byte, error) {
+func (t *GNDst1) ModuleCall(_ context.Context, moduleId string, _ []byte) ([]byte, error) {
 	t.mutex.RLock()
 	_, exists := t.modules[moduleId]
 	t.mutex.RUnlock()
@@ -396,7 +412,7 @@ func (t *GNDst1) ModuleCall(ctx context.Context, moduleId string, data []byte) (
 }
 
 // RegisterModule регистрирует новый модуль
-func (t *GNDst1) RegisterModule(ctx context.Context, moduleId string, moduleAddress string, name string) error {
+func (t *GNDst1) RegisterModule(_ context.Context, moduleId string, moduleAddress string, name string) error {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 

@@ -4,6 +4,8 @@ package deployer
 
 import (
 	"GND/tokens/interfaces"
+	"GND/tokens/registry"
+	"GND/tokens/standards/gndst1"
 	tokentypes "GND/tokens/types"
 	coretypes "GND/types"
 	"context"
@@ -119,10 +121,46 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 	return token, nil
 }
 
-// registerToken регистрирует токен в системе
-func (d *Deployer) registerToken(_ context.Context, _ tokentypes.TokenInfo) (interfaces.TokenInterface, error) {
-	// TODO: Реализовать регистрацию токена (использовать pool d.pool и info для записи в БД/реестр)
-	return nil, nil
+// registerToken регистрирует токен в реестре (in-memory) и при наличии pool — в БД (contracts, tokens).
+func (d *Deployer) registerToken(ctx context.Context, info tokentypes.TokenInfo) (interfaces.TokenInterface, error) {
+	if info.Address == "" {
+		return nil, errors.New("адрес токена не задан")
+	}
+	totalSupply := info.TotalSupply
+	if totalSupply == nil || totalSupply.Sign() <= 0 {
+		totalSupply = big.NewInt(0)
+	}
+	token := gndst1.NewGNDst1(info.Address, info.Name, info.Symbol, info.Decimals, totalSupply, d.pool)
+	token.SetInitialBalance(info.Owner, totalSupply)
+
+	standard := info.Standard
+	if standard == "" {
+		standard = "GND-st1"
+	}
+
+	if err := registry.RegisterToken(info.Address, token); err != nil {
+		return nil, fmt.Errorf("реестр токенов: %w", err)
+	}
+
+	if d.pool != nil {
+		var contractID int
+		err := d.pool.QueryRow(ctx,
+			`INSERT INTO public.contracts (address, owner, created_at, type) VALUES ($1, $2, to_timestamp($3::bigint), $4) RETURNING id`,
+			info.Address, info.Owner, info.CreatedAt, "token",
+		).Scan(&contractID)
+		if err != nil {
+			return token, fmt.Errorf("запись в contracts: %w", err)
+		}
+		_, err = d.pool.Exec(ctx,
+			`INSERT INTO public.tokens (contract_id, standard, symbol, name, decimals, total_supply) VALUES ($1, $2, $3, $4, $5, $6)`,
+			contractID, standard, info.Symbol, info.Name, info.Decimals, totalSupply.String(),
+		)
+		if err != nil {
+			return token, fmt.Errorf("запись в tokens: %w", err)
+		}
+	}
+
+	return token, nil
 }
 
 // generateBytecode генерирует байткод для токена

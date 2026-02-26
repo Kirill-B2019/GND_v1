@@ -32,7 +32,8 @@ GND_v1/
 │   ├── consensus.go, manager.go, poa.go, pos.go
 ├── api/
 │   ├── rest.go, rpc.go, websocket.go, middleware.go, types.go, constants.go
-│   ├── api_test.go, api_token_test.go, api_wallet_test.go
+│   ├── auth.go, evm_adapter.go, eventmanager_stub.go
+│   ├── api_test.go, api_token_test.go, api_token_deploy_test.go, api_wallet_test.go, constants_test.go, websocket_test.go
 │   └── middleware/gin.go, middleware.go
 ├── tokens/
 │   ├── types.go, metadata.go
@@ -61,7 +62,7 @@ GND_v1/
 │   └── migrations/001_create_events_table.sql
 └── docs/
     ├── FileStructure.md (этот файл), README.md, architecture.md
-    ├── api.md, consensus.md, contracts.md, database.md, events.md
+    ├── api.md, api-requests.md, api-token-deploy.md, consensus.md, contracts.md, database.md, events.md
     ├── integration.md, tokens.md, websocket_api.md, GNDst-1.md, wallwt.md
     └── arhitech_gnd_step1.md, diagramDB.drawio, diagram.png
 ```
@@ -114,8 +115,8 @@ GND_v1/
 - **types.go, constants.go** — типы и константы API.
 
 **Взаимодействие:**  
-API обращается к методам `core` и консенсуса, предоставляет внешний интерфейс для пользователей, кошельков, dApp.  
-*Источники: rest.go, rpc.go, websocket.go, middleware.go*
+API обращается к методам `core` и консенсуса, предоставляет внешний интерфейс для пользователей, кошельков, dApp. Создание токена: **POST /api/v1/token/deploy** (заголовок X-API-Key) → auth.ValidateAPIKey → deployer.DeployToken → реестр токенов и БД.  
+*Источники: rest.go, rpc.go, websocket.go, middleware.go, auth.go, evm_adapter.go*
 
 ---
 

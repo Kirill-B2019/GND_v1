@@ -4,9 +4,12 @@ package api
 
 import (
 	"GND/core"
+	"GND/tokens/deployer"
 	"GND/tokens/interfaces"
 	"GND/tokens/registry"
+	tokentypes "GND/tokens/types"
 	"GND/types"
+	"GND/vm"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,11 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
-)
-
-var (
-	blockchain *core.Blockchain
-	mempool    *core.Mempool
 )
 
 // APIResponse — унифицированная структура ответа API
@@ -68,19 +66,21 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 
 // Server представляет HTTP сервер
 type Server struct {
-	router  *gin.Engine
-	db      *pgxpool.Pool
-	core    *core.Blockchain
-	mempool *core.Mempool
+	router   *gin.Engine
+	db       *pgxpool.Pool
+	core     *core.Blockchain
+	mempool  *core.Mempool
+	deployer *deployer.Deployer
 }
 
-// NewServer создает новый экземпляр сервера
-func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Mempool) *Server {
+// NewServer создает новый экземпляр сервера. deployer может быть nil — тогда POST /token/deploy недоступен.
+func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Mempool, tokenDeployer *deployer.Deployer) *Server {
 	server := &Server{
-		router:  gin.Default(),
-		db:      db,
-		core:    blockchain,
-		mempool: mempool,
+		router:   gin.Default(),
+		db:       db,
+		core:     blockchain,
+		mempool:  mempool,
+		deployer: tokenDeployer,
 	}
 	server.setupRoutes()
 	return server
@@ -447,6 +447,74 @@ func (s *Server) GetContract(c *gin.Context) {
 	})
 }
 
+// DeployToken создаёт и регистрирует токен. Требуется заголовок X-API-Key (внешняя система / api-keys).
+func (s *Server) DeployToken(c *gin.Context) {
+	apiKey := c.GetHeader("X-API-Key")
+	if !ValidateAPIKey(c.Request.Context(), s.db, apiKey) {
+		c.JSON(http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Неверный или отсутствующий X-API-Key",
+			Code:    http.StatusUnauthorized,
+		})
+		return
+	}
+	if s.deployer == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Сервис деплоя токенов недоступен",
+			Code:    http.StatusServiceUnavailable,
+		})
+		return
+	}
+	var req struct {
+		Name        string   `json:"name"`
+		Symbol      string   `json:"symbol"`
+		Decimals    uint8    `json:"decimals"`
+		TotalSupply *big.Int `json:"total_supply"`
+		Owner       string   `json:"owner"`
+		Standard    string   `json:"standard"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Неверный формат тела запроса: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	if req.Standard == "" {
+		req.Standard = "GND-st1"
+	}
+	params := tokentypes.TokenParams{
+		Name:        req.Name,
+		Symbol:      req.Symbol,
+		Decimals:    req.Decimals,
+		TotalSupply: req.TotalSupply,
+		Owner:       req.Owner,
+		Standard:    req.Standard,
+	}
+	token, err := s.deployer.DeployToken(c.Request.Context(), params)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Ошибка деплоя токена: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
+			"address":      token.GetAddress(),
+			"name":         token.GetName(),
+			"symbol":       token.GetSymbol(),
+			"decimals":     token.GetDecimals(),
+			"total_supply": token.GetTotalSupply().String(),
+			"standard":     token.GetStandard(),
+		},
+	})
+}
+
 func (s *Server) setupRoutes() {
 	api := s.router.Group("/api/v1")
 
@@ -477,6 +545,8 @@ func (s *Server) setupRoutes() {
 	api.POST("/contract", s.DeployContract)
 	api.GET("/contract/:address", s.GetContract)
 
+	// Токены (создание — по API-ключу; операции — без ключа в текущей реализации)
+	api.POST("/token/deploy", s.DeployToken)
 	// Токены
 	api.POST("/token/transfer", func(c *gin.Context) {
 		var req struct {
@@ -631,9 +701,13 @@ func (s *Server) GetMempool(c *gin.Context) {
 	})
 }
 
-// StartRESTServer запускает REST API сервер
-func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool) {
-	server := NewServer(pool, bc, mp)
+// StartRESTServer запускает REST API сервер. evmInstance используется для деплоя токенов (POST /token/deploy); если nil — эндпоинт возвращает 503.
+func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool, evmInstance *vm.EVM) {
+	var tokenDeployer *deployer.Deployer
+	if evmInstance != nil && pool != nil {
+		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))
+	}
+	server := NewServer(pool, bc, mp, tokenDeployer)
 	if err := server.Start(fmt.Sprintf(":%d", cfg.Server.REST.Port)); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}

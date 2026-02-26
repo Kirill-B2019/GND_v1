@@ -33,11 +33,11 @@
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| **REST API** | 8182 | Gin: `/api/v1/health`, `/api/v1/metrics`, `/api/v1/metrics/transactions`, `/api/v1/metrics/fees`, `/api/v1/alerts`, `/api/v1/wallet` (POST), `/api/v1/wallet/:address/balance`, `/api/v1/transaction` (POST), `/api/v1/transaction/:hash`, `/api/v1/mempool`, `/api/v1/block/latest`, `/api/v1/block/:number`, `/api/v1/contract` (POST/GET), `/api/v1/token/transfer`, `/api/v1/token/approve`, `/api/v1/token/:address/balance/:owner`. Ответы в формате `{ success, data, error, code }`. |
+| **REST API** | 8182 | Gin: `/api/v1/health`, `/api/v1/metrics`, `/api/v1/metrics/transactions`, `/api/v1/metrics/fees`, `/api/v1/alerts`, `/api/v1/wallet` (POST), `/api/v1/wallet/:address/balance`, `/api/v1/transaction` (POST), `/api/v1/transaction/:hash`, `/api/v1/mempool`, `/api/v1/block/latest`, `/api/v1/block/:number`, `/api/v1/contract` (POST/GET), **`/api/v1/token/deploy`** (POST, **обязателен X-API-Key** — создание и регистрация токена для внешних систем), `/api/v1/token/transfer`, `/api/v1/token/approve`, `/api/v1/token/:address/balance/:owner`. Ответы в формате `{ success, data, error, code }`. |
 | **RPC API** | 8181 | HTTP: `/block/latest`, `/contract/deploy`, `/contract/call`, `/contract/send`, `/account/balance`, `/block/by-number`, `/tx/send`, `/tx/status`, `/token/universal-call`. CORS и заголовки безопасности. |
 | **WebSocket** | 8183 | Подписки на события (блоки, транзакции), аутентификация по API ключу. |
 
-**Дополнительно:** middleware (CORS, авторизация по X-API-Key), константы (RestURL, RpcURL, WsURL, NodeHost main-node.gnd-net.com, ApiDocHost api.gnd-net.com — только документация, TokenStandardGNDst1).
+**Дополнительно:** **auth.go** — `ValidateAPIKey` (константа или таблица `api_keys`), **evm_adapter.go** — приведение EVM к интерфейсу для deployer, **eventmanager_stub.go** — заглушка EventManager для деплоера; middleware (CORS, X-API-Key); константы (RestURL, RpcURL, WsURL, NodeHost, ApiDocHost, TokenStandardGNDst1). Подробная логика создания токена через API: **docs/api-token-deploy.md**.
 
 ---
 
@@ -76,7 +76,7 @@
 | **GND-st1** | Пакет `tokens/standards/gndst1`: тип GNDst1, Transfer, Approve, GetBalance, Allowance, TransferFrom, CrossChainTransfer, Snapshot, Dividends, ModuleCall, GetStandard() = "GND-st1". |
 | **Registry** | RegisterToken, GetToken по адресу, хранение *gndst1.GNDst1. |
 | **Handlers** | balance, info для токенов. |
-| **Deployer** | Компиляция и деплой (compiler). |
+| **Deployer** | **DeployToken** (генерация байткода, evm.DeployContract, событие Deploy), **registerToken** (GNDst1 + SetInitialBalance, registry.RegisterToken, запись в БД: contracts, tokens). Вызывается из REST **POST /api/v1/token/deploy** при валидном X-API-Key. |
 
 ---
 
