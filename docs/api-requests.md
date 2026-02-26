@@ -46,7 +46,7 @@ curl -s "https://main-node.gnd-net.com/api/v1/wallet/GND9jbK6Vca5VcZxATt3zb9yz5K
 ## Транзакции и мемпул
 
 ```bash
-# Отправить транзакцию GND
+# Отправить транзакцию GND (обязательно POST)
 curl -s -X POST "https://main-node.gnd-net.com/api/v1/transaction" \
   -H "Content-Type: application/json" \
   -d '{
@@ -62,14 +62,17 @@ curl -s -X POST "https://main-node.gnd-net.com/api/v1/transaction" \
 
 # Ответ: { "success": true, "data": "хеш_транзакции" }
 
-# Получить транзакцию по хешу
-curl -s "https://main-node.gnd-net.com/api/v1/transaction/abc123..."
+# Получить транзакцию по хешу (GET с хешем в пути)
+curl -s "https://main-node.gnd-net.com/api/v1/transaction/ХЕШ_ТРАНЗАКЦИИ"
 
-# Мемпул (ожидающие транзакции)
+# Список ожидающих транзакций (то же, что /mempool)
+curl -s "https://main-node.gnd-net.com/api/v1/transactions"
 curl -s "https://main-node.gnd-net.com/api/v1/mempool"
 
 # Ответ: { "success": true, "data": { "size": 0, "pending_hashes": [] } }
 ```
+
+**Важно:** GET без хеша по адресу `/api/v1/transaction` вернёт подсказку (400). Для получения одной транзакции используйте `GET /api/v1/transaction/:hash`.
 
 ---
 

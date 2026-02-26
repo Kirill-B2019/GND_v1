@@ -534,8 +534,10 @@ func (s *Server) setupRoutes() {
 	api.GET("/wallet/:address/balance", s.GetBalance)
 
 	// Транзакции и мемпул
+	api.GET("/transaction", s.GetTransactionHelp) // GET без хеша — подсказка (иначе 404)
 	api.POST("/transaction", s.SendTransaction)
 	api.GET("/transaction/:hash", s.GetTransaction)
+	api.GET("/transactions", s.GetTransactionsList) // список ожидающих (как /mempool)
 	api.GET("/mempool", s.GetMempool)
 
 	// Блоки
@@ -682,6 +684,20 @@ func (s *Server) setupRoutes() {
 			Code:    http.StatusBadRequest,
 		})
 	})
+}
+
+// GetTransactionHelp возвращает подсказку при GET /transaction без хеша (избегаем 404)
+func (s *Server) GetTransactionHelp(c *gin.Context) {
+	c.JSON(http.StatusBadRequest, APIResponse{
+		Success: false,
+		Error:   "Укажите хеш транзакции: GET /api/v1/transaction/:hash. Отправка: POST /api/v1/transaction. Список ожидающих: GET /api/v1/transactions или GET /api/v1/mempool",
+		Code:    http.StatusBadRequest,
+	})
+}
+
+// GetTransactionsList возвращает список ожидающих транзакций (то же, что /mempool)
+func (s *Server) GetTransactionsList(c *gin.Context) {
+	s.GetMempool(c)
 }
 
 // GetMempool возвращает размер мемпула и список хешей ожидающих транзакций (для проверки работы mempool)
