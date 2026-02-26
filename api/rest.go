@@ -708,7 +708,9 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))
 	}
 	server := NewServer(pool, bc, mp, tokenDeployer)
-	if err := server.Start(fmt.Sprintf(":%d", cfg.Server.REST.Port)); err != nil {
+	addr := fmt.Sprintf(":%d", cfg.Server.REST.Port)
+	log.Printf("=== REST API Server запущен на %s ===\nДоступен по /api/v1/* (health, wallet, transaction, block, contract, token/deploy, token/transfer и др.)", addr)
+	if err := server.Start(addr); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}
 }
