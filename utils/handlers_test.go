@@ -23,7 +23,8 @@ func TestHelloHandler(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Ошибка декодирования ответа: %v", err)
 	}
-	if resp["message"] != "hello" {
-		t.Errorf("Ожидалось 'hello', получено '%s'", resp["message"])
+	// Ожидаемое сообщение от обработчика (русский текст)
+	if resp["message"] != "Привет, это Ганимед" {
+		t.Errorf("Ожидалось 'Привет, это Ганимед', получено '%s'", resp["message"])
 	}
 }

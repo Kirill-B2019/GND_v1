@@ -105,13 +105,13 @@
 
 Подробная документация доступна в директории `docs/`:
 - [Архитектура](docs/architecture.md)
-- [API](docs/api.md) (публичный хост: **api.gnd-net.com**)
-- [Смарт-контракты](docs/smart_contracts.md)
+- [API](docs/api.md) (подключение: **main-node.gnd-net.com**; документация: **api.gnd-net.com**)
+- [Смарт-контракты](docs/contracts.md)
 - [Токены](docs/tokens.md)
 - [Безопасность](docs/security.md)
 - [Тестирование](docs/testing.md)
 - [Интеграция](docs/integration.md)
-- [Развертывание](docs/deployment.md)
+- [Развертывание](docs/deployment-server.md)
 
 ## Лицензия
 

@@ -84,22 +84,22 @@ func (e *EVM) GetSender() string {
 	return e.config.Coins[0].ContractAddress
 }
 
-// DeployContract deploys a contract bytecode, registers it, and deducts the fee in GND
+// DeployContract deploys a contract bytecode, registers it, and deducts the fee in GND (соответствует types.EVMInterface)
 func (e *EVM) DeployContract(
-	from string,
+	from types.Address,
 	bytecode []byte,
 	meta types.ContractMeta,
 	gasLimit uint64,
-	gasPrice uint64,
+	gasPrice *big.Int,
 	nonce uint64,
-	signature string,
+	_ []byte, // signature — зарезервировано для проверки подписи при реализации
 	totalSupply *big.Int,
 ) (string, error) {
 	// Validate input parameters
 	if len(bytecode) == 0 {
 		return "", errors.New("empty contract bytecode")
 	}
-	if gasLimit == 0 || gasPrice == 0 {
+	if gasLimit == 0 || (gasPrice != nil && gasPrice.Sign() == 0) {
 		return "", errors.New("invalid gas parameters")
 	}
 	if totalSupply == nil {
@@ -109,10 +109,14 @@ func (e *EVM) DeployContract(
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	fromAddr := types.Address(from)
+	fromAddr := from
+	gp := uint64(0)
+	if gasPrice != nil {
+		gp = gasPrice.Uint64()
+	}
 	requiredFee := new(big.Int).Mul(
 		new(big.Int).SetUint64(gasLimit),
-		new(big.Int).SetUint64(gasPrice),
+		new(big.Int).SetUint64(gp),
 	)
 
 	if len(e.config.Coins) == 0 {
@@ -141,7 +145,7 @@ func (e *EVM) DeployContract(
 	contract, err := NewTokenContract(
 		core.Address(addr),
 		bytecode,
-		core.Address(from),
+		core.Address(from.String()),
 		meta.Name,
 		meta.Symbol,
 		18, // TODO: make configurable

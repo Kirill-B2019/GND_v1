@@ -8,10 +8,10 @@ const (
 	RpcURL  = "http://31.128.41.155:8181"
 	WsURL   = "ws://31.128.41.155:8183/ws"
 
-	// Домены (для документации и конфигов)
-	ApiHost  = "api.gnd-net.com"       // Публичный API (документация, клиенты)
-	RestHost = "main-node.gnd-net.com" // Узел (при необходимости разделения)
-	// RestURLSecure = "https://api.gnd-net.com/api/v1"
+	// Домены: документация vs нода для подключения
+	ApiDocHost = "api.gnd-net.com"       // Только описание/документация API
+	NodeHost   = "main-node.gnd-net.com" // Нода, к которой идёт подключение (REST/RPC/WS)
+	// RestURLSecure = "https://main-node.gnd-net.com/api/v1"
 
 	// Стандарт токенов/контрактов ГАНИМЕД
 	TokenStandardGNDst1 = "GND-st1"

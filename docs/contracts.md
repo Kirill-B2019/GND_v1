@@ -191,7 +191,7 @@ text
 
 ## 10. Ссылки
 
-- [api.md](api.md) — описание API (api.gnd-net.com)
+- [api.md](api.md) — описание API (документация: api.gnd-net.com; нода: main-node.gnd-net.com)
 - [contracts.md](contracts.md) - описание работы со смарт-контрактами
 - [architecture.md](architecture.md) - архитектура блокчейна
 - [consensus.md](consensus.md) - алгоритмы консенсуса

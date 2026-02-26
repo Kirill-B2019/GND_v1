@@ -2,6 +2,7 @@ package api
 
 import (
 	"GND/core"
+	"GND/types"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -13,21 +14,27 @@ import (
 	"time"
 )
 
+// mockAccountState для тестового состояния (core.AccountState не экспортирован/не существует)
+type mockAccountState struct {
+	Address types.Address
+	Nonce   int64
+}
+
 // MockState is a test implementation of State that doesn't use a database
 type MockState struct {
 	mu       sync.RWMutex
-	accounts map[core.Address]*core.AccountState
-	balances map[core.Address]map[string]*big.Int
+	accounts map[types.Address]*mockAccountState
+	balances map[types.Address]map[string]*big.Int
 }
 
 func NewMockState() *MockState {
 	return &MockState{
-		accounts: make(map[core.Address]*core.AccountState),
-		balances: make(map[core.Address]map[string]*big.Int),
+		accounts: make(map[types.Address]*mockAccountState),
+		balances: make(map[types.Address]map[string]*big.Int),
 	}
 }
 
-func (s *MockState) GetBalance(address core.Address, symbol string) *big.Int {
+func (s *MockState) GetBalance(address types.Address, symbol string) *big.Int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -39,7 +46,7 @@ func (s *MockState) GetBalance(address core.Address, symbol string) *big.Int {
 	return big.NewInt(0)
 }
 
-func (s *MockState) AddBalance(address core.Address, symbol string, amount *big.Int) error {
+func (s *MockState) AddBalance(address types.Address, symbol string, amount *big.Int) error {
 	if amount.Sign() <= 0 {
 		return errors.New("amount must be positive")
 	}
@@ -47,7 +54,7 @@ func (s *MockState) AddBalance(address core.Address, symbol string, amount *big.
 	return nil
 }
 
-func (s *MockState) SubBalance(address core.Address, symbol string, amount *big.Int) error {
+func (s *MockState) SubBalance(address types.Address, symbol string, amount *big.Int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -63,7 +70,7 @@ func (s *MockState) SubBalance(address core.Address, symbol string, amount *big.
 	return errors.New("insufficient balance")
 }
 
-func (s *MockState) Credit(address core.Address, symbol string, amount *big.Int) {
+func (s *MockState) Credit(address types.Address, symbol string, amount *big.Int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -80,7 +87,7 @@ func (s *MockState) SaveToDB() error {
 	return nil // No-op for mock
 }
 
-func (s *MockState) LoadTokenBalances(address core.Address) map[string]*big.Int {
+func (s *MockState) LoadTokenBalances(address types.Address) map[string]*big.Int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -94,33 +101,30 @@ func (s *MockState) LoadTokenBalances(address core.Address) map[string]*big.Int 
 	return make(map[string]*big.Int)
 }
 
-func (s *MockState) ApplyTransaction(tx *core.Transaction) error {
+func (s *MockState) ApplyTransaction(_ *core.Transaction) error {
 	return nil // No-op for mock
 }
 
 func (s *MockState) TransferToken(from, to core.Address, symbol string, amount *big.Int) error {
-	if err := s.SubBalance(from, symbol, amount); err != nil {
+	if err := s.SubBalance(types.Address(from), symbol, amount); err != nil {
 		return err
 	}
-	s.Credit(to, symbol, amount)
+	s.Credit(types.Address(to), symbol, amount)
 	return nil
 }
 
-func (s *MockState) UpdateNonce(address core.Address, nonce uint64) error {
+func (s *MockState) UpdateNonce(address types.Address, nonce uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.accounts[address]; !ok {
-		s.accounts[address] = &core.AccountState{
-			Address: address,
-			Nonce:   0,
-		}
+		s.accounts[address] = &mockAccountState{Address: address, Nonce: 0}
 	}
 	s.accounts[address].Nonce = int64(nonce)
 	return nil
 }
 
-func (s *MockState) GetNonce(addr core.Address) int64 {
+func (s *MockState) GetNonce(addr types.Address) int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -130,11 +134,11 @@ func (s *MockState) GetNonce(addr core.Address) int64 {
 	return 0
 }
 
-func (s *MockState) ValidateAddress(address core.Address) bool {
+func (s *MockState) ValidateAddress(address types.Address) bool {
 	return len(address) > 0
 }
 
-func (s *MockState) CallStatic(from, to core.Address, data []byte, gasLimit, gasPrice, value uint64) ([]byte, error) {
+func (s *MockState) CallStatic(_ *core.Transaction) (*types.ExecutionResult, error) {
 	return nil, nil // No-op for mock
 }
 
@@ -142,6 +146,7 @@ func (s *MockState) Close() {}
 
 // setupTestServer создает тестовый http.Handler с необходимыми зависимостями для тестов
 func setupTestServer(t *testing.T) http.Handler {
+	t.Helper()
 	genesis := &core.Block{
 		Index:     0,
 		Timestamp: time.Now(),
@@ -149,7 +154,7 @@ func setupTestServer(t *testing.T) http.Handler {
 		GasUsed:   0,
 		GasLimit:  10_000_000,
 		Consensus: "poa",
-		Nonce:     "0",
+		Nonce:     0,
 		Status:    "finalized",
 	}
 	genesis.Hash = genesis.CalculateHash()
@@ -158,7 +163,7 @@ func setupTestServer(t *testing.T) http.Handler {
 	blockchain.State = NewMockState()
 
 	state := blockchain.State.(*MockState)
-	state.Credit(core.Address("test_sender"), "GND", big.NewInt(1_000_000_000_000_000_000))
+	state.Credit(types.Address("test_sender"), "GND", big.NewInt(1_000_000_000_000_000_000))
 
 	router := http.NewServeMux()
 
@@ -223,7 +228,7 @@ func setupTestServer(t *testing.T) http.Handler {
 	})
 	router.HandleFunc("/account/balance", func(w http.ResponseWriter, r *http.Request) {
 		address := r.URL.Query().Get("address")
-		balance := state.GetBalance(core.Address(address), "GND")
+		balance := state.GetBalance(types.Address(address), "GND")
 		response := struct {
 			Address string   `json:"address"`
 			Balance *big.Int `json:"balance"`

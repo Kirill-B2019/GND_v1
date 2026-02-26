@@ -52,7 +52,7 @@ func StartRPCServer(evm *vm.EVM, addr string) error {
 	// Добавляем middleware для CORS и безопасности
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "https://api.gnd-net.com")
+		w.Header().Set("Access-Control-Allow-Origin", "https://main-node.gnd-net.com")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400")
@@ -112,13 +112,13 @@ func DeployContractHandler(evm *vm.EVM) http.HandlerFunc {
 		}
 
 		addr, err := evm.DeployContract(
-			params.From,
+			types.Address(params.From),
 			params.Bytecode,
 			meta,
 			params.GasLimit,
-			params.GasPrice,
+			new(big.Int).SetUint64(params.GasPrice),
 			params.Nonce,
-			params.Signature,
+			[]byte(params.Signature),
 			params.TotalSupply,
 		)
 		if err != nil {

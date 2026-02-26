@@ -22,7 +22,8 @@ func sendJSON(w http.ResponseWriter, data interface{}, code int) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func TokenBalanceHandler(evm *vm.EVM) http.HandlerFunc {
+// TokenBalanceHandler возвращает обработчик балансов токенов из реестра (evm зарезервирован для расширения).
+func TokenBalanceHandler(_ *vm.EVM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		address := r.URL.Query().Get("address")
 		if address == "" {
@@ -36,7 +37,7 @@ func TokenBalanceHandler(evm *vm.EVM) http.HandlerFunc {
 		tokens := registry.GetAllTokens()
 		resp := make(map[string]string)
 		for _, token := range tokens {
-			resp[token.Symbol] = token.TotalSupply.String()
+			resp[token.Symbol] = token.TotalSupply // TotalSupply уже string в types.TokenInfo
 		}
 
 		sendJSON(w, map[string]interface{}{

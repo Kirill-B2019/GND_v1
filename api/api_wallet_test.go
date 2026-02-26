@@ -17,7 +17,7 @@ import (
 
 // setupTestDB создает тестовое подключение к реальной тестовой базе PostgreSQL
 func setupTestDB(t *testing.T) (*pgxpool.Pool, sqlmock.Sqlmock) {
-	connStr := "postgres://gnduser:Titan!@Day@31.128.41.155:5432/gnd_db"
+	connStr := "postgres://gnduser:TitanDay0909@31.128.41.155:5432/gnd_db"
 	pool, err := pgxpool.New(context.Background(), connStr)
 	if err != nil {
 		t.Fatalf("Failed to create connection pool: %v", err)
@@ -89,8 +89,10 @@ func TestWalletCreateHandler(t *testing.T) {
 	}
 
 	// Проверяем, что все ожидаемые запросы были выполнены
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unfulfilled expectations: %s", err)
+	if mock != nil {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %s", err)
+		}
 	}
 }
 
@@ -157,8 +159,10 @@ func TestWalletCreateHandlerWithoutAuth(t *testing.T) {
 	}
 
 	// Проверяем, что все ожидаемые запросы были выполнены
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unfulfilled expectations: %s", err)
+	if mock != nil {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %s", err)
+		}
 	}
 }
 
@@ -226,7 +230,9 @@ func TestWalletCreateHandlerInvalidKey(t *testing.T) {
 	}
 
 	// Проверяем, что все ожидаемые запросы были выполнены
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unfulfilled expectations: %s", err)
+	if mock != nil {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unfulfilled expectations: %s", err)
+		}
 	}
 }

@@ -22,7 +22,7 @@ type Deployer struct {
 	evm          coretypes.EVMInterface
 }
 
-// NewDeployer создает новый экземпляр Deployer
+// NewDeployer создает новый экземпляр Deployer (используется в deployer_test.go и при инициализации деплоера токенов).
 func NewDeployer(pool *pgxpool.Pool, eventManager coretypes.EventManager, evm coretypes.EVMInterface) *Deployer {
 	return &Deployer{
 		pool:         pool,
@@ -57,19 +57,19 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		return nil, fmt.Errorf("failed to generate bytecode: %v", err)
 	}
 
-	// Деплоим контракт
+	// Деплоим контракт (types.EVMInterface: from Address, gasPrice *big.Int, signature []byte)
 	addr, err := d.evm.DeployContract(
-		params.Owner,
+		coretypes.Address(params.Owner),
 		bytecode,
 		coretypes.ContractMeta{
 			Name:     params.Name,
 			Symbol:   params.Symbol,
 			Standard: params.Standard,
 		},
-		1000000, // gas limit
-		1,       // gas price
-		0,       // nonce
-		"",      // signature
+		1000000,       // gas limit
+		big.NewInt(1), // gas price
+		0,             // nonce
+		[]byte(nil),   // signature
 		params.TotalSupply,
 	)
 	if err != nil {
@@ -120,13 +120,13 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 }
 
 // registerToken регистрирует токен в системе
-func (d *Deployer) registerToken(ctx context.Context, info tokentypes.TokenInfo) (interfaces.TokenInterface, error) {
-	// TODO: Реализовать регистрацию токена
+func (d *Deployer) registerToken(_ context.Context, _ tokentypes.TokenInfo) (interfaces.TokenInterface, error) {
+	// TODO: Реализовать регистрацию токена (использовать pool d.pool и info для записи в БД/реестр)
 	return nil, nil
 }
 
 // generateBytecode генерирует байткод для токена
-func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int) ([]byte, error) {
-	// TODO: Implement bytecode generation
+func generateBytecode(_, _ string, _ uint8, _ *big.Int) ([]byte, error) {
+	// TODO: Implement bytecode generation (name, symbol, decimals, totalSupply)
 	return nil, errors.New("not implemented")
 }

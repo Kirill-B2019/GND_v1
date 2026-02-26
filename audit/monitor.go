@@ -33,32 +33,36 @@ func NewMonitor(threshold *big.Int) *Monitor {
 }
 
 // CheckTransaction анализирует транзакцию на предмет подозрительности
-
 func (m *Monitor) CheckTransaction(tx *core.Transaction) {
-	// Проверка на крупную сумму
-	if tx.Value.Cmp(m.Threshold) >= 0 {
+	if tx == nil {
+		return
+	}
+	// Проверка на крупную сумму (с защитой от nil)
+	if m.Threshold != nil && tx.Value != nil && tx.Value.Cmp(m.Threshold) >= 0 {
 		m.AddSuspicious(tx, "Крупная сумма перевода")
 	}
 
 	// Перевод самому себе
-	if tx.Sender == tx.Recipient {
+	if tx.Sender.String() == tx.Recipient.String() {
 		m.AddSuspicious(tx, "Перевод самому себе")
 	}
 
 	// Частые переводы
 	now := time.Now()
-	lastTime, exists := m.lastTxTimestamps[tx.Sender]
+	senderStr := tx.Sender.String()
+	recipientStr := tx.Recipient.String()
+	lastTime, exists := m.lastTxTimestamps[senderStr]
 	if exists && now.Sub(lastTime) < 10*time.Second {
 		m.AddSuspicious(tx, "Частые переводы с одного адреса (возможно, бот-активность)")
 	}
-	m.lastTxTimestamps[tx.Sender] = now
+	m.lastTxTimestamps[senderStr] = now
 
 	// Перевод на новый/неизвестный адрес
-	if !m.knownAddresses[tx.Recipient] {
+	if !m.knownAddresses[recipientStr] {
 		m.AddSuspicious(tx, "Перевод на новый/неизвестный адрес")
 	}
-	m.knownAddresses[tx.Recipient] = true
-	m.knownAddresses[tx.Sender] = true
+	m.knownAddresses[recipientStr] = true
+	m.knownAddresses[senderStr] = true
 }
 
 // AddSuspicious добавляет подозрительную транзакцию в журнал

@@ -37,15 +37,15 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 		},
 	}
 
-	// Деплоим контракт
+	// Деплоим контракт (сигнатура types.EVMInterface)
 	addr, err := e.DeployContract(
-		from,
+		types.Address(from),
 		bytecode,
 		meta,
-		3_000_000,      // gasLimit
-		20_000_000_000, // gasPrice
-		0,              // nonce
-		"",             // signature
+		3_000_000,                              // gasLimit
+		new(big.Int).SetUint64(20_000_000_000), // gasPrice
+		0,                                      // nonce
+		nil,                                    // signature
 		totalSupply,
 	)
 	if err != nil {

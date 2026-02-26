@@ -2,16 +2,16 @@
 
 ## Обзор
 
-Публичный API блокчейна ГАНИМЕД доступен по домену **api.gnd-net.com**. Предоставляются три типа API:
+Подключение к ноде блокчейна ГАНИМЕД выполняется по домену **main-node.gnd-net.com**. Описание и документация API публикуются на **api.gnd-net.com**. Предоставляются три типа API:
 - REST API
 - WebSocket API
 - RPC API
 
-## Базовые URL (api.gnd-net.com)
+## Базовые URL (подключение к ноде main-node.gnd-net.com)
 
-- REST API: `https://api.gnd-net.com/api/v1` (при прокси без порта; с портом: `https://api.gnd-net.com:8182/api/v1`)
-- RPC API: `https://api.gnd-net.com:8181`
-- WebSocket API: `wss://api.gnd-net.com:8183/ws`
+- REST API: `https://main-node.gnd-net.com/api/v1` (при прокси без порта; с портом: `https://main-node.gnd-net.com:8182/api/v1`)
+- RPC API: `https://main-node.gnd-net.com:8181`
+- WebSocket API: `wss://main-node.gnd-net.com:8183/ws`
 
 ## Аутентификация
 
@@ -440,9 +440,9 @@ ws.send(JSON.stringify({
 ### JavaScript
 ```javascript
 const api = new GND.API({
-    rest: 'https://api.gnd-net.com/api/v1',
-    ws: 'wss://api.gnd-net.com:8183/ws',
-    rpc: 'https://api.gnd-net.com:8181',
+    rest: 'https://main-node.gnd-net.com/api/v1',
+    ws: 'wss://main-node.gnd-net.com:8183/ws',
+    rpc: 'https://main-node.gnd-net.com:8181',
     apiKey: 'your-api-key'
 });
 
@@ -471,9 +471,9 @@ api.subscribe('blocks', (block) => {
 from gnd import API
 
 api = API(
-    rest='https://api.gnd-net.com/api/v1',
-    ws='wss://api.gnd-net.com:8183/ws',
-    rpc='https://api.gnd-net.com:8181',
+    rest='https://main-node.gnd-net.com/api/v1',
+    ws='wss://main-node.gnd-net.com:8183/ws',
+    rpc='https://main-node.gnd-net.com:8181',
     api_key='your-api-key'
 )
 
@@ -497,12 +497,16 @@ api.subscribe('blocks', lambda block: print('New block:', block))
 
 ### Go
 ```go
+package main
+
+// Пример использования гипотетического SDK (github.com/gnd/api)
+// noinspection GoUnresolvedReference
 import "github.com/gnd/api"
 
 config := api.Config{
-    REST:   "https://api.gnd-net.com/api/v1",
-    WS:     "wss://api.gnd-net.com:8183/ws",
-    RPC:    "https://api.gnd-net.com:8181",
+    REST:   "https://main-node.gnd-net.com/api/v1",
+    WS:     "wss://main-node.gnd-net.com:8183/ws",
+    RPC:    "https://main-node.gnd-net.com:8181",
     APIKey: "your-api-key",
 }
 
@@ -640,9 +644,9 @@ class GNDAPI {
 
 // Пример использования
 const api = new GNDAPI({
-    rest: 'https://api.gnd-net.com/api/v1',
-    rpc: 'https://api.gnd-net.com:8181',
-    ws: 'wss://api.gnd-net.com:8183/ws',
+    rest: 'https://main-node.gnd-net.com/api/v1',
+    rpc: 'https://main-node.gnd-net.com:8181',
+    ws: 'wss://main-node.gnd-net.com:8183/ws',
     apiKey: 'your-api-key'
 });
 
@@ -800,9 +804,9 @@ class GNDAPI:
 # Пример использования
 async def main():
     api = GNDAPI({
-        'rest': 'https://api.gnd-net.com/api/v1',
-        'rpc': 'https://api.gnd-net.com:8181',
-        'ws': 'wss://api.gnd-net.com:8183/ws',
+        'rest': 'https://main-node.gnd-net.com/api/v1',
+        'rpc': 'https://main-node.gnd-net.com:8181',
+        'ws': 'wss://main-node.gnd-net.com:8183/ws',
         'api_key': 'your-api-key'
     })
 
@@ -870,11 +874,12 @@ if __name__ == '__main__':
 ```go
 package main
 
+// Пример клиента API (код для документации; зависимости: github.com/gorilla/websocket)
+// noinspection GoUnresolvedReference,GoUnusedVariable
 import (
     "bytes"
     "encoding/json"
     "fmt"
-    "io"
     "net/http"
     "time"
 
@@ -1079,9 +1084,9 @@ func (api *GNDAPI) Subscribe(channel string, callback func(interface{})) error {
 
 func main() {
     api := NewGNDAPI(map[string]string{
-        "rest":   "https://api.gnd-net.com/api/v1",
-        "rpc":    "https://api.gnd-net.com:8181",
-        "ws":     "wss://api.gnd-net.com:8183/ws",
+        "rest":   "https://main-node.gnd-net.com/api/v1",
+        "rpc":    "https://main-node.gnd-net.com:8181",
+        "ws":     "wss://main-node.gnd-net.com:8183/ws",
         "apiKey": "your-api-key",
     })
 
@@ -1092,13 +1097,13 @@ func main() {
     }
 
     // Получение баланса
-    balance, err := api.GetBalance(wallet["address"].(string))
+    _, err = api.GetBalance(wallet["address"].(string))
     if err != nil {
         panic(err)
     }
 
     // Отправка транзакции
-    tx, err := api.SendTransaction(map[string]interface{}{
+    _, err = api.SendTransaction(map[string]interface{}{
         "from":      wallet["address"],
         "to":        "GND...",
         "value":     "1000000000000000000",
@@ -1136,7 +1141,7 @@ func main() {
     }
 
     // Вызов контракта
-    result, err := api.CallContract(map[string]interface{}{
+    _, err = api.CallContract(map[string]interface{}{
         "from":      wallet["address"],
         "to":        contract["address"],
         "data":      "0x...",

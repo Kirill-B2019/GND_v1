@@ -60,7 +60,7 @@ var upgrader = websocket.Upgrader{
 		// Проверка домена
 		origin := r.Header.Get("Origin")
 		allowedOrigins := []string{
-			"https://api.gnd-net.com",
+			"https://main-node.gnd-net.com",
 			"https://gnd-net.com",
 			"http://localhost:8182",
 		}
@@ -141,7 +141,7 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 }
 
 // Обработка сообщений от клиента
-func (c *Client) readPump(blockchain *core.Blockchain, mempool *core.Mempool) {
+func (c *Client) readPump(_ *core.Blockchain, _ *core.Mempool) {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
