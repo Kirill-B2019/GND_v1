@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/api/websocket.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/002_schema_additions.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/003_reset_database.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/console_21.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump0906.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/main_test.go" dialect="PostgreSQL" />
   </component>
 </project>

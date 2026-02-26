@@ -52,7 +52,7 @@ func StartRPCServer(evm *vm.EVM, addr string) error {
 	// Добавляем middleware для CORS и безопасности
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "https://main-node.gnd-net.com")
+		w.Header().Set("Access-Control-Allow-Origin", "https://"+NodeHost)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400")

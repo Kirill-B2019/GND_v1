@@ -60,7 +60,7 @@ var upgrader = websocket.Upgrader{
 		// Проверка домена
 		origin := r.Header.Get("Origin")
 		allowedOrigins := []string{
-			"https://main-node.gnd-net.com",
+			"https://" + NodeHost,
 			"https://gnd-net.com",
 			"http://localhost:8182",
 		}

@@ -37,7 +37,7 @@ func TestWalletCreateHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("X-API-Key", "test_api_key")
+	req.Header.Set("X-API-Key", ApiKey)
 
 	// Создаем ResponseRecorder для записи ответа
 	rr := httptest.NewRecorder()

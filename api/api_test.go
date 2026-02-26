@@ -446,7 +446,7 @@ func TestDeployContractHandler(t *testing.T) {
 		"from":         "test_sender",
 		"bytecode":     bytecode,
 		"name":         "TestToken",
-		"standard":     "GND-st1",
+		"standard":     TokenStandardGNDst1,
 		"owner":        "test_sender",
 		"compiler":     "solc-0.8.0",
 		"version":      "1.0.0",
