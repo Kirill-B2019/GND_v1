@@ -187,8 +187,17 @@ func (s *Server) HealthCheck(c *gin.Context) {
 	})
 }
 
-// CreateWallet создает новый кошелек
+// CreateWallet создаёт новый кошелёк. Требуется заголовок X-API-Key.
 func (s *Server) CreateWallet(c *gin.Context) {
+	apiKey := c.GetHeader("X-API-Key")
+	if !ValidateAPIKey(c.Request.Context(), s.db, apiKey) {
+		c.JSON(http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Неверный или отсутствующий X-API-Key",
+			Code:    http.StatusUnauthorized,
+		})
+		return
+	}
 	wallet, err := s.core.CreateWallet()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
@@ -316,7 +325,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 	})
 }
 
-// GetLatestBlock возвращает последний блок
+// GetLatestBlock возвращает последний блок (с полем Transactions — список транзакций)
 func (s *Server) GetLatestBlock(c *gin.Context) {
 	block, err := s.core.GetLatestBlock()
 	if err != nil {
@@ -326,6 +335,18 @@ func (s *Server) GetLatestBlock(c *gin.Context) {
 			Code:    http.StatusInternalServerError,
 		})
 		return
+	}
+	if block != nil {
+		if s.db != nil {
+			txs, _ := core.LoadTransactionsForBlock(c.Request.Context(), s.db, block.ID)
+			if txs != nil {
+				block.Transactions = txs
+			} else {
+				block.Transactions = []*core.Transaction{}
+			}
+		} else {
+			block.Transactions = []*core.Transaction{}
+		}
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -361,6 +382,17 @@ func (s *Server) GetBlockByNumber(c *gin.Context) {
 			Code:    http.StatusNotFound,
 		})
 		return
+	}
+	if s.db != nil {
+		txs, _ := core.LoadTransactionsForBlock(c.Request.Context(), s.db, block.ID)
+		if txs != nil {
+			block.Transactions = txs
+		} else {
+			block.Transactions = []*core.Transaction{}
+		}
+	}
+	if block.Transactions == nil {
+		block.Transactions = []*core.Transaction{}
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -534,7 +566,8 @@ func (s *Server) setupRoutes() {
 	api.GET("/wallet/:address/balance", s.GetBalance)
 
 	// Транзакции и мемпул
-	api.GET("/transaction", s.GetTransactionHelp) // GET без хеша — подсказка (иначе 404)
+	api.GET("/transaction", s.GetTransactionHelp)  // GET без хеша — подсказка (иначе 404)
+	api.GET("/transaction/", s.GetTransactionHelp) // то же при запросе с завершающим слэшем
 	api.POST("/transaction", s.SendTransaction)
 	api.GET("/transaction/:hash", s.GetTransaction)
 	api.GET("/transactions", s.GetTransactionsList) // список ожидающих (как /mempool)

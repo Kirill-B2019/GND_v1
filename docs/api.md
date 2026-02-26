@@ -15,34 +15,38 @@
 
 ## Аутентификация
 
-Для операций от внешних систем используется заголовок **X-API-Key**. Обязательная проверка ключа реализована для эндпоинта **POST /api/v1/token/deploy** (создание токена); при отсутствии или неверном ключе возвращается 401 Unauthorized. Ключ проверяется по константе (тестовый ключ) или по таблице `public.api_keys` (поле `key`, учёт `expires_at`). Остальные эндпоинты REST в текущей реализации могут вызываться без ключа.
+Для операций от внешних систем используется заголовок **X-API-Key**. Обязательная проверка ключа реализована для:
+- **POST /api/v1/wallet** (создание кошелька)
+- **POST /api/v1/token/deploy** (создание токена)
+
+При отсутствии или неверном ключе возвращается 401 Unauthorized. Ключ проверяется по константе (тестовый ключ) или по таблице `public.api_keys` (поле `key`, учёт `expires_at`). Остальные эндпоинты REST (баланс, транзакции, блоки, мемпул и т.д.) могут вызываться без ключа.
 
 ## REST API
 
+Базовый префикс: **/api/v1**.
+
 ### Кошельки
 
-#### Создание кошелька
+#### Создание кошелька (требуется X-API-Key)
 ```http
-POST /wallet/create
+POST /api/v1/wallet
 Content-Type: application/json
+X-API-Key: <ваш_ключ>
 
-Response:
-{
-    "address": "GND...",
-    "publicKey": "0x...",
-    "privateKey": "0x..."
-}
+(тело не требуется)
+
+Response 200:
+{ "success": true, "data": { "address": "GND...", "publicKey": "0x...", "privateKey": "0x..." } }
+
+Response 401: неверный или отсутствующий X-API-Key
 ```
 
 #### Получение баланса
 ```http
-GET /wallet/balance/{address}
+GET /api/v1/wallet/:address/balance
 
 Response:
-{
-    "address": "GND...",
-    "balance": "1000000000000000000"
-}
+{ "success": true, "data": { "address": "GND...", "balance": "1000000000000000000" } }
 ```
 
 ### Токены
@@ -134,48 +138,20 @@ Response:
 
 ### Блоки
 
+Эндпоинты **GET /api/v1/block/latest** и **GET /api/v1/block/:number** возвращают блок в `data`. В блоке присутствуют поля `TxCount`, `Hash`, `Height`, `Timestamp`, `Miner` и массив **Transactions** (транзакции блока загружаются из БД; при отсутствии — `[]`).
+
 #### Получение последнего блока
 ```http
-GET /block/latest
+GET /api/v1/block/latest
 
-Response:
-{
-    "number": 123,
-    "hash": "0x...",
-    "parentHash": "0x...",
-    "timestamp": 1234567890,
-    "transactions": [
-        {
-            "hash": "0x...",
-            "from": "GND...",
-            "to": "GND...",
-            "value": "1000000000000000000"
-        }
-    ],
-    "validator": "GND..."
-}
+Response: { "success": true, "data": { "id", "hash", "prev_hash", "height", "timestamp", "tx_count", "transactions": [...], ... } }
 ```
 
 #### Получение блока по номеру
 ```http
-GET /block/{number}
+GET /api/v1/block/:number
 
-Response:
-{
-    "number": 123,
-    "hash": "0x...",
-    "parentHash": "0x...",
-    "timestamp": 1234567890,
-    "transactions": [
-        {
-            "hash": "0x...",
-            "from": "GND...",
-            "to": "GND...",
-            "value": "1000000000000000000"
-        }
-    ],
-    "validator": "GND..."
-}
+Response: { "success": true, "data": { "id", "hash", "prev_hash", "height", "timestamp", "tx_count", "transactions": [...], ... } }
 ```
 
 ## RPC API

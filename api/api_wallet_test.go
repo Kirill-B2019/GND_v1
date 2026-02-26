@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -166,7 +167,70 @@ func TestWalletCreateHandlerWithoutAuth(t *testing.T) {
 	}
 }
 
-// TestWalletCreateHandlerInvalidKey тестирует создание кошелька с неверным API ключом
+// TestCreateWallet_NoAPIKey_Returns401 проверяет, что POST /api/v1/wallet без X-API-Key возвращает 401 (реальный роутер Gin)
+func TestCreateWallet_NoAPIKey_Returns401(t *testing.T) {
+	genesis := &core.Block{
+		Index:     0,
+		Timestamp: time.Now(),
+		Miner:     "test",
+		GasUsed:   0,
+		GasLimit:  10_000_000,
+		Consensus: "poa",
+		Nonce:     0,
+		Status:    "finalized",
+	}
+	genesis.Hash = genesis.CalculateHash()
+	bc := core.NewBlockchain(genesis, nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/wallet", bytes.NewReader(nil))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("ожидался 401 без X-API-Key, получен %d", w.Code)
+	}
+	var resp APIResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Success {
+		t.Error("ожидался success: false")
+	}
+	if resp.Error == "" {
+		t.Error("ожидалось сообщение об ошибке")
+	}
+}
+
+// TestCreateWallet_InvalidAPIKey_Returns401 проверяет, что POST /api/v1/wallet с неверным ключом возвращает 401
+func TestCreateWallet_InvalidAPIKey_Returns401(t *testing.T) {
+	genesis := &core.Block{
+		Index:     0,
+		Timestamp: time.Now(),
+		Miner:     "test",
+		GasUsed:   0,
+		GasLimit:  10_000_000,
+		Consensus: "poa",
+		Nonce:     0,
+		Status:    "finalized",
+	}
+	genesis.Hash = genesis.CalculateHash()
+	bc := core.NewBlockchain(genesis, nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/wallet", bytes.NewReader(nil))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "invalid_key")
+	w := httptest.NewRecorder()
+	server.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("ожидался 401 при неверном ключе, получен %d", w.Code)
+	}
+}
+
+// TestWalletCreateHandlerInvalidKey тестирует создание кошелька с неверным API ключом (legacy middleware)
 func TestWalletCreateHandlerInvalidKey(t *testing.T) {
 	// Создаем тестовую БД
 	pool, mock := setupTestDB(t)

@@ -7,7 +7,7 @@
 ### Кратко по разделам
 
 **1. Ядро (Core)** — блокчейн, блоки, состояние (State), транзакции, мемпул, кошельки, токены, контракты, метрики, пул БД, криптография.  
-**2. API** — REST (8182), RPC (8181), WebSocket (8183). Подключение к ноде: **main-node.gnd-net.com**. Документация по API: **api.gnd-net.com**. Создание токена: **POST /api/v1/token/deploy** (обязателен заголовок **X-API-Key**); полная логика — [api-token-deploy.md](api-token-deploy.md).  
+**2. API** — REST (8182), RPC (8181), WebSocket (8183). Подключение к ноде: **main-node.gnd-net.com**. Документация по API: **api.gnd-net.com**. Создание кошелька: **POST /api/v1/wallet** (обязателен **X-API-Key**). Создание токена: **POST /api/v1/token/deploy** (обязателен **X-API-Key**); полная логика — [api-token-deploy.md](api-token-deploy.md).  
 **3. VM** — EVM, деплой и вызов контрактов, стандарт GND-st1.  
 **4. Консенсус** — PoA/PoS, выбор по транзакции.  
 **5. Токены** — GND-st1, registry, handlers, deployer.  

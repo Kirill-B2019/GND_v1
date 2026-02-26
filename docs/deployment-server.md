@@ -84,7 +84,7 @@ curl -s "http://31.128.41.155:8182/api/v1/wallet/WALLET_ADDRESS/balance"
 # Мемпул (размер и список хешей ожидающих транзакций)
 curl -s http://31.128.41.155:8182/api/v1/mempool
 
-# Последний блок
+# Последний блок (в data — блок с полем transactions — массив транзакций)
 curl -s http://31.128.41.155:8182/api/v1/block/latest
 
 # Метрики и комиссии

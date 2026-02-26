@@ -28,14 +28,18 @@ curl -s "https://main-node.gnd-net.com/api/v1/alerts"
 
 ## Кошельки
 
+Создание кошелька доступно только с валидным **X-API-Key** (как и деплой токена).
+
 ```bash
-# Создать кошелёк (тело не требуется)
+# Создать кошелёк (обязателен заголовок X-API-Key; тело не требуется)
 curl -s -X POST "https://main-node.gnd-net.com/api/v1/wallet" \
-  -H "Content-Type: application/json"
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ВАШ_API_КЛЮЧ"
 
 # Ответ: { "success": true, "data": { "address": "GND...", "publicKey": "0x...", "privateKey": "0x..." } }
+# Без ключа или с неверным ключом: 401, "Неверный или отсутствующий X-API-Key"
 
-# Баланс по адресу (GND)
+# Баланс по адресу (GND) — API-ключ не требуется
 curl -s "https://main-node.gnd-net.com/api/v1/wallet/GND9jbK6Vca5VcZxATt3zb9yz5KQeMwjHFrz/balance"
 
 # Ответ: { "success": true, "data": { "address": "GND...", "balance": "1000000" } }
@@ -72,11 +76,13 @@ curl -s "https://main-node.gnd-net.com/api/v1/mempool"
 # Ответ: { "success": true, "data": { "size": 0, "pending_hashes": [] } }
 ```
 
-**Важно:** GET без хеша по адресу `/api/v1/transaction` вернёт подсказку (400). Для получения одной транзакции используйте `GET /api/v1/transaction/:hash`.
+**Важно:** GET без хеша по адресу `/api/v1/transaction` или `/api/v1/transaction/` (с завершающим слэшем) вернёт подсказку (400). Для получения одной транзакции используйте `GET /api/v1/transaction/:hash`.
 
 ---
 
 ## Блоки
+
+Ответ содержит `data` с блоком: в том числе `TxCount`, `Hash`, `Height`, `Timestamp` и массив **`Transactions`** (список транзакций блока; при отсутствии — пустой массив `[]`).
 
 ```bash
 # Последний блок

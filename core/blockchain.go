@@ -319,8 +319,11 @@ func (bc *Blockchain) LatestBlock() (*Block, error) {
 	return bc.Blocks[len(bc.Blocks)-1], nil
 }
 
-// loadTransactionsForBlock загружает транзакции для конкретного блока
-func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockIndex uint64) ([]*Transaction, error) {
+// LoadTransactionsForBlock загружает транзакции блока по block_id (blocks.id). Для ответа API (block/latest, block/:number).
+func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID int64) ([]*Transaction, error) {
+	if pool == nil {
+		return nil, nil
+	}
 	rows, err := pool.Query(ctx, `
 		SELECT 
 			hash, 
@@ -334,7 +337,58 @@ func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockInde
 			status, 
 			timestamp 
 		FROM transactions 
-		WHERE block_id = $1`, blockIndex)
+		WHERE block_id = $1`, blockID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txs []*Transaction
+	for rows.Next() {
+		var tx Transaction
+		var valueStr string
+		var payload []byte
+
+		err := rows.Scan(
+			&tx.Hash,
+			&tx.Sender,
+			&tx.Recipient,
+			&valueStr,
+			&tx.Fee,
+			&tx.Nonce,
+			&tx.Type,
+			&payload,
+			&tx.Status,
+			&tx.Timestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		tx.Data = payload
+		tx.Value, _ = new(big.Int).SetString(valueStr, 10)
+		tx.BlockID = int(blockID)
+		txs = append(txs, &tx)
+	}
+	return txs, nil
+}
+
+// loadTransactionsForBlock загружает транзакции для конкретного блока (по block_id = blocks.id)
+func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID int64) ([]*Transaction, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT 
+			hash, 
+			sender, 
+			recipient, 
+			value, 
+			fee, 
+			nonce, 
+			type, 
+			payload, 
+			status, 
+			timestamp 
+		FROM transactions 
+		WHERE block_id = $1`, blockID)
 	if err != nil {
 		return nil, err
 	}
