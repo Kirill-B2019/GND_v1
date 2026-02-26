@@ -118,10 +118,18 @@ func (b *Block) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status str
 	return nil
 }
 
+// parseBlockNonce парсит nonce из varchar в uint64 (в БД blocks.nonce — varchar)
+func parseBlockNonce(s string) (uint64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	return strconv.ParseUint(s, 10, 64)
+}
+
 // LoadBlockByHash загружает блок из БД по хешу
 func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(), `
 		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE hash = $1`, hash).Scan(
@@ -137,7 +145,7 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -153,6 +161,7 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -163,7 +172,7 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 // LoadBlock загружает блок из БД по высоте
 func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(), `
 		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE index = $1`, height).Scan(
@@ -179,7 +188,7 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -195,6 +204,7 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -205,7 +215,7 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 // GetBlockByHeight returns a block by its height
 func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE height = $1",
 		height,
@@ -222,7 +232,7 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -238,6 +248,7 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by height: %v", err)
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -248,7 +259,7 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 // GetLatestBlock returns the latest block
 func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index DESC LIMIT 1",
 	).Scan(
@@ -264,7 +275,7 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -280,6 +291,7 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest block: %v", err)
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -331,7 +343,7 @@ func (b *Block) CalculateHashWithoutNonce() string {
 // GetBlockByNumber returns a block by its number
 func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
 		number,
@@ -348,7 +360,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -364,6 +376,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by number: %v", err)
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -374,7 +387,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 // GetBlockByHash returns a block by its hash
 func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
-	var rewardStr string
+	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE hash = $1",
 		hash,
@@ -391,7 +404,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		&block.GasUsed,
 		&block.GasLimit,
 		&block.Difficulty,
-		&block.Nonce,
+		&nonceStr,
 		&block.Miner,
 		&rewardStr,
 		&block.ExtraData,
@@ -407,6 +420,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %v", err)
 	}
+	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
@@ -428,7 +442,7 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 	var blocks []*Block
 	for rows.Next() {
 		var block Block
-		var rewardStr string
+		var rewardStr, nonceStr string
 		err := rows.Scan(
 			&block.ID,
 			&block.Hash,
@@ -442,7 +456,7 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 			&block.GasUsed,
 			&block.GasLimit,
 			&block.Difficulty,
-			&block.Nonce,
+			&nonceStr,
 			&block.Miner,
 			&rewardStr,
 			&block.ExtraData,
@@ -458,6 +472,7 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan block: %v", err)
 		}
+		block.Nonce, _ = parseBlockNonce(nonceStr)
 
 		block.Reward = new(big.Int)
 		block.Reward.SetString(rewardStr, 10)

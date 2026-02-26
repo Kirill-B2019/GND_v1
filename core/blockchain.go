@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"GND/types"
 
@@ -127,6 +128,20 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		return fmt.Errorf("failed to save genesis block: %v", err)
 	}
 
+	// 2.1. Транзакция о создании генезис-блока (данные в таблице transactions)
+	sysTxGenesis := newSystemTransaction(
+		int(bc.Genesis.ID),
+		bc.Genesis.Timestamp,
+		"genesis",
+		types.Address("GND_GENESIS"),
+		types.Address(wallet.Address),
+		big.NewInt(0),
+		"",
+	)
+	if err := saveSystemTransaction(ctx, pool, 1, sysTxGenesis); err != nil {
+		return fmt.Errorf("запись системной транзакции genesis: %w", err)
+	}
+
 	// 3. Инициализируем состояние и привязываем пул БД
 	state := NewState()
 	state.SetPool(pool)
@@ -167,7 +182,63 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		}
 	}
 
+	// 6. Транзакции о начислении на кошелёк (initial_mint по каждой монете)
+	for i, coin := range cfg.Coins {
+		amount := new(big.Int)
+		amount.SetString(coin.TotalSupply, 10)
+		sysTxMint := newSystemTransaction(
+			int(bc.Genesis.ID),
+			bc.Genesis.Timestamp,
+			"initial_mint",
+			types.Address("GND_GENESIS"),
+			types.Address(wallet.Address),
+			amount,
+			coin.Symbol,
+		)
+		if err := saveSystemTransaction(ctx, pool, 2+i, sysTxMint); err != nil {
+			return fmt.Errorf("запись системной транзакции initial_mint %s: %w", coin.Symbol, err)
+		}
+	}
+
 	return nil
+}
+
+// newSystemTransaction создаёт системную транзакцию (генезис, начисление).
+func newSystemTransaction(blockID int, ts time.Time, txType string, sender, recipient types.Address, value *big.Int, symbol string) *Transaction {
+	if value == nil {
+		value = big.NewInt(0)
+	}
+	tx := &Transaction{
+		BlockID:    blockID,
+		Sender:     sender,
+		Recipient:  recipient,
+		Value:      value,
+		Fee:        big.NewInt(0),
+		Nonce:      0,
+		Type:       txType,
+		Status:     "confirmed",
+		Timestamp:  ts,
+		Symbol:     symbol,
+		IsVerified: true,
+	}
+	tx.Hash = tx.CalculateHash()
+	return tx
+}
+
+// saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp).
+func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *Transaction) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO transactions (
+			id, block_id, hash, sender, recipient, value, fee, nonce,
+			type, contract_id, payload, status, timestamp, signature, is_verified
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT (id, timestamp) DO NOTHING`,
+		id, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
+		tx.Value.String(), tx.Fee.String(), tx.Nonce,
+		tx.Type, tx.ContractID, tx.Payload,
+		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
+	)
+	return err
 }
 
 // storeBlock сохраняет блок в таблице blocks
