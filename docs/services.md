@@ -33,7 +33,7 @@
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| **REST API** | 8182 | Gin: `/api/v1/health`, `/api/v1/metrics`, `/api/v1/metrics/transactions`, `/api/v1/metrics/fees`, `/api/v1/alerts`, `/api/v1/wallet` (POST), `/api/v1/wallet/:address/balance`, `/api/v1/transaction` (POST), `/api/v1/transaction/:hash`, `/api/v1/mempool`, `/api/v1/block/latest`, `/api/v1/block/:number`, `/api/v1/contract` (POST/GET), **`/api/v1/token/deploy`** (POST, **обязателен X-API-Key** — создание и регистрация токена для внешних систем), `/api/v1/token/transfer`, `/api/v1/token/approve`, `/api/v1/token/:address/balance/:owner`. Ответы в формате `{ success, data, error, code }`. |
+| **REST API** | 8182 | Gin: `/api/v1/health`, `/api/v1/metrics`, `/api/v1/metrics/transactions`, `/api/v1/metrics/fees`, `/api/v1/fees`, `/api/v1/alerts`, `/api/v1/wallet` (POST), `/api/v1/wallet/:address/balance`, `/api/v1/transaction` (POST), `/api/v1/transaction/:hash`, `/api/v1/mempool`, `/api/v1/block/latest`, `/api/v1/block/:number`, `/api/v1/contract` (POST/GET), **`/api/v1/token/deploy`** (POST, **обязателен X-API-Key** — создание и регистрация токена для внешних систем), `/api/v1/token/transfer`, `/api/v1/token/approve`, `/api/v1/token/:address/balance/:owner`. Ответы в формате `{ success, data, error, code }`. |
 | **RPC API** | 8181 | HTTP: `/block/latest`, `/contract/deploy`, `/contract/call`, `/contract/send`, `/account/balance`, `/block/by-number`, `/tx/send`, `/tx/status`, `/token/universal-call`. CORS и заголовки безопасности. |
 | **WebSocket** | 8183 | Подписки на события (блоки, транзакции), аутентификация по API ключу. |
 

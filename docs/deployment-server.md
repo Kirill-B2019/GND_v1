@@ -86,6 +86,10 @@ curl -s http://31.128.41.155:8182/api/v1/mempool
 
 # Последний блок
 curl -s http://31.128.41.155:8182/api/v1/block/latest
+
+# Метрики и комиссии
+curl -s http://31.128.41.155:8182/api/v1/metrics
+curl -s http://31.128.41.155:8182/api/v1/fees
 ```
 
 ### RPC (если включён)

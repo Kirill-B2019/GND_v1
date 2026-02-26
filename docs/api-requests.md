@@ -14,10 +14,11 @@
 # Проверка работы API
 curl -s "https://main-node.gnd-net.com/api/v1/health"
 
-# Метрики
+# Метрики (при старте ноды BlockMetrics заполняются из текущей цепи: LastBlockTime, TotalBlocks и т.д.)
 curl -s "https://main-node.gnd-net.com/api/v1/metrics"
 curl -s "https://main-node.gnd-net.com/api/v1/metrics/transactions"
 curl -s "https://main-node.gnd-net.com/api/v1/metrics/fees"
+curl -s "https://main-node.gnd-net.com/api/v1/fees"   # то же, что metrics/fees
 
 # Алерты
 curl -s "https://main-node.gnd-net.com/api/v1/alerts"
