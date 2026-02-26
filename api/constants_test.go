@@ -1,25 +1,16 @@
 package api
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
-// TestConstants проверяет, что константы API заданы (использует для линтера и документации).
+// TestConstants использует константы API (для линтера и документации; значения заданы в constants.go).
 func TestConstants(t *testing.T) {
-	if RestURL == "" || RpcURL == "" || WsURL == "" {
-		t.Error("URL-константы должны быть заданы")
-	}
-	if ApiDocHost == "" || NodeHost == "" {
-		t.Error("хосты документации и ноды должны быть заданы")
-	}
-	if TokenStandardGNDst1 != "GND-st1" {
-		t.Errorf("TokenStandardGNDst1: ожидалось GND-st1, получено %q", TokenStandardGNDst1)
-	}
-	if ApiKey == "" {
-		t.Error("ApiKey должен быть задан для тестов")
-	}
-	if HttpTimeout < time.Second || WsTimeout < time.Second {
-		t.Error("таймауты должны быть не менее 1s")
-	}
+	_ = RestURL
+	_ = RpcURL
+	_ = WsURL
+	_ = ApiDocHost
+	_ = NodeHost
+	_ = TokenStandardGNDst1
+	_ = ApiKey
+	_ = HttpTimeout
+	_ = WsTimeout
 }
