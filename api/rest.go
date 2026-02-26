@@ -258,18 +258,31 @@ func (s *Server) SendTransaction(c *gin.Context) {
 		return
 	}
 
+	value := txData.Value
+	if value == nil {
+		value = big.NewInt(0)
+	}
+	fee := txData.Fee
+	if fee == nil {
+		fee = big.NewInt(0)
+	}
+
 	tx := &core.Transaction{
 		Sender:     fromAddr,
 		Recipient:  toAddr,
-		Value:      txData.Value,
+		Value:      value,
 		Nonce:      int64(txData.Nonce),
 		Data:       []byte(txData.Data),
 		Signature:  []byte(txData.Signature),
 		GasLimit:   21000, // Стандартный лимит газа для простой транзакции
-		GasPrice:   txData.Fee,
+		GasPrice:   fee,
 		Symbol:     "GND",
 		IsVerified: true, // транзакции с нативной монетой GND верифицированы
+		Timestamp:  time.Now().UTC(),
+		Status:     "pending",
 	}
+	tx.Hash = tx.CalculateHash()
+
 	result, err := s.core.SendTransaction(tx)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
