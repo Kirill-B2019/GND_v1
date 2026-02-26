@@ -136,7 +136,7 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 	log.Println("===============================")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Ошибка запуска WebSocket сервера: %v", err)
+		log.Fatalf("Ошибка запуска WebSocket сервера: %v. Если порт занят — остановите предыдущий процесс (см. docs/deployment-server.md)", err)
 	}
 }
 
