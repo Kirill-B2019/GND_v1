@@ -124,7 +124,8 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 	// Извлекаем порт из адреса
 	_, port, err := net.SplitHostPort(cfg.Server.WS.WSAddr)
 	if err != nil {
-		log.Fatalf("Ошибка парсинга адреса WebSocket сервера: %v", err)
+		log.Printf("[WebSocket] Ошибка парсинга адреса: %v; WebSocket не запущен", err)
+		return
 	}
 
 	addr := fmt.Sprintf("0.0.0.0:%s", port)
@@ -136,7 +137,7 @@ func StartWebSocketServer(blockchain *core.Blockchain, mempool *core.Mempool, cf
 	log.Println("===============================")
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("Ошибка запуска WebSocket сервера: %v. Если порт занят — остановите предыдущий процесс (см. docs/deployment-server.md)", err)
+		log.Printf("[WebSocket] Ошибка запуска: %v. REST и RPC продолжают работать. Освободите порт (см. docs/deployment-server.md) и перезапустите ноду для включения WebSocket.", err)
 	}
 }
 
