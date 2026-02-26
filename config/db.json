@@ -1,11 +1,11 @@
 {
   "database": {
-    "host": "45.12.72.15",
+    "host": "31.128.41.155",
     "port": 5432,
     "user": "gnduser",
-    "password": "",
+    "password": "TitanDay0909",
     "dbname": "gnd_db",
-    "sslmode": "require",
+    "sslmode": "disable",
     "max_conns": 20,
     "min_conns": 5,
     "max_conn_lifetime": 1800000000000,

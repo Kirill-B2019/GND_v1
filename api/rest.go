@@ -68,17 +68,19 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 
 // Server представляет HTTP сервер
 type Server struct {
-	router *gin.Engine
-	db     *pgxpool.Pool
-	core   *core.Blockchain
+	router  *gin.Engine
+	db      *pgxpool.Pool
+	core    *core.Blockchain
+	mempool *core.Mempool
 }
 
 // NewServer создает новый экземпляр сервера
-func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain) *Server {
+func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Mempool) *Server {
 	server := &Server{
-		router: gin.Default(),
-		db:     db,
-		core:   blockchain,
+		router:  gin.Default(),
+		db:      db,
+		core:    blockchain,
+		mempool: mempool,
 	}
 	server.setupRoutes()
 	return server
@@ -257,14 +259,16 @@ func (s *Server) SendTransaction(c *gin.Context) {
 	}
 
 	tx := &core.Transaction{
-		Sender:    fromAddr,
-		Recipient: toAddr,
-		Value:     txData.Value,
-		Nonce:     int64(txData.Nonce),
-		Data:      []byte(txData.Data),
-		Signature: []byte(txData.Signature),
-		GasLimit:  21000, // Стандартный лимит газа для простой транзакции
-		GasPrice:  txData.Fee,
+		Sender:     fromAddr,
+		Recipient:  toAddr,
+		Value:      txData.Value,
+		Nonce:      int64(txData.Nonce),
+		Data:       []byte(txData.Data),
+		Signature:  []byte(txData.Signature),
+		GasLimit:   21000, // Стандартный лимит газа для простой транзакции
+		GasPrice:   txData.Fee,
+		Symbol:     "GND",
+		IsVerified: true, // транзакции с нативной монетой GND верифицированы
 	}
 	result, err := s.core.SendTransaction(tx)
 	if err != nil {
@@ -447,9 +451,10 @@ func (s *Server) setupRoutes() {
 	api.POST("/wallet", s.CreateWallet)
 	api.GET("/wallet/:address/balance", s.GetBalance)
 
-	// Транзакции
+	// Транзакции и мемпул
 	api.POST("/transaction", s.SendTransaction)
 	api.GET("/transaction/:hash", s.GetTransaction)
+	api.GET("/mempool", s.GetMempool)
 
 	// Блоки
 	api.GET("/block/latest", s.GetLatestBlock)
@@ -595,9 +600,27 @@ func (s *Server) setupRoutes() {
 	})
 }
 
+// GetMempool возвращает размер мемпула и список хешей ожидающих транзакций (для проверки работы mempool)
+func (s *Server) GetMempool(c *gin.Context) {
+	if s.mempool == nil {
+		c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"size": 0, "pending_hashes": []string{}}})
+		return
+	}
+	size := s.mempool.Size()
+	pending := s.mempool.GetPendingTransactions()
+	hashes := make([]string, 0, len(pending))
+	for _, tx := range pending {
+		hashes = append(hashes, tx.Hash)
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    gin.H{"size": size, "pending_hashes": hashes},
+	})
+}
+
 // StartRESTServer запускает REST API сервер
 func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool) {
-	server := NewServer(pool, bc)
+	server := NewServer(pool, bc, mp)
 	if err := server.Start(fmt.Sprintf(":%d", cfg.Server.REST.Port)); err != nil {
 		log.Fatalf("Ошибка запуска REST сервера: %v", err)
 	}

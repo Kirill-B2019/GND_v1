@@ -70,21 +70,26 @@ func NewBlock(prevHash string, height uint64, miner string) *Block {
 
 // SaveToDB сохраняет блок в БД
 func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	rewardStr := "0"
+	if b.Reward != nil {
+		rewardStr = b.Reward.String()
+	}
+	nonceStr := strconv.FormatUint(b.Nonce, 10) // в БД blocks.nonce — varchar
 	err := pool.QueryRow(ctx, `
 		INSERT INTO blocks (
 			hash, prev_hash, merkle_root, timestamp, height,
 			version, size, tx_count, gas_used, gas_limit,
 			difficulty, nonce, miner, reward, extra_data,
 			created_at, updated_at, status, parent_id,
-			is_orphaned, is_finalized
+			is_orphaned, is_finalized, index, consensus
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		RETURNING id`,
 		b.Hash, b.PrevHash, b.MerkleRoot, b.Timestamp, b.Height,
 		b.Version, b.Size, b.TxCount, b.GasUsed, b.GasLimit,
-		b.Difficulty, b.Nonce, b.Miner, b.Reward.String(), b.ExtraData,
+		b.Difficulty, nonceStr, b.Miner, rewardStr, b.ExtraData,
 		b.CreatedAt, b.UpdatedAt, b.Status, b.ParentID,
-		b.IsOrphaned, b.IsFinalized,
+		b.IsOrphaned, b.IsFinalized, b.Index, b.Consensus,
 	).Scan(&b.ID)
 
 	if err != nil {
@@ -149,7 +154,6 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		return nil, err
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -192,7 +196,6 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 		return nil, err
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -236,7 +239,6 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 		return nil, fmt.Errorf("failed to get block by height: %v", err)
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -279,7 +281,6 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 		return nil, fmt.Errorf("failed to get latest block: %v", err)
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -364,7 +365,6 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 		return nil, fmt.Errorf("failed to get block by number: %v", err)
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -408,7 +408,6 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		return nil, fmt.Errorf("failed to get block by hash: %v", err)
 	}
 
-	// Convert reward string to big.Int
 	block.Reward = new(big.Int)
 	block.Reward.SetString(rewardStr, 10)
 
@@ -460,7 +459,6 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 			return nil, fmt.Errorf("failed to scan block: %v", err)
 		}
 
-		// Convert reward string to big.Int
 		block.Reward = new(big.Int)
 		block.Reward.SetString(rewardStr, 10)
 

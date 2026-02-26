@@ -36,15 +36,21 @@ func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
 
 // LoadBlockchainFromDB loads blockchain from database
 func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
-	// Загружаем генезис-блок
+	ctx := context.Background()
 	genesis, err := GetBlockByNumber(pool, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load genesis block: %v", err)
 	}
 
+	state := NewState()
+	state.SetPool(pool)
+	if err := state.LoadFromDB(ctx); err != nil {
+		return nil, fmt.Errorf("failed to load state from DB: %w", err)
+	}
+
 	return &Blockchain{
 		Genesis: genesis,
-		State:   NewState(),
+		State:   state,
 		Pool:    pool,
 		Blocks:  []*Block{genesis},
 		Mempool: NewMempool(),
@@ -86,23 +92,78 @@ func (bc *Blockchain) AddTransaction(tx *Transaction) error {
 	return nil
 }
 
+// EnsureCoinsDeployed проверяет при первом запуске наличие монет из config в БД и при необходимости создаёт контракты и токены.
+func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, ownerAddress string) error {
+	for _, coin := range cfg.Coins {
+		_, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
+		if err == nil {
+			continue
+		}
+		// Токен не найден — создаём контракт и токен (нативные монеты из config считаем верифицированными)
+		addr := coin.ContractAddress
+		if addr == "" || len(addr) < 10 {
+			addr = ""
+		}
+		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, ownerAddress, "coin", coin.Standard, 0, 0)
+		t.IsVerified = true
+		if err := t.SaveToDB(ctx, pool); err != nil {
+			return fmt.Errorf("деплой монеты %s: %w", coin.Symbol, err)
+		}
+		// Пометить контракт нативной монеты как верифицированный
+		_, _ = pool.Exec(ctx, `UPDATE contracts SET is_verified = true WHERE address = $1`, t.Address)
+	}
+	return nil
+}
+
 // FirstLaunch initializes blockchain on first launch
 func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
-	// Сохраняем генезис-блок
+	// 1. Проверка и деплой монет из config (контракты + токены в БД)
+	if err := EnsureCoinsDeployed(ctx, pool, cfg, string(wallet.Address)); err != nil {
+		return fmt.Errorf("проверка деплоя монет: %w", err)
+	}
+
+	// 2. Сохраняем генезис-блок
 	if err := bc.Genesis.SaveToDB(ctx, pool); err != nil {
 		return fmt.Errorf("failed to save genesis block: %v", err)
 	}
 
-	// Инициализируем состояние
+	// 3. Инициализируем состояние и привязываем пул БД
 	state := NewState()
+	state.SetPool(pool)
 	bc.State = state
 
-	// Начисляем начальный баланс для всех монет
+	// 4. Начисляем начальный баланс в памяти
 	for _, coin := range cfg.Coins {
 		amount := new(big.Int)
 		amount.SetString(coin.TotalSupply, 10)
 		if err := state.Credit(types.Address(wallet.Address), coin.Symbol, amount); err != nil {
 			return fmt.Errorf("failed to add initial balance for %s: %v", coin.Symbol, err)
+		}
+	}
+
+	// 5. Сохраняем балансы в БД: token_balances и accounts.balance для нативной монеты
+	for _, coin := range cfg.Coins {
+		amount := new(big.Int)
+		amount.SetString(coin.TotalSupply, 10)
+		tok, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
+		if err != nil {
+			return fmt.Errorf("токен %s не найден после деплоя: %w", coin.Symbol, err)
+		}
+		_, err = pool.Exec(ctx, `
+			INSERT INTO token_balances (token_id, address, balance)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (token_id, address) DO UPDATE SET balance = $3`,
+			tok.ID, string(wallet.Address), amount.String())
+		if err != nil {
+			return fmt.Errorf("запись баланса %s: %w", coin.Symbol, err)
+		}
+	}
+	// Нативная монета (первая в config, обычно GND) — обновляем accounts.balance
+	if len(cfg.Coins) > 0 {
+		nativeSupply := cfg.Coins[0].TotalSupply
+		_, err := pool.Exec(ctx, `UPDATE accounts SET balance = $1 WHERE address = $2`, nativeSupply, string(wallet.Address))
+		if err != nil {
+			return fmt.Errorf("обновление баланса аккаунта: %w", err)
 		}
 	}
 

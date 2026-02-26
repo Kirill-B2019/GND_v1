@@ -73,23 +73,26 @@ func main() {
 	defer pool.Close()
 	go monitorPoolStats(ctx, pool)
 
-	// 4. Проверка существующих данных
+	// 4. Проверка существующих данных: аккаунты и наличие генезис-блока
 	var existingAccount bool
 	err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM accounts LIMIT 1)").Scan(&existingAccount)
 	if err != nil {
 		log.Fatalf("Ошибка проверки существующих аккаунтов: %v", err)
 	}
+	var genesisExists bool
+	err = pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM blocks WHERE index = 0)").Scan(&genesisExists)
+	if err != nil {
+		log.Fatalf("Ошибка проверки генезис-блока: %v", err)
+	}
 
-	// 5. Генерация или загрузка кошелька валидатора
+	// 5. Генерация или загрузка кошелька валидатора (у аккаунта может быть несколько кошельков — загружаем первый/валидатора)
 	var minerWallet *core.Wallet
 	if existingAccount {
-		// Загружаем существующий кошелек
 		minerWallet, err = core.LoadWallet(pool)
 		if err != nil {
 			log.Fatalf("Ошибка загрузки существующего кошелька: %v", err)
 		}
 	} else {
-		// Создаем новый кошелек
 		minerWallet, err = core.NewWallet(pool)
 		if err != nil {
 			log.Fatalf("Ошибка генерации кошелька: %v", err)
@@ -97,13 +100,13 @@ func main() {
 	}
 	fmt.Printf("Адрес валидатора: %s\n", minerWallet.Address)
 
-	// 6. Инициализация блокчейна
+	// 6. Инициализация блокчейна (первый запуск = нет генезис-блока; монеты не пересоздаются, если уже есть в БД)
 	var blockchain *core.Blockchain
-	if !existingAccount {
-		// Создаем генезис-блок
+	if !genesisExists {
+		// Первый запуск: создаём генезис-блок
 		genesis := &core.Block{
 			Index:     0,
-			Timestamp: time.Now(),
+			Timestamp: time.Now().UTC(),
 			Miner:     string(minerWallet.Address),
 			GasUsed:   0,
 			GasLimit:  10_000_000,
@@ -112,14 +115,16 @@ func main() {
 			Status:    "finalized",
 		}
 		genesis.Hash = genesis.CalculateHash()
-
 		blockchain = core.NewBlockchain(genesis, pool)
 	} else {
-		// Загружаем существующий блокчейн
 		blockchain, err = core.LoadBlockchainFromDB(pool)
 		if err != nil {
 			log.Fatalf("Ошибка загрузки блокчейна: %v", err)
 		}
+	}
+	// Глобальное состояние для processTransactions и HasSufficientBalance
+	if st, ok := blockchain.State.(*core.State); ok {
+		core.SetState(st)
 	}
 
 	// 11. EVM
@@ -134,9 +139,8 @@ func main() {
 		Coins:      convertCoinsToInterface(cfg.Coins),
 	})
 
-	// 8. Начисление баланса для монет (только если это новый аккаунт)
-	if !existingAccount {
-		// Первый запуск - инициализируем блокчейн
+	// 8. Первый запуск: деплой монет из config (если ещё нет в БД), генезис, начисление балансов
+	if !genesisExists {
 		if err := blockchain.FirstLaunch(ctx, pool, minerWallet, cfg); err != nil {
 			log.Fatalf("Ошибка инициализации блокчейна: %v", err)
 		}

@@ -117,15 +117,15 @@ func (t *Token) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
-	// Затем сохраняем токен
+	// Затем сохраняем токен (is_verified — для нативных монет из config)
 	err = pool.QueryRow(ctx, `
 		INSERT INTO tokens (
 			contract_id, symbol, name, decimals, total_supply,
-			standard
-		) VALUES ($1, $2, $3, $4, $5, $6)
+			standard, is_verified
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`,
 		contractID, t.Symbol, t.Name, t.Decimals, t.TotalSupply,
-		t.Standard,
+		t.Standard, t.IsVerified,
 	).Scan(&t.ID)
 
 	if err != nil {
@@ -201,6 +201,36 @@ func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token,
 // GetTokenByAddress возвращает токен по адресу
 func GetTokenByAddress(ctx context.Context, pool *pgxpool.Pool, address string) (*Token, error) {
 	return LoadToken(ctx, pool, address)
+}
+
+// GetTokenBySymbol возвращает токен по символу (для монет из config)
+func GetTokenBySymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (*Token, error) {
+	var id, contractID int
+	var name, standard string
+	var decimals int
+	var totalSupply string
+	err := pool.QueryRow(ctx, `
+		SELECT t.id, t.contract_id, t.name, t.decimals, t.total_supply, t.standard
+		FROM tokens t
+		WHERE t.symbol = $1`,
+		symbol,
+	).Scan(&id, &contractID, &name, &decimals, &totalSupply, &standard)
+	if err != nil {
+		return nil, err
+	}
+	var address string
+	if err := pool.QueryRow(ctx, `SELECT address FROM contracts WHERE id = $1`, contractID).Scan(&address); err != nil {
+		return nil, err
+	}
+	return &Token{
+		ID:          id,
+		Address:     address,
+		Symbol:      symbol,
+		Name:        name,
+		Decimals:    decimals,
+		TotalSupply: totalSupply,
+		Standard:    standard,
+	}, nil
 }
 
 // GetTokensByOwner возвращает все токены, созданные указанным адресом

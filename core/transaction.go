@@ -58,6 +58,7 @@ type Transaction struct {
 	ContractID sql.NullInt64 `json:"contract_id"`
 	Payload    []byte        `json:"payload"`
 	Symbol     string        `json:"symbol"`
+	IsVerified bool          `json:"is_verified"` // true для транзакций с нативной монетой (GND)
 }
 
 // Validate checks if the transaction is valid
@@ -200,12 +201,12 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	err := pool.QueryRow(ctx, `
 		INSERT INTO transactions (
 			block_id, hash, sender, recipient, value, fee, nonce,
-			type, contract_id, payload, status, timestamp, signature
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			type, contract_id, payload, status, timestamp, signature, is_verified
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id`,
 		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
 		tx.Fee.String(), tx.Nonce, tx.Type, tx.ContractID, tx.Payload,
-		tx.Status, tx.Timestamp, tx.Signature,
+		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
 	).Scan(&tx.ID)
 
 	if err != nil {
@@ -255,15 +256,15 @@ func (tx *Transaction) Save(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err := pool.Exec(ctx, `
 		INSERT INTO transactions (
 			id, block_id, hash, sender, recipient, value, fee, nonce,
-			type, contract_id, payload, status, timestamp, signature
+			type, contract_id, payload, status, timestamp, signature, is_verified
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8,
-			$9, $10, $11, $12, $13, $14
+			$9, $10, $11, $12, $13, $14, $15
 		)`,
 		tx.ID, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
 		tx.Value.String(), tx.Fee.String(), tx.Nonce,
 		tx.Type, tx.ContractID, tx.Payload,
-		tx.Status, tx.Timestamp, tx.Signature,
+		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
 	)
 	return err
 }

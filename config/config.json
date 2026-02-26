@@ -1,8 +1,8 @@
 {
   "port": 30303,
-  "node_name": "gnd-node-1",
+  "node_name": "GANIMED MainDev Node",
   "consensus_type": "pos",
   "gas_limit": 1000000,
-  "network_id": "ganymede-testnet",
+  "network_id": "ganimed-testnet",
   "MaxWorkers": 8
 }

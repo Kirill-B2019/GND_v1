@@ -1,7 +1,7 @@
 {
   "server": {
     "rpc": {
-      "rpc_addr": "0.0.0.0:8181",
+      "rpc_addr": "31.128.41.155:8181",
       "name": "GND RPC",
       "version": "1.0.0",
       "cors": {
@@ -43,12 +43,12 @@
       }
     },
     "rest": {
-      "host": "0.0.0.0",
+      "host": "31.128.41.155",
       "port": 8182,
       "name": "REST Server"
     },
     "ws": {
-      "ws_addr": "0.0.0.0:8183",
+      "ws_addr": "31.128.41.155:8183",
       "name": "GND WebSocket",
       "version": "1.0.0",
       "cors": {

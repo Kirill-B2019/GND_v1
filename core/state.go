@@ -346,10 +346,11 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		return errors.New("database pool not set")
 	}
 
-	// Загружаем балансы
+	// Загружаем балансы (symbol через JOIN с tokens — совместимо со схемой без колонки symbol в token_balances)
 	rows, err := s.pool.Query(ctx, `
-		SELECT address, symbol, balance
-		FROM token_balances`)
+		SELECT tb.address, t.symbol, tb.balance
+		FROM token_balances tb
+		JOIN tokens t ON t.id = tb.token_id`)
 	if err != nil {
 		return err
 	}
@@ -386,6 +387,13 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 			return err
 		}
 		s.nonces[address] = nonce
+	}
+
+	// Синхронизация accounts.balance с балансом нативной монеты (GND) из token_balances
+	for addr, balances := range s.balances {
+		if gndBalance, ok := balances["GND"]; ok && gndBalance != nil {
+			_, _ = s.pool.Exec(ctx, `UPDATE accounts SET balance = $1 WHERE address = $2`, gndBalance.String(), string(addr))
+		}
 	}
 
 	return nil
