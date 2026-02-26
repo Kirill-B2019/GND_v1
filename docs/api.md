@@ -496,11 +496,9 @@ api.subscribe('blocks', lambda block: print('New block:', block))
 ```
 
 ### Go
-```go
+<!-- Пример на Go (блок text, чтобы IDE не анализировала гипотетический SDK) -->
+```text
 package main
-
-// Пример использования гипотетического SDK (github.com/gnd/api)
-// noinspection GoUnresolvedReference
 import "github.com/gnd/api"
 
 config := api.Config{
@@ -871,18 +869,15 @@ if __name__ == '__main__':
 
 ### Go
 
-```go
+<!-- Пример клиента API на Go (блок text, чтобы IDE не проверяла зависимости) -->
+```text
 package main
-
-// Пример клиента API (код для документации; зависимости: github.com/gorilla/websocket)
-// noinspection GoUnresolvedReference,GoUnusedVariable
 import (
     "bytes"
     "encoding/json"
     "fmt"
     "net/http"
     "time"
-
     "github.com/gorilla/websocket"
 )
 
