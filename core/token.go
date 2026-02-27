@@ -303,6 +303,48 @@ func GetTokenBalance(ctx context.Context, pool *pgxpool.Pool, tokenAddress, acco
 	return balance, nil
 }
 
+// WalletTokenBalance — элемент списка балансов кошелька (token_balances + данные из tokens)
+type WalletTokenBalance struct {
+	TokenAddress string `json:"token_address"`
+	Balance      string `json:"balance"`
+	Standard     string `json:"standard"`
+	Symbol       string `json:"symbol"`
+	Name         string `json:"name"`
+	Decimals     int    `json:"decimals"`
+	IsVerified   bool   `json:"is_verified"`
+}
+
+// GetWalletTokenBalances возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
+func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT tb.balance, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
+		FROM token_balances tb
+		JOIN tokens t ON t.id = tb.token_id
+		LEFT JOIN contracts c ON c.id = t.contract_id
+		WHERE tb.address = $1`,
+		walletAddress,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка загрузки балансов кошелька: %w", err)
+	}
+	defer rows.Close()
+
+	var result []WalletTokenBalance
+	for rows.Next() {
+		var item WalletTokenBalance
+		var balanceStr string
+		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования строки: %w", err)
+		}
+		item.Balance = balanceStr
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации: %w", err)
+	}
+	return result, nil
+}
+
 // Прокси-методы для токенов стандарта GND-st1 (Ганимед)
 func (t *Token) IsGNDst1() bool {
 	return t.Standard == "GND-st1" || t.Standard == "gndst1" // gndst1 — устаревшее, для совместимости с БД

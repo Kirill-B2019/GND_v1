@@ -214,15 +214,30 @@ func (s *Server) CreateWallet(c *gin.Context) {
 	})
 }
 
-// GetBalance возвращает баланс кошелька
+// GetBalance возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
 func (s *Server) GetBalance(c *gin.Context) {
 	address := c.Param("address")
-	balance := s.core.GetBalance(address, "GND") // Using GND as default symbol
+	balances := []core.WalletTokenBalance{}
+	if s.core.Pool != nil {
+		var err error
+		balances, err = core.GetWalletTokenBalances(c.Request.Context(), s.core.Pool, address)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   err.Error(),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		if balances == nil {
+			balances = []core.WalletTokenBalance{}
+		}
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
 		Data: gin.H{
-			"address": address,
-			"balance": balance.String(),
+			"address":  address,
+			"balances": balances,
 		},
 	})
 }

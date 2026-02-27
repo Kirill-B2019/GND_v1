@@ -41,10 +41,10 @@ curl -s -X POST "https://main-node.gnd-net.com/api/v1/wallet" \
 # Ответ: { "success": true, "data": { "address": "GND...", "publicKey": "0x...", "privateKey": "0x..." } }
 # Без ключа или с неверным ключом: 401, "Неверный или отсутствующий X-API-Key"
 
-# Баланс по адресу (GND) — API-ключ не требуется
+# Балансы по адресу кошелька — все токены из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified). API-ключ не требуется.
 curl -s "https://main-node.gnd-net.com/api/v1/wallet/GND9jbK6Vca5VcZxATt3zb9yz5KQeMwjHFrz/balance"
 
-# Ответ: { "success": true, "data": { "address": "GND...", "balance": "1000000" } }
+# Ответ: { "success": true, "data": { "address": "GND...", "balances": [ { "token_address": "...", "balance": "...", "standard": "GND-st1", "symbol": "GND", "name": "...", "decimals": 18, "is_verified": true }, ... ] } }
 ```
 
 ---
@@ -209,7 +209,7 @@ curl -s "https://main-node.gnd-net.com/api/v1/token/GND_контракт_ток�
 | Группа | URL | Ожидаемый ответ |
 |--------|-----|------------------|
 | Здоровье и метрики | `GET /api/v1/health`, `/metrics`, `/metrics/transactions`, `/metrics/fees`, `/fees`, `/alerts` | 200, `success: true`, при необходимости — `data` |
-| Кошелёк | `GET /api/v1/wallet/:address/balance` | 200, `data: { address, balance }` |
+| Кошелёк | `GET /api/v1/wallet/:address/balance` | 200, `data: { address, balances[] }` (массив с token_address, balance, standard, symbol, name, decimals, is_verified) |
 | Транзакции | `GET /api/v1/transaction` (без хеша) | 400, подсказка |
 | | `GET /api/v1/transactions`, `GET /api/v1/mempool` | 200, `data: { size, pending_hashes }` |
 | Блоки | `GET /api/v1/block/latest`, `/block/0`, `/block/1` | 200 с блоком в `data` или 500 при недоступной БД |

@@ -83,7 +83,7 @@ func TestDocURLs_WalletBalance(t *testing.T) {
 		t.Error("ожидался success: true")
 	}
 	if resp.Data == nil {
-		t.Error("ожидались data (address, balance)")
+		t.Error("ожидались data (address, balances)")
 	}
 }
 
