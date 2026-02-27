@@ -14,3 +14,4 @@ env/
 *.egg-info/
 .installed.cfg
 *.egg
+/docs/GND_v1.code-workspace

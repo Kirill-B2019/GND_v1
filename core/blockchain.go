@@ -241,20 +241,33 @@ func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *
 	return err
 }
 
-// storeBlock сохраняет блок в таблице blocks
+// storeBlock сохраняет блок в таблице blocks: записывает tx_count, created_at, updated_at и возвращает block.ID для привязки транзакций.
 func (bc *Blockchain) storeBlock(block *Block) error {
 	if bc.Pool == nil {
-		// В тестах или без БД пропускаем запись
 		return nil
 	}
-	_, err := bc.Pool.Exec(context.Background(), `
-		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (index) DO NOTHING`,
+	ctx := context.Background()
+
+	// Количество транзакций и время создания/окончания блока
+	block.TxCount = uint32(len(block.Transactions))
+	if block.CreatedAt.IsZero() {
+		block.CreatedAt = block.Timestamp
+	}
+	block.UpdatedAt = time.Now()
+
+	err := bc.Pool.QueryRow(ctx, `
+		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT (index) DO UPDATE SET tx_count = EXCLUDED.tx_count, updated_at = EXCLUDED.updated_at
+		RETURNING id`,
 		block.Index, block.Hash, block.PrevHash, block.Timestamp,
 		block.Miner, block.GasUsed, block.GasLimit, block.Consensus, block.Nonce,
-	)
-	return err
+		block.TxCount, block.CreatedAt, block.UpdatedAt,
+	).Scan(&block.ID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // validateBlock проверяет целостность блока
@@ -432,9 +445,21 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 		return errors.New("invalid block")
 	}
 
-	// Сохраняем блок в БД
+	// Сохраняем блок в БД (tx_count, created_at, updated_at; block.ID заполняется)
 	if err := bc.storeBlock(block); err != nil {
 		return fmt.Errorf("failed to store block: %v", err)
+	}
+
+	// Привязка транзакций к блоку: сохраняем в БД с block_id = block.ID
+	if bc.Pool != nil && block.ID != 0 {
+		ctx := context.Background()
+		for _, tx := range block.Transactions {
+			tx.BlockID = int(block.ID)
+			if err := tx.SaveToDB(ctx, bc.Pool); err != nil {
+				// Дубликат или ошибка — логируем, не прерываем добавление блока
+				fmt.Printf("предупреждение: не удалось сохранить транзакцию %s в блок %d: %v\n", tx.Hash, block.ID, err)
+			}
+		}
 	}
 
 	// Применяем транзакции

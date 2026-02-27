@@ -2,7 +2,9 @@
 
 **Подключение к ноде:** **main-node.gnd-net.com** (документация по API: **api.gnd-net.com**)
 
-Базовый URL REST API: `https://main-node.gnd-net.com/api/v1` или напрямую `http://31.128.41.155:8182/api/v1`
+**Базовый URL REST API:** с указанием порта — `http://main-node.gnd-net.com:8182/api/v1` или `https://main-node.gnd-net.com:8182/api/v1`; напрямую по IP — `http://31.128.41.155:8182/api/v1`.
+
+**Важно:** Если запросы без порта (`http://main-node.gnd-net.com/api/v1/...`) возвращают **404**, используйте порт **8182** для REST: `http://main-node.gnd-net.com:8182/api/v1/health`. Без порта запрос идёт на :80/:443; нода слушает 8182 — нужен либо обратный прокси (Nginx), либо явный порт в URL.
 
 Формат ответа: `{ "success": true|false, "data": ..., "error": "текст", "code": число }`
 
@@ -11,17 +13,17 @@
 ## Здоровье и метрики
 
 ```bash
-# Проверка работы API
-curl -s "https://main-node.gnd-net.com/api/v1/health"
+# Проверка работы API (обязательно порт 8182, если прокси не настроен)
+curl -s "http://main-node.gnd-net.com:8182/api/v1/health"
 
 # Метрики (при старте ноды BlockMetrics заполняются из текущей цепи: LastBlockTime, TotalBlocks и т.д.)
-curl -s "https://main-node.gnd-net.com/api/v1/metrics"
-curl -s "https://main-node.gnd-net.com/api/v1/metrics/transactions"
-curl -s "https://main-node.gnd-net.com/api/v1/metrics/fees"
-curl -s "https://main-node.gnd-net.com/api/v1/fees"   # то же, что metrics/fees
+curl -s "http://main-node.gnd-net.com:8182/api/v1/metrics"
+curl -s "http://main-node.gnd-net.com:8182/api/v1/metrics/transactions"
+curl -s "http://main-node.gnd-net.com:8182/api/v1/metrics/fees"
+curl -s "http://main-node.gnd-net.com:8182/api/v1/fees"   # то же, что metrics/fees
 
 # Алерты
-curl -s "https://main-node.gnd-net.com/api/v1/alerts"
+curl -s "http://main-node.gnd-net.com:8182/api/v1/alerts"
 ```
 
 ---
@@ -187,4 +189,4 @@ curl -s "https://main-node.gnd-net.com/api/v1/token/GND_контракт_ток�
 | RPC      | 8181 | `/block/latest`, `/tx/send` и др. |
 | WebSocket| 8183 | `/ws`                   |
 
-Через Nginx домен **main-node.gnd-net.com** проксируется на порты приложения (REST 8182, RPC 8181, WS 8183). Пример: `https://main-node.gnd-net.com/api/` → `http://127.0.0.1:8182/`.
+**Доступ:** без прокси используйте порт в URL: `http://main-node.gnd-net.com:8182/api/v1/health`. Если 404 по `http://main-node.gnd-net.com/api/v1/...` — либо добавьте `:8182`, либо настройте Nginx (см. docs/deployment-server.md, раздел «Обратный прокси»).

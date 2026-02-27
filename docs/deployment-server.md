@@ -72,11 +72,14 @@ cd /path/to/GND_v1
 
 Подставьте свой хост (например `31.128.41.155`) и при необходимости порты из `config/servers.json` (REST: 8182, RPC: 8181, WS: 8183). Документация по API (описание эндпоинтов): **api.gnd-net.com**. Подключение клиентов — к ноде **main-node.gnd-net.com**.
 
+**Если по домену без порта 404:** запросы к `http://main-node.gnd-net.com/api/v1/...` идут на порт 80; нода слушает **8182**. Используйте явно порт: `http://main-node.gnd-net.com:8182/api/v1/health` — либо настройте обратный прокси (Nginx), чтобы проксировать `/api/` на `http://127.0.0.1:8182/`.
+
 ### REST API
 
 ```bash
-# Health
+# Health (порт 8182 обязателен, если нет прокси)
 curl -s http://31.128.41.155:8182/api/v1/health
+curl -s "http://main-node.gnd-net.com:8182/api/v1/health"
 
 # Баланс кошелька (подставьте адрес валидатора)
 curl -s "http://31.128.41.155:8182/api/v1/wallet/WALLET_ADDRESS/balance"
@@ -101,6 +104,27 @@ curl -s -X POST http://31.128.41.155:8181 \
 ```
 
 Успешный ответ по health обычно содержит `"success": true` и данные о состоянии сервиса.
+
+### Обратный прокси (Nginx): доступ без порта в URL
+
+Чтобы запросы к `http://main-node.gnd-net.com/api/v1/...` (без :8182) работали, настройте Nginx на том же сервере. Пример фрагмента конфига (site или в `http`):
+
+```nginx
+server {
+    listen 80;
+    server_name main-node.gnd-net.com;
+    location /api/ {
+        proxy_pass http://127.0.0.1:8182/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+После правок: `sudo nginx -t` и `sudo systemctl reload nginx`. Тогда `http://main-node.gnd-net.com/api/v1/health` будет проксироваться на ноду (8182).
 
 ---
 
