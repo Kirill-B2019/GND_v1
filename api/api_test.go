@@ -355,6 +355,41 @@ func setupTestServer(t *testing.T) http.Handler {
 	return router
 }
 
+// TestGetMetrics_Gin возвращает 200 и success при GET /api/v1/metrics (без БД).
+func TestGetMetrics_Gin(t *testing.T) {
+	genesis := &core.Block{
+		Index:     0,
+		Timestamp: time.Now(),
+		Miner:     "test",
+		GasUsed:   0,
+		GasLimit:  10_000_000,
+		Consensus: "poa",
+		Nonce:     0,
+		Status:    "finalized",
+	}
+	genesis.Hash = genesis.CalculateHash()
+	bc := core.NewBlockchain(genesis, nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
+	w := httptest.NewRecorder()
+	server.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("GET /api/v1/metrics: ожидался 200, получен %d", w.Code)
+	}
+	var resp APIResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Success {
+		t.Error("ожидался success: true")
+	}
+	if resp.Data == nil {
+		t.Error("ожидались data (метрики)")
+	}
+}
+
 func TestLatestBlockHandler(t *testing.T) {
 	server := setupTestServer(t)
 
