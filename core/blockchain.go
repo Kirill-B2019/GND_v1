@@ -94,18 +94,18 @@ func (bc *Blockchain) AddTransaction(tx *Transaction) error {
 }
 
 // EnsureCoinsDeployed проверяет при первом запуске наличие монет из config в БД и при необходимости создаёт контракты и токены.
-func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, ownerAddress string) error {
+// genesisBlockID — ID генезис-блока в БД для заполнения contracts.block_id и contracts.tx_id.
+func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, ownerAddress string, genesisBlockID int) error {
 	for _, coin := range cfg.Coins {
 		_, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
 		if err == nil {
 			continue
 		}
-		// Токен не найден — создаём контракт и токен (нативные монеты из config считаем верифицированными)
 		addr := coin.ContractAddress
 		if addr == "" || len(addr) < 10 {
 			addr = ""
 		}
-		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, ownerAddress, "coin", coin.Standard, 0, 0)
+		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, ownerAddress, "coin", coin.Standard, genesisBlockID, 0)
 		t.IsVerified = true
 		if err := t.SaveToDB(ctx, pool); err != nil {
 			return fmt.Errorf("деплой монеты %s: %w", coin.Symbol, err)
@@ -167,12 +167,7 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 
 // FirstLaunch initializes blockchain on first launch
 func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
-	// 1. Проверка и деплой монет из config (контракты + токены в БД)
-	if err := EnsureCoinsDeployed(ctx, pool, cfg, string(wallet.Address)); err != nil {
-		return fmt.Errorf("проверка деплоя монет: %w", err)
-	}
-
-	// 2. Генезис: фиксированное время и метаданные для корректной записи в БД и в партицию transactions
+	// 1. Генезис: сохраняем первым, чтобы иметь block ID для контрактов и транзакций
 	bc.Genesis.Timestamp = genesisTimestamp
 	bc.Genesis.CreatedAt = genesisTimestamp
 	bc.Genesis.UpdatedAt = time.Now().UTC()
@@ -180,6 +175,11 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 
 	if err := bc.Genesis.SaveToDB(ctx, pool); err != nil {
 		return fmt.Errorf("failed to save genesis block: %v", err)
+	}
+
+	// 2. Деплой монет из config (контракты + токены в БД), с привязкой к генезис-блоку
+	if err := EnsureCoinsDeployed(ctx, pool, cfg, string(wallet.Address), int(bc.Genesis.ID)); err != nil {
+		return fmt.Errorf("проверка деплоя монет: %w", err)
 	}
 
 	// 2.1. Транзакция о создании генезис-блока (данные в таблице transactions)
@@ -299,18 +299,16 @@ func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *
 	return err
 }
 
-// storeBlock сохраняет блок в таблице blocks: записывает tx_count, created_at, updated_at и возвращает block.ID для привязки транзакций.
+// storeBlock сохраняет блок в таблице blocks. created_at = время создания блока, updated_at = время финализации.
 func (bc *Blockchain) storeBlock(block *Block) error {
 	if bc.Pool == nil {
 		return nil
 	}
 	ctx := context.Background()
 
-	// Количество транзакций и время создания/окончания блока
 	block.TxCount = uint32(len(block.Transactions))
-	if block.CreatedAt.IsZero() {
-		block.CreatedAt = block.Timestamp
-	}
+	// created_at — когда блок создан (временная метка блока), updated_at — когда финализирован (сейчас)
+	block.CreatedAt = block.Timestamp
 	block.UpdatedAt = time.Now()
 
 	err := bc.Pool.QueryRow(ctx, `
@@ -508,10 +506,13 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 		return fmt.Errorf("failed to store block: %v", err)
 	}
 
-	// Привязка транзакций к блоку: сохраняем в БД с block_id = block.ID
+	// Привязка транзакций к блоку: timestamp = время включения в блок, block_id и contract_id сохраняем в БД
 	if bc.Pool != nil && block.ID != 0 {
 		ctx := context.Background()
 		for _, tx := range block.Transactions {
+			if tx.Timestamp.IsZero() {
+				tx.Timestamp = block.Timestamp
+			}
 			tx.BlockID = int(block.ID)
 			if err := tx.SaveToDB(ctx, bc.Pool); err != nil {
 				// Дубликат или ошибка — логируем, не прерываем добавление блока

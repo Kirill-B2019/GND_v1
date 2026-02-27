@@ -98,13 +98,13 @@ func (t *Token) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	).Scan(&contractID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Контракт не существует - создаем его
+			// Контракт не существует — создаём с block_id и tx_id (блок и транзакция создания)
 			fmt.Printf("[DEBUG] SaveToDB: создаем новый контракт для адреса: %s\n", t.Address)
 			err = pool.QueryRow(ctx, `
-				INSERT INTO contracts (address, owner, type, created_at)
-				VALUES ($1, $2, 'token', NOW())
+				INSERT INTO contracts (address, owner, type, created_at, block_id, tx_id)
+				VALUES ($1, $2, 'token', NOW(), $3, $4)
 				RETURNING id`,
-				t.Address, t.Owner,
+				t.Address, t.Owner, t.BlockID, t.TxID,
 			).Scan(&contractID)
 			if err != nil {
 				fmt.Printf("[ERROR] не удалось создать контракт для address=%s: %v\n", t.Address, err)

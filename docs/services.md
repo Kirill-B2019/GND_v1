@@ -47,11 +47,11 @@
 
 | Компонент | Описание |
 |-----------|----------|
-| **PoA** | InitPoaConsensus, RoundDuration, SyncDuration, BanDurationBlocks, WarningsForBan, MaxBansPercentage. |
-| **PoS** | Параметры (AverageBlockDelay, InitialBaseTarget, InitialBalance). |
+| **PoA** | InitPoaConsensus, RoundDuration, SyncDuration, BanDurationBlocks, WarningsForBan, MaxBansPercentage. **Контракты валидируются по PoA.** |
+| **PoS** | Параметры (AverageBlockDelay, InitialBaseTarget, InitialBalance). **Транзакции внутри контрактов валидируются по PoS.** |
 | **SelectConsensusForTx** | Выбор консенсуса по получателю транзакции (ConsensusPoA / ConsensusPoS). |
 
-Обработка транзакций в main: processPoATransaction / processPoSTransaction (валидация, баланс, контракт или перевод).
+Обработка транзакций в main: processPoATransaction / processPoSTransaction (валидация, баланс, контракт или перевод). Семантика полей БД (blocks.created_at/updated_at, contracts.block_id/tx_id, transactions.timestamp/contract_id): см. [database.md](database.md).
 
 ---
 
