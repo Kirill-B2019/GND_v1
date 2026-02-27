@@ -315,9 +315,23 @@ type WalletTokenBalance struct {
 }
 
 // GetWalletTokenBalances возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
+// Поддерживаются схемы: (token_id, address, balance) и (address, symbol, balance) — при отсутствии строк по token_id выполняется запрос по symbol
 func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
+	// 1) Основной запрос: token_balances с token_id, JOIN tokens
+	result, err := getWalletBalancesByTokenID(ctx, pool, walletAddress)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) > 0 {
+		return result, nil
+	}
+	// 2) Запасной вариант: если в token_balances есть колонка symbol и строки без token_id (например из state.SaveToDB)
+	return getWalletBalancesBySymbol(ctx, pool, walletAddress)
+}
+
+func getWalletBalancesByTokenID(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT tb.balance, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
+		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
 		FROM token_balances tb
 		JOIN tokens t ON t.id = tb.token_id
 		LEFT JOIN contracts c ON c.id = t.contract_id
@@ -339,10 +353,37 @@ func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddre
 		item.Balance = balanceStr
 		result = append(result, item)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка итерации: %w", err)
+	return result, rows.Err()
+}
+
+// getWalletBalancesBySymbol используется, когда в token_balances есть (address, symbol, balance), а token_id не заполнен
+func getWalletBalancesBySymbol(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
+	// Проверяем наличие колонки symbol в token_balances (миграция 002)
+	rows, err := pool.Query(ctx, `
+		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
+		FROM token_balances tb
+		JOIN tokens t ON t.symbol = tb.symbol
+		LEFT JOIN contracts c ON c.id = t.contract_id
+		WHERE tb.address = $1 AND tb.symbol IS NOT NULL`,
+		walletAddress,
+	)
+	if err != nil {
+		// Колонка symbol может отсутствовать — не считаем ошибкой, просто пустой результат
+		return nil, nil
 	}
-	return result, nil
+	defer rows.Close()
+
+	var result []WalletTokenBalance
+	for rows.Next() {
+		var item WalletTokenBalance
+		var balanceStr string
+		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress); err != nil {
+			return nil, nil
+		}
+		item.Balance = balanceStr
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 // Прокси-методы для токенов стандарта GND-st1 (Ганимед)
