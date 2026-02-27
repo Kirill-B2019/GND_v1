@@ -389,12 +389,7 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		s.nonces[address] = nonce
 	}
 
-	// Синхронизация accounts.balance с балансом нативной монеты (GND) из token_balances
-	for addr, balances := range s.balances {
-		if gndBalance, ok := balances["GND"]; ok && gndBalance != nil {
-			_, _ = s.pool.Exec(ctx, `UPDATE accounts SET balance = $1 WHERE address = $2`, gndBalance.String(), string(addr))
-		}
-	}
+	// accounts.balance не синхронизируем из token_balances (отключено по требованию)
 
 	return nil
 }

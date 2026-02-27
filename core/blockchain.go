@@ -156,7 +156,7 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		}
 	}
 
-	// 5. Сохраняем балансы в БД: token_balances и accounts.balance для нативной монеты
+	// 5. Сохраняем балансы в БД: только token_balances (accounts.balance при первом запуске не начисляем)
 	for _, coin := range cfg.Coins {
 		amount := new(big.Int)
 		amount.SetString(coin.TotalSupply, 10)
@@ -171,14 +171,6 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 			tok.ID, string(wallet.Address), amount.String())
 		if err != nil {
 			return fmt.Errorf("запись баланса %s: %w", coin.Symbol, err)
-		}
-	}
-	// Нативная монета (первая в config, обычно GND) — обновляем accounts.balance
-	if len(cfg.Coins) > 0 {
-		nativeSupply := cfg.Coins[0].TotalSupply
-		_, err := pool.Exec(ctx, `UPDATE accounts SET balance = $1 WHERE address = $2`, nativeSupply, string(wallet.Address))
-		if err != nil {
-			return fmt.Errorf("обновление баланса аккаунта: %w", err)
 		}
 	}
 
