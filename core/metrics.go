@@ -1,9 +1,12 @@
 package core
 
 import (
+	"context"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // TransactionTypeMetrics содержит метрики для конкретного типа транзакций
@@ -103,6 +106,22 @@ var (
 	metricsMu sync.RWMutex
 	startTime = time.Now()
 )
+
+func init() {
+	ensureTransactionMetricsMaps()
+}
+
+func ensureTransactionMetricsMaps() {
+	if metrics.TransactionMetrics.TypeMetrics == nil {
+		metrics.TransactionMetrics.TypeMetrics = make(map[string]*TransactionTypeMetrics)
+	}
+	if metrics.TransactionMetrics.StatusMetrics == nil {
+		metrics.TransactionMetrics.StatusMetrics = make(map[string]uint64)
+	}
+	if metrics.TransactionMetrics.FeeDistribution == nil {
+		metrics.TransactionMetrics.FeeDistribution = make(map[string]uint64)
+	}
+}
 
 // ResetMetrics сбрасывает все метрики
 func ResetMetrics() {
@@ -272,6 +291,101 @@ func GetMetrics() *Metrics {
 	metricsMu.RLock()
 	defer metricsMu.RUnlock()
 	return metrics
+}
+
+// InitTransactionMetricsFromDB заполняет метрики транзакций из БД при старте ноды (TotalTransactions, TypeMetrics, StatusMetrics, комиссии).
+// pendingCount — текущий размер мемпула. Если pool == nil, заполняются только PendingTransactions и карты (не nil).
+func InitTransactionMetricsFromDB(ctx context.Context, pool *pgxpool.Pool, pendingCount int) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	ensureTransactionMetricsMaps()
+
+	metrics.TransactionMetrics.PendingTransactions = uint64(pendingCount)
+	if pool == nil {
+		return
+	}
+
+	var total uint64
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM transactions`).Scan(&total); err != nil {
+		return
+	}
+	metrics.TransactionMetrics.TotalTransactions = total
+	elapsed := time.Since(startTime).Minutes()
+	if elapsed > 0 {
+		metrics.TransactionMetrics.TransactionsPerMinute = float64(total) / elapsed
+	}
+
+	rows, err := pool.Query(ctx, `SELECT type, COUNT(*) FROM transactions GROUP BY type`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var typ string
+			var cnt uint64
+			if err := rows.Scan(&typ, &cnt); err != nil {
+				continue
+			}
+			if typ == "" {
+				typ = "unknown"
+			}
+			metrics.TransactionMetrics.TypeMetrics[typ] = &TransactionTypeMetrics{Count: cnt}
+		}
+	}
+
+	rows2, err := pool.Query(ctx, `SELECT status, COUNT(*) FROM transactions GROUP BY status`)
+	if err == nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var status string
+			var cnt uint64
+			if err := rows2.Scan(&status, &cnt); err != nil {
+				continue
+			}
+			if status == "" {
+				status = "unknown"
+			}
+			metrics.TransactionMetrics.StatusMetrics[status] = cnt
+			if status == "failed" || status == "reverted" {
+				metrics.TransactionMetrics.FailedTransactions += cnt
+			}
+		}
+	}
+
+	var totalFeeStr, minFeeStr, maxFeeStr string
+	if err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(fee)::text, '0'), COALESCE(MIN(fee)::text, '0'), COALESCE(MAX(fee)::text, '0') FROM transactions`).Scan(&totalFeeStr, &minFeeStr, &maxFeeStr); err == nil {
+		if totalFeeStr != "" {
+			metrics.TransactionMetrics.TotalFee = new(big.Int)
+			metrics.TransactionMetrics.TotalFee.SetString(totalFeeStr, 10)
+		}
+		if minFeeStr != "" && minFeeStr != "0" {
+			metrics.TransactionMetrics.MinFee = new(big.Int)
+			metrics.TransactionMetrics.MinFee.SetString(minFeeStr, 10)
+		}
+		if maxFeeStr != "" && maxFeeStr != "0" {
+			metrics.TransactionMetrics.MaxFee = new(big.Int)
+			metrics.TransactionMetrics.MaxFee.SetString(maxFeeStr, 10)
+		}
+		if total > 0 && metrics.TransactionMetrics.TotalFee != nil {
+			metrics.TransactionMetrics.AverageFee = float64(metrics.TransactionMetrics.TotalFee.Uint64()) / float64(total)
+		}
+	}
+
+	// FeeDistribution по диапазонам (low/medium/high/very_high)
+	rows3, err := pool.Query(ctx, `SELECT fee::text FROM transactions WHERE fee IS NOT NULL`)
+	if err == nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var feeStr string
+			if err := rows3.Scan(&feeStr); err != nil || feeStr == "" {
+				continue
+			}
+			fee, _ := new(big.Int).SetString(feeStr, 10)
+			if fee == nil {
+				metrics.TransactionMetrics.FeeDistribution["unknown"]++
+				continue
+			}
+			metrics.TransactionMetrics.FeeDistribution[getFeeRange(fee)]++
+		}
+	}
 }
 
 // InitBlockMetricsFromBlock заполняет метрики блоков из текущего состояния цепи (при старте ноды).

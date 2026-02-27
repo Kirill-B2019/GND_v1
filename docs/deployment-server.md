@@ -114,7 +114,8 @@ server {
     listen 80;
     server_name main-node.gnd-net.com;
     location /api/ {
-        proxy_pass http://127.0.0.1:8182/;
+        # Без слэша в конце: на ноду передаётся полный путь /api/v1/... (иначе получится /v1/... и 404)
+        proxy_pass http://127.0.0.1:8182;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -124,7 +125,9 @@ server {
 }
 ```
 
-После правок: `sudo nginx -t` и `sudo systemctl reload nginx`. Тогда `http://main-node.gnd-net.com/api/v1/health` будет проксироваться на ноду (8182).
+После правок: `sudo nginx -t` и `sudo systemctl reload nginx`. Тогда `http://main-node.gnd-net.com/api/v1/health` будет проксироваться на ноду (8182) с путём `/api/v1/health`.
+
+**Полный пример** (80, 443, REST, RPC, WebSocket): в `location /api/` обязательно **без слэша** в конце: `proxy_pass http://127.0.0.1:8182;` — иначе путь на ноду придёт как `/v1/health` вместо `/api/v1/health` и будет 404. Для WebSocket при долгих сессиях можно добавить `proxy_read_timeout 3600s; proxy_send_timeout 3600s;` в `location /ws`.
 
 ---
 

@@ -10,6 +10,7 @@ import (
 	tokentypes "GND/tokens/types"
 	"GND/types"
 	"GND/vm"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -757,6 +758,12 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	if latest, err := bc.GetLatestBlock(); err == nil {
 		core.InitBlockMetricsFromBlock(latest)
 	}
+	// Инициализируем метрики транзакций из БД (TotalTransactions, TypeMetrics, StatusMetrics, комиссии)
+	pendingCount := 0
+	if mp != nil {
+		pendingCount = mp.Size()
+	}
+	core.InitTransactionMetricsFromDB(context.Background(), pool, pendingCount)
 	var tokenDeployer *deployer.Deployer
 	if evmInstance != nil && pool != nil {
 		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))
