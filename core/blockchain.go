@@ -116,6 +116,9 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 	return nil
 }
 
+// genesisTimestamp — фиксированное время генезиса, чтобы системные транзакции попадали в существующую партицию transactions (например 2025_06).
+var genesisTimestamp = time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
 // FirstLaunch initializes blockchain on first launch
 func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
 	// 1. Проверка и деплой монет из config (контракты + токены в БД)
@@ -123,7 +126,12 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		return fmt.Errorf("проверка деплоя монет: %w", err)
 	}
 
-	// 2. Сохраняем генезис-блок
+	// 2. Генезис: фиксированное время и метаданные для корректной записи в БД и в партицию transactions
+	bc.Genesis.Timestamp = genesisTimestamp
+	bc.Genesis.CreatedAt = genesisTimestamp
+	bc.Genesis.UpdatedAt = time.Now().UTC()
+	bc.Genesis.Hash = bc.Genesis.CalculateHash()
+
 	if err := bc.Genesis.SaveToDB(ctx, pool); err != nil {
 		return fmt.Errorf("failed to save genesis block: %v", err)
 	}
@@ -191,6 +199,14 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 			return fmt.Errorf("запись системной транзакции initial_mint %s: %w", coin.Symbol, err)
 		}
 	}
+
+	// 7. Обновляем tx_count генезис-блока в БД (1 genesis + N initial_mint)
+	txCount := 1 + len(cfg.Coins)
+	if _, err := pool.Exec(ctx, `UPDATE blocks SET tx_count = $1, updated_at = $2 WHERE id = $3`,
+		txCount, time.Now().UTC(), bc.Genesis.ID); err != nil {
+		return fmt.Errorf("обновление tx_count генезис-блока: %w", err)
+	}
+	bc.Genesis.TxCount = uint32(txCount)
 
 	return nil
 }
