@@ -309,7 +309,7 @@ func (bc *Blockchain) storeBlock(block *Block) error {
 	block.TxCount = uint32(len(block.Transactions))
 	// created_at — когда блок создан (временная метка блока), updated_at — когда финализирован (сейчас)
 	block.CreatedAt = block.Timestamp
-	block.UpdatedAt = time.Now()
+	block.UpdatedAt = time.Now().UTC()
 
 	err := bc.Pool.QueryRow(ctx, `
 		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)

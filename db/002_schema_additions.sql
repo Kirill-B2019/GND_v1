@@ -92,6 +92,10 @@ DO $$ BEGIN
 -- Синхронизация height с index при наличии данных (одноразово; index в blocks NOT NULL)
 UPDATE public.blocks SET height = index WHERE height IS NULL;
 
+-- Заполнение created_at (когда блок создан) и updated_at (когда финализирован) для существующих строк
+UPDATE public.blocks SET created_at = timestamp WHERE created_at IS NULL AND timestamp IS NOT NULL;
+UPDATE public.blocks SET updated_at = COALESCE(updated_at, created_at, timestamp) WHERE updated_at IS NULL;
+
 -- =============================================================================
 -- 4. Транзакции (transactions): sequence для id, signature, is_verified (core/transaction.go)
 -- =============================================================================

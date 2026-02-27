@@ -68,8 +68,17 @@ func NewBlock(prevHash string, height uint64, miner string) *Block {
 	}
 }
 
-// SaveToDB сохраняет блок в БД
+// SaveToDB сохраняет блок в БД. created_at = время создания блока (timestamp), updated_at = время финализации.
 func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	createdAt := b.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = b.Timestamp
+	}
+	updatedAt := b.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
 	rewardStr := "0"
 	if b.Reward != nil {
 		rewardStr = b.Reward.String()
@@ -88,7 +97,7 @@ func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		b.Hash, b.PrevHash, b.MerkleRoot, b.Timestamp, b.Height,
 		b.Version, b.Size, b.TxCount, b.GasUsed, b.GasLimit,
 		b.Difficulty, nonceStr, b.Miner, rewardStr, b.ExtraData,
-		b.CreatedAt, b.UpdatedAt, b.Status, b.ParentID,
+		createdAt, updatedAt, b.Status, b.ParentID,
 		b.IsOrphaned, b.IsFinalized, b.Index, b.Consensus,
 	).Scan(&b.ID)
 
