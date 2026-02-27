@@ -93,8 +93,10 @@ DO $$ BEGIN
 UPDATE public.blocks SET height = index WHERE height IS NULL;
 
 -- =============================================================================
--- 4. Транзакции (transactions): signature, is_verified (core/transaction.go)
+-- 4. Транзакции (transactions): sequence для id, signature, is_verified (core/transaction.go)
 -- =============================================================================
+CREATE SEQUENCE IF NOT EXISTS public.transactions_id_seq OWNED BY NONE;
+
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'signature') THEN
         ALTER TABLE public.transactions ADD COLUMN signature VARCHAR;

@@ -84,12 +84,11 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 		return nil, fmt.Errorf("ошибка проверки количества токенов: %w", err)
 	}
 
-	// Создаем аккаунт с адресом сразу
+	// Создаем аккаунт без заполнения balance (accounts.balance не начисляем)
 	err = tx.QueryRow(ctx,
-		`INSERT INTO accounts (address, balance, nonce, created_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+		`INSERT INTO accounts (address, nonce, created_at) VALUES ($1, $2, $3) RETURNING id`,
 		address,
-		"0", // Начальный баланс
-		0,   // Начальный nonce
+		0, // Начальный nonce
 		time.Now(),
 	).Scan(&accountID)
 	if err != nil {

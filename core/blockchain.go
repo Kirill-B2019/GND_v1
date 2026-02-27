@@ -233,8 +233,12 @@ func newSystemTransaction(blockID int, ts time.Time, txType string, sender, reci
 	return tx
 }
 
-// saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp).
+// saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp). contract_id — NULL.
 func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *Transaction) error {
+	feeStr := "0"
+	if tx.Fee != nil {
+		feeStr = tx.Fee.String()
+	}
 	_, err := pool.Exec(ctx, `
 		INSERT INTO transactions (
 			id, block_id, hash, sender, recipient, value, fee, nonce,
@@ -242,8 +246,8 @@ func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (id, timestamp) DO NOTHING`,
 		id, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
-		tx.Value.String(), tx.Fee.String(), tx.Nonce,
-		tx.Type, tx.ContractID, tx.Payload,
+		tx.Value.String(), feeStr, tx.Nonce,
+		tx.Type, (*int64)(nil), tx.Payload, // contract_id = NULL для системных транзакций
 		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
 	)
 	return err

@@ -78,22 +78,11 @@ func (a *Account) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// UpdateBalance обновляет баланс аккаунта
+// UpdateBalance обновляет баланс аккаунта только в памяти; в БД accounts.balance не пишем (по требованию).
 func (a *Account) UpdateBalance(ctx context.Context, pool *pgxpool.Pool, newBalance string) error {
 	a.Balance = newBalance
 	a.UpdatedAt = time.Now()
-
-	_, err := pool.Exec(ctx, `
-		UPDATE accounts 
-		SET balance = $1, updated_at = $2
-		WHERE id = $3`,
-		a.Balance, a.UpdatedAt, a.ID,
-	)
-
-	if err != nil {
-		return fmt.Errorf("ошибка обновления баланса: %w", err)
-	}
-
+	// Не обновляем accounts.balance в БД — баланс хранится в token_balances
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -196,18 +197,30 @@ func (tx *Transaction) Verify() bool {
 	})
 }
 
-// SaveToDB сохраняет транзакцию в БД
+// SaveToDB сохраняет транзакцию в БД (id берётся из nextval(transactions_id_seq), contract_id — NULL если не задан).
 func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	var contractID *int64
+	if tx.ContractID.Valid {
+		contractID = &tx.ContractID.Int64
+	}
+	feeStr := "0"
+	if tx.Fee != nil {
+		feeStr = tx.Fee.String()
+	}
+	var dbID int64
 	err := pool.QueryRow(ctx, `
 		INSERT INTO transactions (
-			block_id, hash, sender, recipient, value, fee, nonce,
+			id, block_id, hash, sender, recipient, value, fee, nonce,
 			type, contract_id, payload, status, timestamp, signature, is_verified
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES (nextval('transactions_id_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id`,
 		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
-		tx.Fee.String(), tx.Nonce, tx.Type, tx.ContractID, tx.Payload,
+		feeStr, tx.Nonce, tx.Type, contractID, tx.Payload,
 		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
-	).Scan(&tx.ID)
+	).Scan(&dbID)
+	if err == nil {
+		tx.ID = strconv.FormatInt(dbID, 10)
+	}
 
 	if err != nil {
 		return fmt.Errorf("ошибка сохранения транзакции: %w", err)
