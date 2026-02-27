@@ -765,7 +765,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	addr := fmt.Sprintf(":%d", cfg.Server.REST.Port)
 	log.Printf("=== REST API Server запущен на %s ===\nДоступен по /api/v1/* (health, wallet, transaction, block, contract, token/deploy, token/transfer и др.)", addr)
 	if err := server.Start(addr); err != nil {
-		log.Fatalf("Ошибка запуска REST сервера: %v. Если порт занят — остановите предыдущий процесс (см. docs/deployment-server.md)", err)
+		log.Printf("[REST] Ошибка запуска: %v. RPC и WebSocket продолжают работать. Освободите порт (см. docs/deployment-server.md) и перезапустите ноду для включения REST.", err)
 	}
 }
 
