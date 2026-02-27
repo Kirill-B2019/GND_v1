@@ -119,6 +119,52 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 // genesisTimestamp — фиксированное время генезиса, чтобы системные транзакции попадали в существующую партицию transactions (например 2025_06).
 var genesisTimestamp = time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 
+// EnsureGenesisTransactions при загрузке из БД дописывает системные транзакции в transactions, если для генезис-блока их ещё нет.
+func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Blockchain, wallet *Wallet, cfg *Config) error {
+	if pool == nil || bc == nil || bc.Genesis == nil {
+		return nil
+	}
+	var count int
+	err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM transactions WHERE block_id = $1`, bc.Genesis.ID).Scan(&count)
+	if err != nil || count > 0 {
+		return err
+	}
+	// В таблице transactions для генезиса пусто — вставляем системные транзакции (как в FirstLaunch)
+	sysTxGenesis := newSystemTransaction(
+		int(bc.Genesis.ID),
+		genesisTimestamp,
+		"genesis",
+		types.Address("GND_GENESIS"),
+		types.Address(wallet.Address),
+		big.NewInt(0),
+		"",
+	)
+	if err := saveSystemTransaction(ctx, pool, 1, sysTxGenesis); err != nil {
+		return fmt.Errorf("дозапись системной транзакции genesis: %w", err)
+	}
+	for i, coin := range cfg.Coins {
+		amount := new(big.Int)
+		amount.SetString(coin.TotalSupply, 10)
+		sysTxMint := newSystemTransaction(
+			int(bc.Genesis.ID),
+			genesisTimestamp,
+			"initial_mint",
+			types.Address("GND_GENESIS"),
+			types.Address(wallet.Address),
+			amount,
+			coin.Symbol,
+		)
+		if err := saveSystemTransaction(ctx, pool, 2+i, sysTxMint); err != nil {
+			return fmt.Errorf("дозапись системной транзакции initial_mint %s: %w", coin.Symbol, err)
+		}
+	}
+	txCount := 1 + len(cfg.Coins)
+	_, _ = pool.Exec(ctx, `UPDATE blocks SET tx_count = $1, updated_at = $2 WHERE id = $3`,
+		txCount, time.Now().UTC(), bc.Genesis.ID)
+	bc.Genesis.TxCount = uint32(txCount)
+	return nil
+}
+
 // FirstLaunch initializes blockchain on first launch
 func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
 	// 1. Проверка и деплой монет из config (контракты + токены в БД)
@@ -233,7 +279,7 @@ func newSystemTransaction(blockID int, ts time.Time, txType string, sender, reci
 	return tx
 }
 
-// saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp). contract_id — NULL.
+// saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp). contract_id в SQL = NULL.
 func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *Transaction) error {
 	feeStr := "0"
 	if tx.Fee != nil {
@@ -243,11 +289,11 @@ func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *
 		INSERT INTO transactions (
 			id, block_id, hash, sender, recipient, value, fee, nonce,
 			type, contract_id, payload, status, timestamp, signature, is_verified
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11, $12, $13, $14)
 		ON CONFLICT (id, timestamp) DO NOTHING`,
 		id, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
 		tx.Value.String(), feeStr, tx.Nonce,
-		tx.Type, (*int64)(nil), tx.Payload, // contract_id = NULL для системных транзакций
+		tx.Type, tx.Payload,
 		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
 	)
 	return err

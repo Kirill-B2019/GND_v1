@@ -121,6 +121,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Ошибка загрузки блокчейна: %v", err)
 		}
+		// Если генезис есть, но транзакций в таблице transactions нет — дописываем системные
+		if err := core.EnsureGenesisTransactions(ctx, pool, blockchain, minerWallet, cfg); err != nil {
+			log.Fatalf("Ошибка дополнения системных транзакций: %v", err)
+		}
 	}
 	// Глобальное состояние для processTransactions и HasSufficientBalance
 	if st, ok := blockchain.State.(*core.State); ok {

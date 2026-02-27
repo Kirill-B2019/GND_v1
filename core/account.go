@@ -52,8 +52,9 @@ func NewAccount(address string, accountType string, blockID, txID int) *Account 
 	}
 }
 
-// SaveToDB сохраняет аккаунт в БД
+// SaveToDB сохраняет аккаунт в БД. Поле accounts.balance не записывается (хранится в token_balances).
 func (a *Account) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
+	var balanceVal *string // nil → NULL в БД, balance не заполняем
 	err := pool.QueryRow(ctx, `
 		INSERT INTO accounts (
 			address, balance, nonce, type, status,
@@ -64,7 +65,7 @@ func (a *Account) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id`,
-		a.Address, a.Balance, a.Nonce, a.Type, a.Status,
+		a.Address, balanceVal, a.Nonce, a.Type, a.Status,
 		a.BlockID, a.TxID, a.GasLimit, a.GasUsed, a.Value,
 		a.Data, a.CreatedAt, a.UpdatedAt, a.IsVerified,
 		a.SourceCode, a.Compiler, a.Optimized, a.Runs,
