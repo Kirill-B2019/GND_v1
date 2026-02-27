@@ -15,3 +15,4 @@ env/
 .installed.cfg
 *.egg
 /docs/GND_v1.code-workspace
+/config/db.json
