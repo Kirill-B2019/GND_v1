@@ -108,7 +108,7 @@ GND_v1/
 ---
 
 ### **api/**
-- **rest.go** — REST API для доступа к блокам, отправки транзакций, получения информации.
+- **rest.go** — REST API для доступа к блокам, отправки транзакций, получения информации. **GET /api/v1/wallet/:address/balance** возвращает все токены кошелька из `token_balances` с полями из `tokens` (core.GetWalletTokenBalances).
 - **rpc.go** — JSON-RPC API для работы с контрактами и токенами.
 - **websocket.go** — WebSocket сервер для real-time событий (новые блоки, транзакции).
 - **middleware.go** — подключение middleware; **middleware/** (gin.go, middleware.go) — аутентификация, лимитирование, аудит.

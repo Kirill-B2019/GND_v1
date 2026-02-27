@@ -220,14 +220,14 @@ gnd-analytics
 # Базовый URL
 http://31.128.41.155:8182/api/v1
 
-# Аутентификация
-curl -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/balance/GND...
+# Аутентификация (для операций, требующих X-API-Key)
+curl -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet
 
-# Создание кошелька
-curl -X POST -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/create
+# Создание кошелька (требуется X-API-Key)
+curl -X POST -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet
 
-# Получение баланса
-curl -H "X-API-Key: your-api-key" http://31.128.41.155:8182/api/v1/wallet/balance/GND...
+# Получение балансов кошелька — все токены из token_balances (API-ключ не требуется). Адрес в пути.
+curl -s "http://31.128.41.155:8182/api/v1/wallet/GND_АДРЕС/balance"
 
 # Отправка транзакции
 curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \

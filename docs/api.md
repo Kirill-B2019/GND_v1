@@ -41,12 +41,31 @@ Response 200:
 Response 401: неверный или отсутствующий X-API-Key
 ```
 
-#### Получение баланса
+#### Получение балансов кошелька
 ```http
 GET /api/v1/wallet/:address/balance
+```
+Возвращает все токены кошелька из таблицы `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified). API-ключ не требуется.
 
 Response:
-{ "success": true, "data": { "address": "GND...", "balance": "1000000000000000000" } }
+```json
+{
+  "success": true,
+  "data": {
+    "address": "GND...",
+    "balances": [
+      {
+        "token_address": "GNDct...",
+        "balance": "1000000000000000000",
+        "standard": "GND-st1",
+        "symbol": "GND",
+        "name": "GND",
+        "decimals": 18,
+        "is_verified": true
+      }
+    ]
+  }
+}
 ```
 
 ### Токены
@@ -544,7 +563,7 @@ class GNDAPI {
     }
 
     async getBalance(address) {
-        const response = await fetch(`${this.restUrl}/wallet/balance/${address}`, {
+        const response = await fetch(`${this.restUrl}/wallet/${address}/balance`, {
             headers: {
                 'X-API-Key': this.apiKey
             }
@@ -721,7 +740,7 @@ class GNDAPI:
     async def get_balance(self, address):
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{self.rest_url}/wallet/balance/{address}",
+                f"{self.rest_url}/wallet/{address}/balance",
                 headers={'X-API-Key': self.api_key}
             ) as response:
                 return await response.json()
@@ -909,7 +928,7 @@ func (api *GNDAPI) CreateWallet() (map[string]interface{}, error) {
 }
 
 func (api *GNDAPI) GetBalance(address string) (map[string]interface{}, error) {
-    req, err := http.NewRequest("GET", fmt.Sprintf("%s/wallet/balance/%s", api.restURL, address), nil)
+    req, err := http.NewRequest("GET", fmt.Sprintf("%s/wallet/%s/balance", api.restURL, address), nil)
     if err != nil {
         return nil, err
     }

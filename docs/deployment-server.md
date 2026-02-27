@@ -81,7 +81,7 @@ cd /path/to/GND_v1
 curl -s http://31.128.41.155:8182/api/v1/health
 curl -s "http://main-node.gnd-net.com:8182/api/v1/health"
 
-# Баланс кошелька (подставьте адрес валидатора)
+# Балансы кошелька — все токены из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified). Подставьте адрес валидатора.
 curl -s "http://31.128.41.155:8182/api/v1/wallet/WALLET_ADDRESS/balance"
 
 # Мемпул (размер и список хешей ожидающих транзакций)
@@ -185,8 +185,8 @@ journalctl -u gnd-node -f
 
 ## 4. Баланс аккаунта и несколько кошельков
 
-- Балансы по монетам хранятся в `token_balances` (по `token_id` и адресу). Поле `accounts.balance` дублирует баланс нативной монеты (GND) для совместимости.
-- При загрузке состояния из БД (`LoadFromDB`) значение `accounts.balance` синхронизируется с балансом GND из `token_balances`, поэтому после перезапуска баланс в таблице `accounts` не остаётся нулевым.
+- Балансы по всем токенам хранятся в **token_balances** (поля `token_id`, `address`, `balance`; при необходимости поддерживается также схема с колонкой `symbol`). Поле `accounts.balance` в БД по проектной логике не синхронизируется из `token_balances` (источник истины — `token_balances`).
+- REST **GET /api/v1/wallet/:address/balance** возвращает все токены кошелька из `token_balances` с подтянутыми из таблицы `tokens` полями: `standard`, `symbol`, `name`, `decimals`, `is_verified`, а также адрес контракта токена (`token_address`). API-ключ для этого запроса не требуется.
 - У одного аккаунта может быть несколько кошельков (разные ключи/адреса); валидатор использует один загруженный кошелёк (`LoadWallet`). Остальные адреса также могут иметь записи в `accounts` и `token_balances`.
 
 ---
