@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api/websocket.go
 
 package api

@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 //core/transaction.go
 
 package core

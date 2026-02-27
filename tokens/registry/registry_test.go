@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // tokens/registry/registry_test.go
 
 package registry

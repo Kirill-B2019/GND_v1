@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // tokens/standards/gndst1/gndst1_test.go
 
 package gndst1

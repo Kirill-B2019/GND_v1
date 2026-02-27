@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api/auth.go
 
 package api

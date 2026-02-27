@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api/evm_adapter.go
 
 package api

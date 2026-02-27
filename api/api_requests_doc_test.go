@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api_requests_doc_test.go — проверка ответов всех URL из docs/api-requests.md
 
 package api

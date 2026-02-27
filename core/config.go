@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 //core/config.go
 
 package core

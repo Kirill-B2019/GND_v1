@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api/rest_handlers_test.go — тесты для обработчиков Gorilla mux (RecoverMiddleware, universalHandler, handleTransfer, handleTokenApprove, handleGetTokenBalance).
 
 package api

@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // vm/contracts.go
 
 package vm

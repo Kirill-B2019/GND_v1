@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 // api/eventmanager_stub.go
 
 package api

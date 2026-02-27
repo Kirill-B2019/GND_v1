@@ -1,3 +1,4 @@
+// | KB @CerbeRus - Nexus Invest Team
 //core/wallet_test.go
 
 package core
