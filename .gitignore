@@ -16,3 +16,10 @@ env/
 *.egg
 /docs/GND_v1.code-workspace
 /config/db.json
+/docs/SigningService.code-workspace
+
+# Секреты и локальные конфиги (не коммитить)
+.env.local
+.env.*.local
+*.secret
+*.pem

@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"math/big"
+	"net"
 	_ "net/http/pprof"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -100,5 +102,48 @@ func TestNewBlockchain(t *testing.T) {
 	// 6. Проверяем, что генезис загружен
 	if newChain.Genesis == nil || newChain.Genesis.Hash == "" {
 		t.Error("Expected genesis block to be loaded")
+	}
+}
+
+// TestCheckPortsFree_Free проверяет, что checkPortsFree возвращает nil для свободных портов.
+func TestCheckPortsFree_Free(t *testing.T) {
+	// Используем порты из высокого диапазона, чтобы не конфликтовать с реальными сервисами
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Skipf("не удалось занять тестовый порт: %v", err)
+	}
+	_, portStr, _ := net.SplitHostPort(l.Addr().String())
+	l.Close()
+	port, _ := strconv.Atoi(portStr)
+	cfg := &core.Config{
+		Server: core.ServerConfig{
+			RPC:  core.ServerRPCConfig{RPCAddr: "127.0.0.1:" + portStr},
+			REST: core.ServerRESTConfig{Port: port},
+			WS:   core.ServerWSConfig{WSAddr: "127.0.0.1:" + portStr},
+		},
+	}
+	if err := checkPortsFree(cfg); err != nil {
+		t.Errorf("ожидали успех для свободного порта: %v", err)
+	}
+}
+
+// TestCheckPortsFree_Busy проверяет, что checkPortsFree возвращает ошибку для занятого порта.
+func TestCheckPortsFree_Busy(t *testing.T) {
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Skipf("не удалось занять тестовый порт: %v", err)
+	}
+	_, portStr, _ := net.SplitHostPort(l.Addr().String())
+	defer l.Close()
+	port, _ := strconv.Atoi(portStr)
+	cfg := &core.Config{
+		Server: core.ServerConfig{
+			RPC:  core.ServerRPCConfig{RPCAddr: "127.0.0.1:" + portStr},
+			REST: core.ServerRESTConfig{Port: port},
+			WS:   core.ServerWSConfig{WSAddr: "127.0.0.1:" + portStr},
+		},
+	}
+	if err := checkPortsFree(cfg); err == nil {
+		t.Error("ожидали ошибку для занятого порта")
 	}
 }

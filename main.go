@@ -14,9 +14,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -177,7 +179,12 @@ func main() {
 		log.Println("Signing service включён: новые кошельки создаются через signer_wallets")
 	}
 
-	// 12. Серверы
+	// 12. Проверка занятости портов перед запуском серверов
+	if err := checkPortsFree(cfg); err != nil {
+		log.Fatalf("Порты заняты или недоступны: %v. Освободите порты (см. docs/deployment-server.md) или измените config/servers.json.", err)
+	}
+
+	// 13. Серверы
 	go func() {
 		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
 		if err != nil {
@@ -187,10 +194,10 @@ func main() {
 	go api.StartRESTServer(blockchain, mempool, cfg, pool, evmInstance, signerCreator)
 	go api.StartWebSocketServer(blockchain, mempool, cfg)
 
-	// 13. Обработка транзакций
+	// 14. Обработка транзакций
 	go processTransactions(mempool, cfg.MaxWorkers)
 
-	// 14. Грейсфул-шатдаун
+	// 15. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
@@ -410,4 +417,43 @@ func monitorPoolStats(ctx context.Context, pool *pgxpool.Pool) {
 			return
 		}
 	}
+}
+
+// checkPortsFree проверяет, что порты RPC, REST и WebSocket свободны перед запуском серверов.
+// Адреса берутся из cfg.Server; для проверки выполняется попытка прослушивания на ":%port".
+func checkPortsFree(cfg *core.Config) error {
+	const defaultRPC, defaultREST, defaultWS = "8181", 8182, "8183"
+	portsToCheck := make(map[string]string) // port -> описание
+
+	if cfg.Server.RPC.RPCAddr != "" {
+		if _, port, err := net.SplitHostPort(cfg.Server.RPC.RPCAddr); err == nil && port != "" {
+			portsToCheck[port] = "RPC"
+		} else {
+			portsToCheck[defaultRPC] = "RPC"
+		}
+	}
+	if cfg.Server.REST.Port > 0 {
+		portsToCheck[strconv.Itoa(cfg.Server.REST.Port)] = "REST"
+	} else {
+		portsToCheck[strconv.Itoa(defaultREST)] = "REST"
+	}
+	if cfg.Server.WS.WSAddr != "" {
+		if _, port, err := net.SplitHostPort(cfg.Server.WS.WSAddr); err == nil && port != "" {
+			portsToCheck[port] = "WebSocket"
+		} else {
+			portsToCheck[defaultWS] = "WebSocket"
+		}
+	} else {
+		portsToCheck[defaultWS] = "WebSocket"
+	}
+
+	for port, name := range portsToCheck {
+		addr := ":" + port
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("%s (порт %s): %w", name, port, err)
+		}
+		l.Close()
+	}
+	return nil
 }

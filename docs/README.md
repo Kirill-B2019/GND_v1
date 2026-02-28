@@ -41,6 +41,7 @@
 - Эндпоинты (см. [api-requests.md](api-requests.md), [api.md](api.md))
 - Аутентификация по **X-API-Key** для операций от внешних систем (в т.ч. **POST /api/v1/token/deploy**)
 - Создание токена: [api-token-deploy.md](api-token-deploy.md)
+- **Админское API** (выдача/отзыв API-ключей, имена и роли кошельков): [admin-api.md](admin-api.md)
 - Форматы данных, обработка ошибок
 
 ### 2. WebSocket API
@@ -106,6 +107,7 @@
 
 ### 1. Документация
 - API: [api.md](api.md), [api-requests.md](api-requests.md), создание токена по X-API-Key: [api-token-deploy.md](api-token-deploy.md)
+- Админское API (X-Admin-Token, ключи, кошельки): [admin-api.md](admin-api.md)
 - Руководства, примеры, часто задаваемые вопросы
 
 ### 2. Обучение

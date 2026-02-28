@@ -734,6 +734,17 @@ func (s *Server) setupRoutes() {
 			Code:    http.StatusBadRequest,
 		})
 	})
+
+	// Админские маршруты (защита: X-Admin-Token = GND_ADMIN_SECRET)
+	admin := api.Group("/admin")
+	{
+		admin.POST("/keys", s.AdminCreateKey)
+		admin.GET("/keys", s.AdminListKeys)
+		admin.POST("/keys/:id/revoke", s.AdminRevokeKey)
+		admin.DELETE("/keys/:id", s.AdminRevokeKey)
+		admin.GET("/wallets", s.AdminListWallets)
+		admin.PATCH("/wallets/:address", s.AdminUpdateWallet)
+	}
 }
 
 // GetTransactionHelp возвращает подсказку при GET /transaction без хеша (избегаем 404)
