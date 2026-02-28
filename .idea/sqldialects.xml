@@ -7,6 +7,10 @@
     <file url="file://$PROJECT_DIR$/db/console_21.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump0906.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/004_create_signer_wallets.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/005_wallets_private_key_nullable.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/006_api_keys_admin.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/007_wallets_name_role.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main_test.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/tokens/deployer/deployer.go" dialect="PostgreSQL" />

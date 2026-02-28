@@ -23,7 +23,7 @@ func NewPostgres(pool *pgxpool.Pool) *Postgres {
 func (p *Postgres) GetWallet(ctx context.Context, id uuid.UUID) (*Wallet, error) {
 	const q = `
 		SELECT id, account_id, public_key, encrypted_priv, disabled, created_at, updated_at
-		FROM signer_wallets WHERE id = $1
+		FROM public.signer_wallets WHERE id = $1
 	`
 	var w Wallet
 	err := p.pool.QueryRow(ctx, q, id).Scan(
@@ -39,7 +39,7 @@ func (p *Postgres) GetWallet(ctx context.Context, id uuid.UUID) (*Wallet, error)
 func (p *Postgres) GetWalletByAccountID(ctx context.Context, accountID int) (*Wallet, error) {
 	const q = `
 		SELECT id, account_id, public_key, encrypted_priv, disabled, created_at, updated_at
-		FROM signer_wallets WHERE account_id = $1
+		FROM public.signer_wallets WHERE account_id = $1
 	`
 	var w Wallet
 	err := p.pool.QueryRow(ctx, q, accountID).Scan(
@@ -51,10 +51,10 @@ func (p *Postgres) GetWalletByAccountID(ctx context.Context, accountID int) (*Wa
 	return &w, nil
 }
 
-// CreateWallet вставляет новый кошелёк в signer_wallets.
+// CreateWallet вставляет новый кошелёк в public.signer_wallets.
 func (p *Postgres) CreateWallet(ctx context.Context, w *Wallet) error {
 	const q = `
-		INSERT INTO signer_wallets (id, account_id, public_key, encrypted_priv, disabled, created_at, updated_at)
+		INSERT INTO public.signer_wallets (id, account_id, public_key, encrypted_priv, disabled, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	_, err := p.pool.Exec(ctx, q,

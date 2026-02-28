@@ -209,6 +209,9 @@ func (s *Server) CreateWallet(c *gin.Context) {
 		})
 		return
 	}
+	if wallet.SignerWalletID != nil {
+		log.Printf("[REST] Кошелёк создан через signing_service, запись в signer_wallets: %s (адрес: %s)", wallet.SignerWalletID.String(), wallet.Address)
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
 		Data:    wallet,

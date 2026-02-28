@@ -141,7 +141,7 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(), `
-		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
+		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE hash = $1`, hash).Scan(
 		&block.ID,
 		&block.Hash,
@@ -184,7 +184,7 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(), `
-		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
+		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE index = $1`, height).Scan(
 		&block.ID,
 		&block.Hash,
@@ -227,7 +227,7 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE height = $1",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE height = $1",
 		height,
 	).Scan(
 		&block.ID,
@@ -271,7 +271,7 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index DESC LIMIT 1",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index DESC LIMIT 1",
 	).Scan(
 		&block.ID,
 		&block.Hash,
@@ -354,8 +354,9 @@ func (b *Block) CalculateHashWithoutNonce() string {
 func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	// nonce в БД — varchar; явно приводим к text, чтобы сканировать в nonceStr (не в *uint64).
 	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
 		number,
 	).Scan(
 		&block.ID,
@@ -399,7 +400,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE hash = $1",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE hash = $1",
 		hash,
 	).Scan(
 		&block.ID,
@@ -441,7 +442,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 // GetBlocks returns a list of blocks with pagination
 func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 	rows, err := pool.Query(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY height DESC LIMIT $1 OFFSET $2",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY height DESC LIMIT $1 OFFSET $2",
 		limit, offset,
 	)
 	if err != nil {
