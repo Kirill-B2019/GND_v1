@@ -96,20 +96,24 @@ func (bc *Blockchain) AddTransaction(tx *Transaction) error {
 }
 
 // EnsureCoinsDeployed проверяет при первом запуске наличие монет из config в БД и при необходимости создаёт контракты и токены.
+// Для уже существующих токенов обновляет circulating_supply из конфига.
 // genesisBlockID — ID генезис-блока в БД для заполнения contracts.block_id и contracts.tx_id.
 func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, ownerAddress string, genesisBlockID int) error {
 	for _, coin := range cfg.Coins {
+		circulating := coin.CirculatingSupply
+		if circulating == "" {
+			circulating = coin.TotalSupply
+		}
 		_, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
 		if err == nil {
+			// Токен уже есть — обновляем circulating_supply из конфига (на случай если колонка добавили позже или значение поменялось)
+			_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, updated_at = $2 WHERE symbol = $3`,
+				circulating, time.Now().UTC(), coin.Symbol)
 			continue
 		}
 		addr := coin.ContractAddress
 		if addr == "" || len(addr) < 10 {
 			addr = ""
-		}
-		circulating := coin.CirculatingSupply
-		if circulating == "" {
-			circulating = coin.TotalSupply
 		}
 		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, circulating, ownerAddress, "coin", coin.Standard, genesisBlockID, 0)
 		t.IsVerified = true
