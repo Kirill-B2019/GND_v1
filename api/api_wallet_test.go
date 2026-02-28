@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -39,7 +40,11 @@ func TestWalletCreateHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("X-API-Key", ApiKey)
+	if k := os.Getenv("GND_API_KEY"); k != "" {
+		req.Header.Set("X-API-Key", k)
+	} else {
+		t.Skip("GND_API_KEY не задан — пропуск теста, требующего API-ключ")
+	}
 
 	// Создаем ResponseRecorder для записи ответа
 	rr := httptest.NewRecorder()

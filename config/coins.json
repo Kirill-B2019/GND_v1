@@ -1,23 +1,25 @@
 {
   "coins": [
     {
-      "name": "GANYMED GND-Core Coin",
+      "name": "GANIMED network coin",
       "symbol": "GND",
       "decimals": 18,
-      "description": "Нативная монета блокчейна ГАНИМЕД. Используется для оплаты комиссий, стейкинга и всех внутренних операций, доступ к DApps.",
+      "description": "Нативный коин сети ГАНИМЕД. Используется для оплаты комиссий, стейкинга и всех внутренних операций, доступ к DApps.",
       "contract_address": "GANYMED BIRTH UNIVERSE",
       "coin_logo": "",
-      "total_supply": "1000000000000000000000000",
+      "total_supply": "1000000000000000000000000000",
+      "circulating_supply": "100000000000000000000000000",
       "standard": "GND-st1"
     },
     {
-      "name": "GANYMED GANI- Coin",
+      "name": "GANIMED Governance Coin",
       "symbol": "GANI",
       "decimals": 6,
-      "description": "Нативная монета блокчейна ГАНИМЕД. Используется для управления сетью.",
+      "description": "нативный коин сети",
       "contract_address": "GANI first voice",
       "coin_logo": "",
-      "total_supply": "1000000000000",
+      "total_supply": "100000000000000",
+      "circulating_supply": "20000000000000",
       "standard": "GND-st1"
     }
   ]

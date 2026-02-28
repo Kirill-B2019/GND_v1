@@ -747,6 +747,10 @@ func (s *Server) setupRoutes() {
 		admin.DELETE("/keys/:id", s.AdminRevokeKey)
 		admin.GET("/wallets", s.AdminListWallets)
 		admin.PATCH("/wallets/:address", s.AdminUpdateWallet)
+		admin.POST("/wallets/:address/disable", s.AdminDisableWallet)
+		admin.POST("/wallets/:address/enable", s.AdminEnableWallet)
+		admin.DELETE("/wallets/:address", s.AdminDeleteWallet)
+		admin.POST("/wallets/:address/delete", s.AdminDeleteWallet)
 	}
 }
 

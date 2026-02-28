@@ -17,9 +17,6 @@ const (
 	// Стандарт токенов/контрактов ГАНИМЕД
 	TokenStandardGNDst1 = "GND-st1"
 
-	// API Key (для тестов)
-	ApiKey = "test_api_key"
-
 	// Timeouts
 	HttpTimeout = 5 * time.Second
 	WsTimeout   = 5 * time.Second

@@ -43,14 +43,15 @@ type DBConfig struct {
 }
 
 type CoinConfig struct {
-	Name            string `json:"name"`
-	Symbol          string `json:"symbol"`
-	Decimals        int    `json:"decimals"`
-	Description     string `json:"description"`
-	ContractAddress string `json:"contract_address"`
-	CoinLogo        string `json:"coin_logo"`
-	TotalSupply     string `json:"total_supply"`
-	Standard        string `json:"standard"`
+	Name              string `json:"name"`
+	Symbol            string `json:"symbol"`
+	Decimals          int    `json:"decimals"`
+	Description       string `json:"description"`
+	ContractAddress   string `json:"contract_address"`
+	CoinLogo          string `json:"coin_logo"`
+	TotalSupply       string `json:"total_supply"`
+	CirculatingSupply string `json:"circulating_supply"`
+	Standard          string `json:"standard"`
 }
 
 type ConsensusPosConfig struct {

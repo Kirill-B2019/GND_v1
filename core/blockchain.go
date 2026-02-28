@@ -107,7 +107,11 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 		if addr == "" || len(addr) < 10 {
 			addr = ""
 		}
-		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, ownerAddress, "coin", coin.Standard, genesisBlockID, 0)
+		circulating := coin.CirculatingSupply
+		if circulating == "" {
+			circulating = coin.TotalSupply
+		}
+		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, circulating, ownerAddress, "coin", coin.Standard, genesisBlockID, 0)
 		t.IsVerified = true
 		if err := t.SaveToDB(ctx, pool); err != nil {
 			return fmt.Errorf("деплой монеты %s: %w", coin.Symbol, err)

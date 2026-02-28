@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -116,7 +117,9 @@ func TestDeployToken_ValidAPIKey_NoDeployer_Returns503(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/token/deploy", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", ApiKey)
+	if k := os.Getenv("GND_API_KEY"); k != "" {
+		req.Header.Set("X-API-Key", k)
+	}
 	w := httptest.NewRecorder()
 	server.router.ServeHTTP(w, req)
 
@@ -138,9 +141,10 @@ func TestValidateAPIKey_EmptyKey_ReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestValidateAPIKey_ConstantKey_ReturnsTrue(t *testing.T) {
-	if !ValidateAPIKey(context.Background(), nil, ApiKey) {
-		t.Error("константный ApiKey должен проходить")
+func TestValidateAPIKey_NoPool_NonEmptyKey_ReturnsFalse(t *testing.T) {
+	// При pool == nil проверка идёт только по БД; без пула любой ключ не проходит.
+	if ValidateAPIKey(context.Background(), nil, "any_key") {
+		t.Error("при pool=nil ключ не должен проходить")
 	}
 }
 

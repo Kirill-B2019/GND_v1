@@ -11,7 +11,6 @@ func TestConstants(t *testing.T) {
 	_ = ApiDocHost
 	_ = NodeHost
 	_ = TokenStandardGNDst1
-	_ = ApiKey
 	_ = HttpTimeout
 	_ = WsTimeout
 }

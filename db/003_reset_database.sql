@@ -1,44 +1,30 @@
 -- 003_reset_database.sql
--- Удаление всех записей из таблиц и сброс счётчиков (sequences) для auto increment.
+-- Удаление всех записей из таблиц и сброс счётчиков (sequences).
 -- ВНИМАНИЕ: полная очистка данных. Выполнять от имени владельца БД (gnduser или superuser).
+-- Порядок: дочерние таблицы и партиции первыми (CASCADE очистит зависимые партиции).
 -- После выполнения при следующем запуске ноды будет создан новый генезис и кошелёк.
 
 BEGIN;
 
--- Очистка: порядок учитывает FK. CASCADE очистит зависимые партиции/таблицы.
--- Партиционированные таблицы (transactions, logs) — очищаются по родителю.
+-- Партиционированные и зависимые таблицы
 TRUNCATE TABLE public.logs CASCADE;
 TRUNCATE TABLE public.transactions CASCADE;
 
--- states и token_balances (опционально: только если таблица есть)
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'states') THEN
-    EXECUTE 'TRUNCATE TABLE public.states CASCADE';
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'token_balances') THEN
-    EXECUTE 'TRUNCATE TABLE public.token_balances CASCADE';
-  END IF;
-END $$;
-
+-- Таблицы, зависящие от blocks, contracts, accounts, tokens, validators
+TRUNCATE TABLE public.token_balances CASCADE;
+TRUNCATE TABLE public.states CASCADE;
+TRUNCATE TABLE public.events RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.blocks RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.wallets CASCADE;
--- signer_wallets (кастодиальные ключи): очистить до accounts из-за FK account_id
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'signer_wallets') THEN
-    EXECUTE 'TRUNCATE TABLE public.signer_wallets CASCADE';
-  END IF;
-END $$;
+TRUNCATE TABLE public.signer_wallets CASCADE;
+TRUNCATE TABLE public.poa_validators CASCADE;
+TRUNCATE TABLE public.pos_validators CASCADE;
 TRUNCATE TABLE public.tokens RESTART IDENTITY CASCADE;
-TRUNCATE TABLE public.events RESTART IDENTITY CASCADE;
+TRUNCATE TABLE public.contracts RESTART IDENTITY CASCADE;
+TRUNCATE TABLE public.validators RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.api_keys RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.oracles RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.metrics RESTART IDENTITY CASCADE;
-TRUNCATE TABLE public.poa_validators RESTART IDENTITY CASCADE;
-TRUNCATE TABLE public.pos_validators RESTART IDENTITY CASCADE;
-TRUNCATE TABLE public.validators RESTART IDENTITY CASCADE;
-TRUNCATE TABLE public.contracts RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.accounts RESTART IDENTITY CASCADE;
 
 -- Сброс всех последовательностей схемы public на 1

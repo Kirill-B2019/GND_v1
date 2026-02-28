@@ -181,7 +181,7 @@ func (s *Server) AdminRevokeKey(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"revoked": true}})
 }
 
-// AdminListWallets возвращает список кошельков с именами и ролями.
+// AdminListWallets возвращает список кошельков с именами и ролями (без мягко удалённых).
 // GET /api/v1/admin/wallets
 func (s *Server) AdminListWallets(c *gin.Context) {
 	if !s.RequireAdmin(c) {
@@ -190,9 +190,10 @@ func (s *Server) AdminListWallets(c *gin.Context) {
 	ctx := c.Request.Context()
 	roleFilter := c.Query("role")
 	q := `
-		SELECT w.id, w.account_id, w.address, w.public_key, w.signer_wallet_id, w.name, w.role, w.created_at
+		SELECT w.id, w.account_id, w.address, w.public_key, w.signer_wallet_id, w.name, w.role, w.created_at, sw.disabled AS signer_disabled
 		FROM public.wallets w
-		WHERE 1=1`
+		LEFT JOIN public.signer_wallets sw ON sw.id = w.signer_wallet_id
+		WHERE COALESCE(w.disabled, false) = false`
 	args := []interface{}{}
 	if roleFilter != "" {
 		q += " AND w.role = $1"
@@ -212,7 +213,8 @@ func (s *Server) AdminListWallets(c *gin.Context) {
 		var signerWalletID *string
 		var name, role *string
 		var createdAt time.Time
-		if err := rows.Scan(&id, &accountID, &address, &publicKey, &signerWalletID, &name, &role, &createdAt); err != nil {
+		var signerDisabled *bool
+		if err := rows.Scan(&id, &accountID, &address, &publicKey, &signerWalletID, &name, &role, &createdAt, &signerDisabled); err != nil {
 			continue
 		}
 		nm := ""
@@ -227,6 +229,7 @@ func (s *Server) AdminListWallets(c *gin.Context) {
 		if signerWalletID != nil {
 			sw = *signerWalletID
 		}
+		blocked := signerDisabled != nil && *signerDisabled
 		list = append(list, gin.H{
 			"id":               id,
 			"account_id":       accountID,
@@ -235,6 +238,7 @@ func (s *Server) AdminListWallets(c *gin.Context) {
 			"role":             rl,
 			"signer_wallet_id": sw,
 			"created_at":       createdAt.Format(time.RFC3339),
+			"blocked":          blocked,
 		})
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"wallets": list}})
@@ -288,4 +292,82 @@ func (s *Server) AdminUpdateWallet(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"updated": true}})
+}
+
+// AdminDisableWallet блокирует подписание: устанавливает signer_wallets.disabled = true.
+// POST /api/v1/admin/wallets/:address/disable
+func (s *Server) AdminDisableWallet(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := c.Param("address")
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address", Code: http.StatusBadRequest})
+		return
+	}
+	ctx := c.Request.Context()
+	tag, err := s.db.Exec(ctx, `
+		UPDATE public.signer_wallets SET disabled = true, updated_at = NOW()
+		WHERE id = (SELECT signer_wallet_id FROM public.wallets WHERE address = $1 AND COALESCE(disabled, false) = false)`,
+		address)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден или без signer_wallet", Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"disabled": true}})
+}
+
+// AdminEnableWallet снимает блокировку подписания: signer_wallets.disabled = false.
+// POST /api/v1/admin/wallets/:address/enable
+func (s *Server) AdminEnableWallet(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := c.Param("address")
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address", Code: http.StatusBadRequest})
+		return
+	}
+	ctx := c.Request.Context()
+	tag, err := s.db.Exec(ctx, `
+		UPDATE public.signer_wallets SET disabled = false, updated_at = NOW()
+		WHERE id = (SELECT signer_wallet_id FROM public.wallets WHERE address = $1 AND COALESCE(disabled, false) = false)`,
+		address)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден или без signer_wallet", Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"enabled": true}})
+}
+
+// AdminDeleteWallet мягкое удаление: wallets.disabled = true (скрывается из списка).
+// DELETE /api/v1/admin/wallets/:address или POST /api/v1/admin/wallets/:address/delete
+func (s *Server) AdminDeleteWallet(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := c.Param("address")
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address", Code: http.StatusBadRequest})
+		return
+	}
+	ctx := c.Request.Context()
+	tag, err := s.db.Exec(ctx, `UPDATE public.wallets SET disabled = true WHERE address = $1`, address)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден", Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"deleted": true}})
 }

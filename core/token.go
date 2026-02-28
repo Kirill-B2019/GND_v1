@@ -19,31 +19,32 @@ import (
 
 // Token представляет токен в блокчейне ГАНИМЕД
 type Token struct {
-	ID          int       // ID токена
-	Address     string    // Адрес контракта токена
-	Symbol      string    // Символ токена
-	Name        string    // Название токена
-	Decimals    int       // Количество десятичных знаков
-	TotalSupply string    // Общее предложение
-	Owner       string    // Владелец токена
-	Type        string    // Тип токена (GND-st1)
-	Standard    string    // Стандарт токена
-	Status      string    // Статус токена
-	BlockID     int       // ID блока создания
-	TxID        int       // ID транзакции создания
-	GasLimit    int64     // Лимит газа
-	GasUsed     int64     // Использованный газ
-	Value       string    // Значение при создании
-	Data        []byte    // Данные инициализации
-	CreatedAt   time.Time // Время создания
-	UpdatedAt   time.Time // Время последнего обновления
-	IsVerified  bool      // Проверен ли токен
-	SourceCode  string    // Исходный код контракта
-	Compiler    string    // Версия компилятора
-	Optimized   bool      // Оптимизирован ли код
-	Runs        int       // Количество запусков оптимизации
-	License     string    // Лицензия контракта
-	Metadata    []byte    // Метаданные токена
+	ID                int       // ID токена
+	Address           string    // Адрес контракта токена
+	Symbol            string    // Символ токена
+	Name              string    // Название токена
+	Decimals          int       // Количество десятичных знаков
+	TotalSupply       string    // Общее предложение
+	CirculatingSupply string    // Обращающееся предложение (из конфига)
+	Owner             string    // Владелец токена
+	Type              string    // Тип токена (GND-st1)
+	Standard          string    // Стандарт токена
+	Status            string    // Статус токена
+	BlockID           int       // ID блока создания
+	TxID              int       // ID транзакции создания
+	GasLimit          int64     // Лимит газа
+	GasUsed           int64     // Использованный газ
+	Value             string    // Значение при создании
+	Data              []byte    // Данные инициализации
+	CreatedAt         time.Time // Время создания
+	UpdatedAt         time.Time // Время последнего обновления
+	IsVerified        bool      // Проверен ли токен
+	SourceCode        string    // Исходный код контракта
+	Compiler          string    // Версия компилятора
+	Optimized         bool      // Оптимизирован ли код
+	Runs              int       // Количество запусков оптимизации
+	License           string    // Лицензия контракта
+	Metadata          []byte    // Метаданные токена
 }
 
 // ToTokenInfo преобразует Token в TokenInfo
@@ -60,8 +61,8 @@ func (t *Token) ToTokenInfo() *types.TokenInfo {
 	}
 }
 
-// NewToken создает новый токен
-func NewToken(address, symbol, name string, decimals int, totalSupply string, owner, tokenType, standard string, blockID, txID int) *Token {
+// NewToken создает новый токен. circulatingSupply — обращающееся предложение (из конфига); если пусто — можно передать totalSupply или "".
+func NewToken(address, symbol, name string, decimals int, totalSupply, circulatingSupply string, owner, tokenType, standard string, blockID, txID int) *Token {
 	now := time.Now()
 
 	// Если адрес не указан, генерируем новый
@@ -71,20 +72,21 @@ func NewToken(address, symbol, name string, decimals int, totalSupply string, ow
 	}
 
 	return &Token{
-		Address:     address,
-		Symbol:      symbol,
-		Name:        name,
-		Decimals:    decimals,
-		TotalSupply: totalSupply,
-		Owner:       owner,
-		Type:        tokenType,
-		Standard:    standard,
-		Status:      "pending",
-		BlockID:     blockID,
-		TxID:        txID,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		IsVerified:  false,
+		Address:           address,
+		Symbol:            symbol,
+		Name:              name,
+		Decimals:          decimals,
+		TotalSupply:       totalSupply,
+		CirculatingSupply: circulatingSupply,
+		Owner:             owner,
+		Type:              tokenType,
+		Standard:          standard,
+		Status:            "pending",
+		BlockID:           blockID,
+		TxID:              txID,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		IsVerified:        false,
 	}
 }
 
@@ -118,14 +120,18 @@ func (t *Token) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
-	// Затем сохраняем токен (is_verified — для нативных монет из config)
+	// Затем сохраняем токен (is_verified — для нативных монет из config; circulating_supply из конфига)
+	circulating := t.CirculatingSupply
+	if circulating == "" {
+		circulating = t.TotalSupply
+	}
 	err = pool.QueryRow(ctx, `
 		INSERT INTO tokens (
-			contract_id, symbol, name, decimals, total_supply,
+			contract_id, symbol, name, decimals, total_supply, circulating_supply,
 			standard, is_verified
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
-		contractID, t.Symbol, t.Name, t.Decimals, t.TotalSupply,
+		contractID, t.Symbol, t.Name, t.Decimals, t.TotalSupply, circulating,
 		t.Standard, t.IsVerified,
 	).Scan(&t.ID)
 
@@ -161,7 +167,7 @@ func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token,
 	var id, contractID int
 	var symbol, name, standard string
 	var decimals int
-	var totalSupply string
+	var totalSupply, circulatingSupply string
 
 	// Получаем contract_id
 	err := pool.QueryRow(ctx, `
@@ -175,11 +181,11 @@ func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token,
 
 	// Получаем данные токена
 	err = pool.QueryRow(ctx, `
-		SELECT id, symbol, name, decimals, total_supply, standard
+		SELECT id, symbol, name, decimals, total_supply, COALESCE(circulating_supply::text, total_supply::text), standard
 		FROM tokens
 		WHERE contract_id = $1`,
 		contractID,
-	).Scan(&id, &symbol, &name, &decimals, &totalSupply, &standard)
+	).Scan(&id, &symbol, &name, &decimals, &totalSupply, &circulatingSupply, &standard)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("токен не найден: %s", address)
@@ -189,13 +195,14 @@ func LoadToken(ctx context.Context, pool *pgxpool.Pool, address string) (*Token,
 	}
 
 	return &Token{
-		ID:          id,
-		Address:     address,
-		Symbol:      symbol,
-		Name:        name,
-		Decimals:    decimals,
-		TotalSupply: totalSupply,
-		Standard:    standard,
+		ID:                id,
+		Address:           address,
+		Symbol:            symbol,
+		Name:              name,
+		Decimals:          decimals,
+		TotalSupply:       totalSupply,
+		CirculatingSupply: circulatingSupply,
+		Standard:          standard,
 	}, nil
 }
 
@@ -209,13 +216,13 @@ func GetTokenBySymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (*
 	var id, contractID int
 	var name, standard string
 	var decimals int
-	var totalSupply string
+	var totalSupply, circulatingSupply string
 	err := pool.QueryRow(ctx, `
-		SELECT t.id, t.contract_id, t.name, t.decimals, t.total_supply, t.standard
+		SELECT t.id, t.contract_id, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard
 		FROM tokens t
 		WHERE t.symbol = $1`,
 		symbol,
-	).Scan(&id, &contractID, &name, &decimals, &totalSupply, &standard)
+	).Scan(&id, &contractID, &name, &decimals, &totalSupply, &circulatingSupply, &standard)
 	if err != nil {
 		return nil, err
 	}
@@ -224,20 +231,21 @@ func GetTokenBySymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (*
 		return nil, err
 	}
 	return &Token{
-		ID:          id,
-		Address:     address,
-		Symbol:      symbol,
-		Name:        name,
-		Decimals:    decimals,
-		TotalSupply: totalSupply,
-		Standard:    standard,
+		ID:                id,
+		Address:           address,
+		Symbol:            symbol,
+		Name:              name,
+		Decimals:          decimals,
+		TotalSupply:       totalSupply,
+		CirculatingSupply: circulatingSupply,
+		Standard:          standard,
 	}, nil
 }
 
 // GetTokensByOwner возвращает все токены, созданные указанным адресом
 func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]*Token, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT t.id, c.address, t.symbol, t.name, t.decimals, t.total_supply, t.standard
+		SELECT t.id, c.address, t.symbol, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard
 		FROM tokens t
 		JOIN contracts c ON t.contract_id = c.id
 		WHERE c.owner = $1
@@ -254,21 +262,22 @@ func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]
 		var id int
 		var address, symbol, name, standard string
 		var decimals int
-		var totalSupply string
+		var totalSupply, circulatingSupply string
 
-		err := rows.Scan(&id, &address, &symbol, &name, &decimals, &totalSupply, &standard)
+		err := rows.Scan(&id, &address, &symbol, &name, &decimals, &totalSupply, &circulatingSupply, &standard)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка сканирования токена: %w", err)
 		}
 
 		tokens = append(tokens, &Token{
-			ID:          id,
-			Address:     address,
-			Symbol:      symbol,
-			Name:        name,
-			Decimals:    decimals,
-			TotalSupply: totalSupply,
-			Standard:    standard,
+			ID:                id,
+			Address:           address,
+			Symbol:            symbol,
+			Name:              name,
+			Decimals:          decimals,
+			TotalSupply:       totalSupply,
+			CirculatingSupply: circulatingSupply,
+			Standard:          standard,
 		})
 	}
 

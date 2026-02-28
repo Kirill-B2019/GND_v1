@@ -57,7 +57,19 @@ psql -U gnduser -d gnddb -f db/migrations/006_api_keys_admin.sql
 psql -U gnduser -d gnddb -f db/migrations/007_wallets_name_role.sql
 ```
 
-После сброса БД скриптом `003_reset_database.sql` миграции 006 и 007 нужно применить заново (они идемпотентны за счёт `IF NOT EXISTS` / осторожного `DO $$ ... $$`).
+### 3.3. Мягкое удаление кошельков
+
+Файл: `db/migrations/008_wallets_disabled.sql`
+
+- В таблицу `wallets` добавляется колонка `disabled` (BOOLEAN NOT NULL DEFAULT false). При `disabled = true` кошелёк не показывается в списке GET /api/v1/admin/wallets.
+
+Выполнение:
+
+```bash
+psql -U gnduser -d gnddb -f db/migrations/008_wallets_disabled.sql
+```
+
+После сброса БД скриптом `003_reset_database.sql` миграции 006, 007 и 008 нужно применить заново (они идемпотентны).
 
 ---
 
@@ -179,6 +191,8 @@ curl -X POST http://localhost:8182/api/v1/admin/keys/1/revoke \
 
 Опциональный query-параметр: `role` — фильтр по роли (например `validator`, `treasury`).
 
+В списке отображаются только кошельки с `disabled = false`. Для каждого кошелька с привязкой к signer_wallets возвращается поле `blocked` (true, если подписание заблокировано).
+
 Ответ **200**:
 
 ```json
@@ -192,8 +206,9 @@ curl -X POST http://localhost:8182/api/v1/admin/keys/1/revoke \
         "address": "GND...",
         "name": "Validator",
         "role": "validator",
-        "signer_wallet_id": "",
-        "created_at": "2026-02-28T10:00:00Z"
+        "signer_wallet_id": "uuid-...",
+        "created_at": "2026-02-28T10:00:00Z",
+        "blocked": false
       }
     ]
   }
@@ -229,6 +244,41 @@ curl -X PATCH "http://localhost:8182/api/v1/admin/wallets/GND..." \
   -H "X-Admin-Token: YOUR_ADMIN_SECRET" \
   -d '{"name":"Treasury","role":"treasury"}'
 ```
+
+---
+
+### 5.6. Блокировка подписания кошелька
+
+**POST** `/api/v1/admin/wallets/:address/disable`
+
+Устанавливает `signer_wallets.disabled = true` для кошелька с указанным адресом (если у кошелька есть привязка к signer_wallets). Заблокированный кошелёк не может подписывать транзакции через signing_service.
+
+Ответ **200**: `{ "success": true, "data": { "disabled": true } }`  
+Ответ **404**: кошелёк не найден или у него нет signer_wallet_id.
+
+---
+
+### 5.7. Разблокировка подписания
+
+**POST** `/api/v1/admin/wallets/:address/enable`
+
+Устанавливает `signer_wallets.disabled = false`.
+
+Ответ **200**: `{ "success": true, "data": { "enabled": true } }`  
+Ответ **404**: кошелёк не найден или без signer_wallet.
+
+---
+
+### 5.8. Мягкое удаление кошелька
+
+**DELETE** `/api/v1/admin/wallets/:address`  
+или  
+**POST** `/api/v1/admin/wallets/:address/delete`
+
+Устанавливает `wallets.disabled = true`. Кошелёк перестаёт отображаться в GET /api/v1/admin/wallets. Запись в БД остаётся.
+
+Ответ **200**: `{ "success": true, "data": { "deleted": true } }`  
+Ответ **404**: кошелёк не найден.
 
 ---
 
@@ -293,13 +343,17 @@ $data = $response->json('data');
 
 ## 9. Краткая сводка маршрутов
 
-| Метод   | Путь                          | Описание |
-|---------|-------------------------------|----------|
-| POST    | /api/v1/admin/keys            | Создать API-ключ (ключ в ответе один раз). |
-| GET     | /api/v1/admin/keys            | Список ключей (без поля key). |
-| POST    | /api/v1/admin/keys/:id/revoke | Отозвать ключ. |
-| DELETE  | /api/v1/admin/keys/:id        | То же (отзыв). |
-| GET     | /api/v1/admin/wallets         | Список кошельков (опционально ?role=). |
-| PATCH   | /api/v1/admin/wallets/:address| Обновить name и/или role кошелька. |
+| Метод   | Путь                                | Описание |
+|---------|-------------------------------------|----------|
+| POST    | /api/v1/admin/keys                  | Создать API-ключ (ключ в ответе один раз). |
+| GET     | /api/v1/admin/keys                  | Список ключей (без поля key). |
+| POST    | /api/v1/admin/keys/:id/revoke       | Отозвать ключ. |
+| DELETE  | /api/v1/admin/keys/:id               | То же (отзыв). |
+| GET     | /api/v1/admin/wallets               | Список кошельков (без удалённых; ?role=). |
+| PATCH   | /api/v1/admin/wallets/:address      | Обновить name и/или role кошелька. |
+| POST    | /api/v1/admin/wallets/:address/disable | Блокировка подписания (signer_wallets.disabled). |
+| POST    | /api/v1/admin/wallets/:address/enable  | Разблокировка подписания. |
+| DELETE  | /api/v1/admin/wallets/:address      | Мягкое удаление (wallets.disabled). |
+| POST    | /api/v1/admin/wallets/:address/delete   | То же (мягкое удаление). |
 
 Все маршруты требуют заголовок **X-Admin-Token** равный **GND_ADMIN_SECRET**.

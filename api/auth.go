@@ -14,16 +14,10 @@ import (
 )
 
 // ValidateAPIKey проверяет ключ из заголовка X-API-Key.
-// Поддерживается: константа ApiKey, запись в api_keys по полю key (legacy), по key_hash (SHA-256 hex).
+// Поддерживается: запись в api_keys по полю key (legacy), по key_hash (SHA-256 hex).
 // Отключённые ключи (disabled = true) и просроченные не принимаются.
 func ValidateAPIKey(ctx context.Context, pool *pgxpool.Pool, key string) bool {
-	if key == "" {
-		return false
-	}
-	if key == ApiKey {
-		return true
-	}
-	if pool == nil {
+	if key == "" || pool == nil {
 		return false
 	}
 	// Legacy: ключ в открытом виде в колонке key

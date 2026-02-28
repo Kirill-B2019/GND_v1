@@ -104,15 +104,15 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 		return nil, fmt.Errorf("ошибка создания аккаунта: %w", err)
 	}
 
-	// Инициализируем начальное состояние для всех токенов
+	// Инициализируем начальное состояние для всех токенов (явный ::text устраняет 42P08)
 	if tokenCount > 0 {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO token_balances (token_id, address, balance)
-			SELECT t.id, $1, '0'
+			SELECT t.id, $1::text, 0::numeric
 			FROM tokens t
 			WHERE NOT EXISTS (
 				SELECT 1 FROM token_balances tb 
-				WHERE tb.token_id = t.id AND tb.address = $1
+				WHERE tb.token_id = t.id AND tb.address = $1::text
 			)`,
 			address,
 		)
@@ -242,8 +242,8 @@ func NewWalletWithSigner(ctx context.Context, pool *pgxpool.Pool, creator Signer
 	if tokenCount > 0 {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO token_balances (token_id, address, balance)
-			SELECT t.id, $1, '0' FROM tokens t
-			WHERE NOT EXISTS (SELECT 1 FROM token_balances tb WHERE tb.token_id = t.id AND tb.address = $1)`,
+			SELECT t.id, $1::text, 0::numeric FROM tokens t
+			WHERE NOT EXISTS (SELECT 1 FROM token_balances tb WHERE tb.token_id = t.id AND tb.address = $1::text)`,
 			address); err != nil {
 			return nil, fmt.Errorf("инициализация балансов токенов: %w", err)
 		}
