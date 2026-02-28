@@ -5,6 +5,9 @@ import (
 	"GND/api"
 	"GND/consensus"
 	"GND/core"
+	"GND/signing_service/crypto"
+	"GND/signing_service/service"
+	"GND/signing_service/storage"
 	"GND/types"
 	"GND/vm"
 	"context"
@@ -162,6 +165,18 @@ func main() {
 	// 10. Мемпул
 	mempool := core.NewMempool()
 
+	// 11a. Signing service (если задан GND_MASTER_KEY — новые кошельки создаются через signer_wallets)
+	var signerCreator core.SignerWalletCreator
+	if masterKeyHex := os.Getenv("GND_MASTER_KEY"); masterKeyHex != "" {
+		masterKey, err := crypto.LoadMasterKey(masterKeyHex)
+		if err != nil {
+			log.Fatalf("GND_MASTER_KEY неверный (ожидается 64 hex-символа, 32 байта): %v", err)
+		}
+		repo := storage.NewPostgres(pool)
+		signerCreator = service.NewSignerService(repo, masterKey)
+		log.Println("Signing service включён: новые кошельки создаются через signer_wallets")
+	}
+
 	// 12. Серверы
 	go func() {
 		err := api.StartRPCServer(evmInstance, cfg.Server.RPC.RPCAddr)
@@ -169,7 +184,7 @@ func main() {
 			fmt.Printf("Ошибка запуска RPCServer %s:\n", err)
 		}
 	}()
-	go api.StartRESTServer(blockchain, mempool, cfg, pool, evmInstance)
+	go api.StartRESTServer(blockchain, mempool, cfg, pool, evmInstance, signerCreator)
 	go api.StartWebSocketServer(blockchain, mempool, cfg)
 
 	// 13. Обработка транзакций

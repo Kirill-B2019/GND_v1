@@ -13,6 +13,7 @@ import (
 
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -25,9 +26,16 @@ var validPrefixes = [][]byte{
 
 var accountID int
 
+// SignerWalletCreator — интерфейс для создания кошелька через signing_service (без хранения приватного ключа в БД).
+type SignerWalletCreator interface {
+	GenerateKeyForNewWallet() (pubKey []byte, encryptedPriv []byte, err error)
+	StoreWallet(ctx context.Context, accountID int, pubKey, encryptedPriv []byte) (walletID uuid.UUID, err error)
+}
+
 type Wallet struct {
-	PrivateKey *secp256k1.PrivateKey
-	Address    Address
+	PrivateKey     *secp256k1.PrivateKey
+	Address        Address
+	SignerWalletID *uuid.UUID // заполняется для кошельков, созданных через signing_service
 }
 
 func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
@@ -197,6 +205,71 @@ func NewWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	}, nil
 }
 
+// NewWalletWithSigner создаёт кошелёк через SignerWalletCreator: ключ хранится только в signer_wallets (зашифрован).
+func NewWalletWithSigner(ctx context.Context, pool *pgxpool.Pool, creator SignerWalletCreator) (*Wallet, error) {
+	pubKey, encryptedPriv, err := creator.GenerateKeyForNewWallet()
+	if err != nil {
+		return nil, fmt.Errorf("генерация ключа signer: %w", err)
+	}
+	address, err := AddressFromPublicKey(pubKey)
+	if err != nil {
+		return nil, fmt.Errorf("адрес из публичного ключа: %w", err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("начало транзакции: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var exists bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM accounts WHERE address = $1)", address).Scan(&exists); err != nil {
+		return nil, fmt.Errorf("проверка адреса: %w", err)
+	}
+	if exists {
+		return nil, fmt.Errorf("адрес %s уже существует", address)
+	}
+	var tokenCount int
+	if err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM tokens").Scan(&tokenCount); err != nil {
+		return nil, fmt.Errorf("проверка токенов: %w", err)
+	}
+	var newAccountID int
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO accounts (address, nonce, created_at) VALUES ($1, $2, $3) RETURNING id`,
+		address, 0, time.Now(),
+	).Scan(&newAccountID); err != nil {
+		return nil, fmt.Errorf("создание аккаунта: %w", err)
+	}
+	if tokenCount > 0 {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO token_balances (token_id, address, balance)
+			SELECT t.id, $1, '0' FROM tokens t
+			WHERE NOT EXISTS (SELECT 1 FROM token_balances tb WHERE tb.token_id = t.id AND tb.address = $1)`,
+			address); err != nil {
+			return nil, fmt.Errorf("инициализация балансов токенов: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("фиксация транзакции: %w", err)
+	}
+	signerWalletID, err := creator.StoreWallet(ctx, newAccountID, pubKey, encryptedPriv)
+	if err != nil {
+		return nil, fmt.Errorf("сохранение в signer_wallets: %w", err)
+	}
+	now := time.Now()
+	publicKeyHex := hex.EncodeToString(pubKey)
+	_, err = pool.Exec(ctx, `
+		INSERT INTO wallets (account_id, address, public_key, private_key, signer_wallet_id, created_at, updated_at, status)
+		VALUES ($1, $2, $3, NULL, $4, $5, $6, 'active')`,
+		newAccountID, address, publicKeyHex, signerWalletID, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("запись в wallets: %w", err)
+	}
+	return &Wallet{
+		Address:        Address(address),
+		SignerWalletID: &signerWalletID,
+	}, nil
+}
+
 func randomPrefix() (string, error) {
 	validPrefixes := []string{"GND", "GN_"}
 	max := big.NewInt(int64(len(validPrefixes)))
@@ -205,6 +278,28 @@ func randomPrefix() (string, error) {
 		return "", err
 	}
 	return validPrefixes[n.Int64()], nil
+}
+
+// AddressFromPublicKey строит GND-адрес из сжатого публичного ключа secp256k1 (33 байта).
+// Используется при создании кошелька через signing_service.
+func AddressFromPublicKey(pubKey []byte) (string, error) {
+	if len(pubKey) != 33 {
+		return "", fmt.Errorf("ожидается сжатый публичный ключ 33 байта, получено %d", len(pubKey))
+	}
+	shaHash := sha256.Sum256(pubKey)
+	ripemdHasher := ripemd160.New()
+	if _, err := ripemdHasher.Write(shaHash[:]); err != nil {
+		return "", err
+	}
+	pubKeyHash := ripemdHasher.Sum(nil)
+	prefix, err := randomPrefix()
+	if err != nil {
+		return "", err
+	}
+	checksum := Checksum(pubKeyHash)
+	fullPayload := append(pubKeyHash, checksum...)
+	encoded := base58.Encode(fullPayload)
+	return prefix + encoded, nil
 }
 
 func ValidateAddress(address string) bool {
@@ -254,26 +349,32 @@ func bytesEqual(a, b []byte) bool {
 }
 
 func (w *Wallet) PrivateKeyHex() string {
-	return hex.EncodeToString(w.PrivateKey.Serialize())
+	if w.PrivateKey != nil {
+		return hex.EncodeToString(w.PrivateKey.Serialize())
+	}
+	return ""
 }
 
 func (w *Wallet) PublicKeyHex() string {
-	return hex.EncodeToString(w.PrivateKey.PubKey().SerializeCompressed())
+	if w.PrivateKey != nil {
+		return hex.EncodeToString(w.PrivateKey.PubKey().SerializeCompressed())
+	}
+	return ""
 }
 
-// LoadWallet загружает существующий кошелек из базы данных
+// LoadWallet загружает последний активный кошелёк с приватным ключом (для валидатора/майнера).
+// Кошельки только с signer_wallet_id (private_key IS NULL) не выбираются.
 func LoadWallet(pool *pgxpool.Pool) (*Wallet, error) {
 	var (
 		address       string
 		privateKeyHex string
 	)
 
-	// Получаем последний активный кошелек
 	err := pool.QueryRow(context.Background(), `
 		SELECT w.address, w.private_key
 		FROM wallets w
 		JOIN accounts a ON w.account_id = a.id
-		WHERE w.status = 'active'
+		WHERE w.status = 'active' AND w.private_key IS NOT NULL
 		ORDER BY w.created_at DESC
 		LIMIT 1
 	`).Scan(&address, &privateKeyHex)

@@ -17,12 +17,13 @@ import (
 
 // Blockchain represents the blockchain structure
 type Blockchain struct {
-	Genesis *Block
-	State   StateIface
-	Pool    *pgxpool.Pool
-	Blocks  []*Block
-	Mempool *Mempool
-	mutex   sync.Mutex
+	Genesis       *Block
+	State         StateIface
+	Pool          *pgxpool.Pool
+	Blocks        []*Block
+	Mempool       *Mempool
+	mutex         sync.Mutex
+	SignerCreator SignerWalletCreator // опционально: для создания кошельков через signing_service
 }
 
 // NewBlockchain creates a new blockchain
@@ -591,8 +592,11 @@ func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
 	return nil
 }
 
-// CreateWallet создает новый кошелек
-func (bc *Blockchain) CreateWallet() (*Wallet, error) {
+// CreateWallet создает новый кошелек. Если задан SignerCreator — ключ хранится в signer_wallets (без private_key в wallets).
+func (bc *Blockchain) CreateWallet(ctx context.Context) (*Wallet, error) {
+	if bc.SignerCreator != nil {
+		return NewWalletWithSigner(ctx, bc.Pool, bc.SignerCreator)
+	}
 	return NewWallet(bc.Pool)
 }
 

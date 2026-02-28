@@ -200,7 +200,7 @@ func (s *Server) CreateWallet(c *gin.Context) {
 		})
 		return
 	}
-	wallet, err := s.core.CreateWallet()
+	wallet, err := s.core.CreateWallet(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -769,7 +769,11 @@ func (s *Server) GetMempool(c *gin.Context) {
 }
 
 // StartRESTServer запускает REST API сервер. evmInstance используется для деплоя токенов (POST /token/deploy); если nil — эндпоинт возвращает 503.
-func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool, evmInstance *vm.EVM) {
+// signerCreator — опционально: при наличии новые кошельки создаются через signing_service (ключ в signer_wallets).
+func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool, evmInstance *vm.EVM, signerCreator core.SignerWalletCreator) {
+	if signerCreator != nil {
+		bc.SignerCreator = signerCreator
+	}
 	// Инициализируем метрики блоков из текущей цепи (LastBlockTime, TotalBlocks и т.д.)
 	if latest, err := bc.GetLatestBlock(); err == nil {
 		core.InitBlockMetricsFromBlock(latest)

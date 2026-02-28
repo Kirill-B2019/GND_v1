@@ -23,6 +23,13 @@ END $$;
 
 TRUNCATE TABLE public.blocks RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.wallets CASCADE;
+-- signer_wallets (кастодиальные ключи): очистить до accounts из-за FK account_id
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'signer_wallets') THEN
+    EXECUTE 'TRUNCATE TABLE public.signer_wallets CASCADE';
+  END IF;
+END $$;
 TRUNCATE TABLE public.tokens RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.events RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.api_keys RESTART IDENTITY CASCADE;

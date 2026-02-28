@@ -12,15 +12,20 @@ GANYMED (ГАНИМЕД) — блокчейн-платформа с гибрид
    - Состояние (State), мемпул, кошельки, токены, контракты
    - Метрики и алерты (core.Metrics)
 
-2. **API Layer**
+2. **Signing Service (встроенный)**
+   - Кастодиальное хранение ключей secp256k1: при заданном `GND_MASTER_KEY` кошельки, создаваемые через POST `/api/v1/wallet`, хранят приватный ключ только в таблице `signer_wallets` (AES-256-GCM); в `wallets.private_key` — NULL.
+   - Пакет `signing_service`: crypto (шифрование, secp256k1), storage (signer_wallets), service (SignerService). Реализует интерфейс `core.SignerWalletCreator`; подключается в `main.go` и передаётся в REST API для создания кошельков без выноса ключа в открытом виде.
+   - Подробнее: [signing-service.md](signing-service.md).
+
+3. **API Layer**
    - REST API (порт 8182, `/api/v1/*`)
    - WebSocket API (порт 8183)
    - RPC API (порт 8181)
 
-3. **Storage**
-   - PostgreSQL (основное хранилище)
+4. **Storage**
+   - PostgreSQL (основное хранилище): блоки, транзакции, accounts, wallets, token_balances, **signer_wallets** (миграции 004, 005).
 
-4. **Monitoring и аудит**
+5. **Monitoring и аудит**
    - Метрики (core + monitoring.MetricsRegistry)
    - Алерты (AlertManager), события (EventLogger)
    - Аудит: монитор подозрительных транзакций, правила, проверки безопасности контрактов
@@ -129,10 +134,15 @@ GANYMED (ГАНИМЕД) — блокчейн-платформа с гибрид
 ### Схема взаимодействия
 ```
 [Client] <-> [API Layer] <-> [Core Node] <-> [Storage]
-                    ^            ^
-                    |            |
-              [Monitoring] <-> [Metrics]
+                    ^            ^                ^
+                    |            |                |
+              [Monitoring]   [Signing Service]  signer_wallets
+                    |        (при GND_MASTER_KEY)  (encrypted keys)
+                    v            v
+              [Metrics]     CreateWallet -> NewWalletWithSigner
 ```
+
+При создании кошелька (POST `/api/v1/wallet`): если у блокчейна задан `SignerCreator`, Core вызывает `NewWalletWithSigner` — ключ генерируется в signing_service, шифруется и сохраняется в `signer_wallets`; в `wallets` записываются адрес, `public_key` и `signer_wallet_id`. Кошелёк валидатора при первом запуске ноды создаётся по старой схеме (`NewWallet`, ключ в `wallets.private_key`).
 
 ### Потоки данных
 1. Входящие запросы

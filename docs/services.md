@@ -120,13 +120,27 @@
 
 ---
 
-## 9. База данных
+## 9. Signing Service (signing_service)
 
-**Хост/порт:** из config/db.json (по умолчанию 31.128.41.155:5432). Таблицы: accounts, wallets, blocks, transactions (партиционирована по времени), token_balances, tokens, contracts, states, events, api_keys, oracles, metrics, validators (poa_validators, pos_validators), logs. Миграции: db/002_schema_additions.sql, db/003_reset_database.sql, db/dump.sql.
+**Назначение:** кастодиальное хранение ключей secp256k1 для кошельков, создаваемых через API.
+
+| Компонент | Описание |
+|-----------|----------|
+| **crypto** | AES-256-GCM шифрование (LoadMasterKey, EncryptPrivKey, DecryptPrivKey), secp256k1 (NewSecp256k1Key, SignDigest, PublicKeyBytes, PrivKeyToBytes). |
+| **storage** | Модель Wallet, Postgres-репозиторий для таблицы signer_wallets (GetWallet, GetWalletByAccountID, CreateWallet). |
+| **service** | SignerService: GenerateKeyForNewWallet (без записи), StoreWallet (запись в signer_wallets), CreateWallet (полный цикл по account_id), SignDigest, GetPublicKey. Реализует core.SignerWalletCreator для создания кошельков без приватного ключа в wallets. |
+
+**Включение:** переменная окружения `GND_MASTER_KEY` (64 hex-символа). При её наличии новые кошельки по POST `/api/v1/wallet` создаются через signer_wallets; `wallets.private_key` = NULL, `wallets.signer_wallet_id` заполняется. Подробнее: [signing-service.md](signing-service.md).
 
 ---
 
-## 10. Конфигурация
+## 10. База данных
+
+**Хост/порт:** из config/db.json (по умолчанию 31.128.41.155:5432). Таблицы: accounts, wallets, blocks, transactions (партиционирована по времени), token_balances, tokens, contracts, states, events, api_keys, oracles, metrics, validators (poa_validators, pos_validators), logs, **signer_wallets** (миграции 004, 005). Миграции: db/migrations/004_create_signer_wallets.sql, db/migrations/005_wallets_private_key_nullable.sql, db/002_schema_additions.sql, db/003_reset_database.sql, db/dump.sql.
+
+---
+
+## 11. Конфигурация
 
 | Файл | Назначение |
 |------|------------|
