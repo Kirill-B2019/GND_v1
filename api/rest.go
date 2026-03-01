@@ -845,10 +845,12 @@ func (s *Server) TokenLogoSet(c *gin.Context) {
 }
 
 func (s *Server) setupRoutes() {
-	// Раздача загруженных файлов (логотипы токенов)
+	// Раздача загруженных файлов (логотипы токенов и коинов)
 	s.router.Static("/uploads", "uploads")
 
 	api := s.router.Group("/api/v1")
+	// Дублируем раздачу uploads под /api/v1/uploads — чтобы работало за прокси, который проксирует только /api/v1
+	api.Static("/uploads", "uploads")
 
 	// Метрики
 	api.GET("/metrics", s.GetMetrics)
