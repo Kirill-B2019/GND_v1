@@ -111,6 +111,7 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		TotalSupply: params.TotalSupply,
 		Standard:    params.Standard,
 		CreatedAt:   time.Now().Unix(),
+		LogoURL:     params.LogoURL,
 	}
 
 	// Регистрируем токен
@@ -153,8 +154,8 @@ func (d *Deployer) registerToken(ctx context.Context, info tokentypes.TokenInfo)
 			return token, fmt.Errorf("запись в contracts: %w", err)
 		}
 		_, err = d.pool.Exec(ctx,
-			`INSERT INTO public.tokens (contract_id, standard, symbol, name, decimals, total_supply) VALUES ($1, $2, $3, $4, $5, $6)`,
-			contractID, standard, info.Symbol, info.Name, info.Decimals, totalSupply.String(),
+			`INSERT INTO public.tokens (contract_id, standard, symbol, name, decimals, total_supply, logo_url) VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))`,
+			contractID, standard, info.Symbol, info.Name, info.Decimals, totalSupply.String(), info.LogoURL,
 		)
 		if err != nil {
 			return token, fmt.Errorf("запись в tokens: %w", err)

@@ -13,6 +13,7 @@ type TokenParams struct {
 	TotalSupply *big.Int
 	Owner       string
 	Standard    string
+	LogoURL     string // Ссылка на логотип (URL или путь после загрузки)
 }
 
 // TokenInfo содержит информацию о токене
@@ -25,4 +26,5 @@ type TokenInfo struct {
 	TotalSupply *big.Int
 	Standard    string
 	CreatedAt   int64
+	LogoURL     string // Ссылка на логотип (URL или путь)
 }

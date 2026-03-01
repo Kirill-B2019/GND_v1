@@ -13,6 +13,8 @@
     <file url="file://$PROJECT_DIR$/db/migrations/007_wallets_name_role.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/008_wallets_disabled.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/009_tokens_circulating_supply.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/010_events_updated_at_trigger.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/011_tokens_logo_url.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main_test.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/tokens/deployer/deployer.go" dialect="PostgreSQL" />

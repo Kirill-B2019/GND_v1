@@ -15,6 +15,7 @@ type TokenInfo struct {
 	Standard    string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	LogoURL     string // Ссылка на логотип (URL или путь, до 250x250 px)
 }
 
 // TokenMetadata содержит метаданные токена

@@ -16,8 +16,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -25,9 +28,16 @@ import (
 	"math/big"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// UploadDirTokenLogos — каталог для загруженных логотипов токенов (относительно рабочей директории).
+const UploadDirTokenLogos = "uploads/token_logos"
+
+// MaxLogoFileSize — максимальный размер файла логотипа в байтах (2 МБ).
+const MaxLogoFileSize = 2 * 1024 * 1024
 
 // APIResponse — унифицированная структура ответа API
 type APIResponse struct {
@@ -609,6 +619,7 @@ func (s *Server) DeployToken(c *gin.Context) {
 		TotalSupply *big.Int `json:"total_supply"`
 		Owner       string   `json:"owner"`
 		Standard    string   `json:"standard"`
+		LogoURL     string   `json:"logo_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
@@ -652,6 +663,7 @@ func (s *Server) DeployToken(c *gin.Context) {
 		TotalSupply: req.TotalSupply,
 		Owner:       req.Owner,
 		Standard:    req.Standard,
+		LogoURL:     strings.TrimSpace(req.LogoURL),
 	}
 	token, err := s.deployer.DeployToken(c.Request.Context(), params)
 	if err != nil {
@@ -671,6 +683,7 @@ func (s *Server) DeployToken(c *gin.Context) {
 		"standard":             token.GetStandard(),
 		"owner":                req.Owner,
 		"owner_wallet_created": ownerWalletCreated,
+		"logo_url":             params.LogoURL,
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -678,7 +691,163 @@ func (s *Server) DeployToken(c *gin.Context) {
 	})
 }
 
+// TokenLogoUpload загружает файл логотипа, проверяет 250x250 и тип картинки, сохраняет в uploads/token_logos и обновляет tokens.logo_url.
+// Требуется X-API-Key. Form: file (обязательно), token_id или symbol или token_address (один из них).
+func (s *Server) TokenLogoUpload(c *gin.Context) {
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	if !ValidateAPIKey(c.Request.Context(), s.db, c.GetHeader("X-API-Key")) {
+		c.JSON(http.StatusUnauthorized, APIResponse{Success: false, Error: "Неверный или отсутствующий X-API-Key", Code: http.StatusUnauthorized})
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Отсутствует поле file с изображением", Code: http.StatusBadRequest})
+		return
+	}
+	tokenIDStr := strings.TrimSpace(c.PostForm("token_id"))
+	symbol := strings.TrimSpace(c.PostForm("symbol"))
+	tokenAddress := strings.TrimSpace(c.PostForm("token_address"))
+	if tokenIDStr == "" && symbol == "" && tokenAddress == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите token_id, symbol или token_address", Code: http.StatusBadRequest})
+		return
+	}
+
+	// Открываем и читаем файл (лимит размера)
+	fh, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Не удалось прочитать файл: " + err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	defer fh.Close()
+	data, err := io.ReadAll(io.LimitReader(fh, MaxLogoFileSize))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Ошибка чтения файла", Code: http.StatusInternalServerError})
+		return
+	}
+	if int64(len(data)) == MaxLogoFileSize {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Файл слишком большой (макс. 2 МБ)", Code: http.StatusBadRequest})
+		return
+	}
+	contentType := file.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if _, _, err := ValidateTokenLogo(data, contentType); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+
+	// Определяем token_id в БД
+	var tokenID int
+	if tokenIDStr != "" {
+		if id, err := strconv.Atoi(tokenIDStr); err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Некорректный token_id", Code: http.StatusBadRequest})
+			return
+		} else {
+			tokenID = id
+		}
+	} else {
+		if symbol != "" {
+			err = s.db.QueryRow(c.Request.Context(), `SELECT id FROM tokens WHERE symbol = $1`, symbol).Scan(&tokenID)
+		} else {
+			err = s.db.QueryRow(c.Request.Context(), `SELECT t.id FROM tokens t JOIN contracts c ON c.id = t.contract_id WHERE c.address = $1`, tokenAddress).Scan(&tokenID)
+		}
+		if err != nil {
+			c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Токен не найден по symbol или token_address", Code: http.StatusNotFound})
+			return
+		}
+	}
+
+	// Сохраняем файл в uploads/token_logos
+	if err := os.MkdirAll(UploadDirTokenLogos, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Не удалось создать каталог для загрузок", Code: http.StatusInternalServerError})
+		return
+	}
+	ext := LogoExtByContentType(contentType)
+	namePart := tokenIDStr
+	if namePart == "" {
+		namePart = symbol
+	}
+	if namePart == "" {
+		namePart = tokenAddress
+	}
+	filename := SafeLogoFilename(namePart, uuid.New().String()[:8], ext)
+	path := filepath.Join(UploadDirTokenLogos, filename)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Не удалось сохранить файл: " + err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	logoURL := "/uploads/token_logos/" + filename
+
+	// Обновляем tokens.logo_url
+	_, err = s.db.Exec(c.Request.Context(), `UPDATE public.tokens SET logo_url = $1 WHERE id = $2`, logoURL, tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Ошибка обновления logo_url: " + err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"logo_url": logoURL}})
+}
+
+// TokenLogoSet устанавливает logo_url для токена по id/symbol/address (тело: logo_url). Требуется X-API-Key.
+func (s *Server) TokenLogoSet(c *gin.Context) {
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	if !ValidateAPIKey(c.Request.Context(), s.db, c.GetHeader("X-API-Key")) {
+		c.JSON(http.StatusUnauthorized, APIResponse{Success: false, Error: "Неверный или отсутствующий X-API-Key", Code: http.StatusUnauthorized})
+		return
+	}
+	var req struct {
+		TokenID      *int   `json:"token_id"`
+		Symbol       string `json:"symbol"`
+		TokenAddress string `json:"token_address"`
+		LogoURL      string `json:"logo_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.LogoURL) == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Тело запроса должно содержать logo_url (и один из: token_id, symbol, token_address)", Code: http.StatusBadRequest})
+		return
+	}
+	logoURL := strings.TrimSpace(req.LogoURL)
+	var tokenID int
+	var err error
+	if req.TokenID != nil && *req.TokenID > 0 {
+		tokenID = *req.TokenID
+	} else if req.Symbol != "" || req.TokenAddress != "" {
+		sym := strings.TrimSpace(req.Symbol)
+		addr := strings.TrimSpace(req.TokenAddress)
+		if sym != "" {
+			err = s.db.QueryRow(c.Request.Context(), `SELECT id FROM tokens WHERE symbol = $1`, sym).Scan(&tokenID)
+		} else {
+			err = s.db.QueryRow(c.Request.Context(), `SELECT t.id FROM tokens t JOIN contracts c ON c.id = t.contract_id WHERE c.address = $1`, addr).Scan(&tokenID)
+		}
+		if err != nil {
+			c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Токен не найден", Code: http.StatusNotFound})
+			return
+		}
+	} else {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите token_id, symbol или token_address", Code: http.StatusBadRequest})
+		return
+	}
+	cmd, err := s.db.Exec(c.Request.Context(), `UPDATE public.tokens SET logo_url = $1 WHERE id = $2`, logoURL, tokenID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	if cmd.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Токен не найден", Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"logo_url": logoURL}})
+}
+
 func (s *Server) setupRoutes() {
+	// Раздача загруженных файлов (логотипы токенов)
+	s.router.Static("/uploads", "uploads")
+
 	api := s.router.Group("/api/v1")
 
 	// Метрики
@@ -716,6 +885,8 @@ func (s *Server) setupRoutes() {
 
 	// Токены (создание — по API-ключу; операции — без ключа в текущей реализации)
 	api.POST("/token/deploy", s.DeployToken)
+	api.POST("/token/logo/upload", s.TokenLogoUpload)
+	api.PATCH("/token/logo", s.TokenLogoSet)
 	// Токены
 	api.POST("/token/transfer", func(c *gin.Context) {
 		var req struct {

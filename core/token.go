@@ -45,6 +45,7 @@ type Token struct {
 	Runs              int       // Количество запусков оптимизации
 	License           string    // Лицензия контракта
 	Metadata          []byte    // Метаданные токена
+	LogoURL           string    // Ссылка на логотип (URL или путь, до 250x250 px)
 }
 
 // ToTokenInfo преобразует Token в TokenInfo
@@ -58,6 +59,7 @@ func (t *Token) ToTokenInfo() *types.TokenInfo {
 		Standard:    t.Standard,
 		CreatedAt:   t.CreatedAt,
 		UpdatedAt:   t.UpdatedAt,
+		LogoURL:     t.LogoURL,
 	}
 }
 
@@ -128,11 +130,11 @@ func (t *Token) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	err = pool.QueryRow(ctx, `
 		INSERT INTO tokens (
 			contract_id, symbol, name, decimals, total_supply, circulating_supply,
-			standard, is_verified
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			standard, is_verified, logo_url
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))
 		RETURNING id`,
 		contractID, t.Symbol, t.Name, t.Decimals, t.TotalSupply, circulating,
-		t.Standard, t.IsVerified,
+		t.Standard, t.IsVerified, t.LogoURL,
 	).Scan(&t.ID)
 
 	if err != nil {
@@ -217,12 +219,13 @@ func GetTokenBySymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (*
 	var name, standard string
 	var decimals int
 	var totalSupply, circulatingSupply string
+	var logoURL string
 	err := pool.QueryRow(ctx, `
-		SELECT t.id, t.contract_id, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard
+		SELECT t.id, t.contract_id, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard, COALESCE(t.logo_url, '')
 		FROM tokens t
 		WHERE t.symbol = $1`,
 		symbol,
-	).Scan(&id, &contractID, &name, &decimals, &totalSupply, &circulatingSupply, &standard)
+	).Scan(&id, &contractID, &name, &decimals, &totalSupply, &circulatingSupply, &standard, &logoURL)
 	if err != nil {
 		return nil, err
 	}
@@ -239,13 +242,14 @@ func GetTokenBySymbol(ctx context.Context, pool *pgxpool.Pool, symbol string) (*
 		TotalSupply:       totalSupply,
 		CirculatingSupply: circulatingSupply,
 		Standard:          standard,
+		LogoURL:           logoURL,
 	}, nil
 }
 
 // GetTokensByOwner возвращает все токены, созданные указанным адресом
 func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]*Token, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT t.id, c.address, t.symbol, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard
+		SELECT t.id, c.address, t.symbol, t.name, t.decimals, t.total_supply, COALESCE(t.circulating_supply::text, t.total_supply::text), t.standard, COALESCE(t.logo_url, '')
 		FROM tokens t
 		JOIN contracts c ON t.contract_id = c.id
 		WHERE c.owner = $1
@@ -260,11 +264,11 @@ func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]
 	var tokens []*Token
 	for rows.Next() {
 		var id int
-		var address, symbol, name, standard string
+		var address, symbol, name, standard, logoURL string
 		var decimals int
 		var totalSupply, circulatingSupply string
 
-		err := rows.Scan(&id, &address, &symbol, &name, &decimals, &totalSupply, &circulatingSupply, &standard)
+		err := rows.Scan(&id, &address, &symbol, &name, &decimals, &totalSupply, &circulatingSupply, &standard, &logoURL)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка сканирования токена: %w", err)
 		}
@@ -278,6 +282,7 @@ func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]
 			TotalSupply:       totalSupply,
 			CirculatingSupply: circulatingSupply,
 			Standard:          standard,
+			LogoURL:           logoURL,
 		})
 	}
 
@@ -322,6 +327,7 @@ type WalletTokenBalance struct {
 	Name         string `json:"name"`
 	Decimals     int    `json:"decimals"`
 	IsVerified   bool   `json:"is_verified"`
+	LogoURL      string `json:"logo_url,omitempty"`
 }
 
 // GetWalletTokenBalances возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
@@ -341,7 +347,7 @@ func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddre
 
 func getWalletBalancesByTokenID(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
+		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, ''), COALESCE(t.logo_url, '')
 		FROM token_balances tb
 		JOIN tokens t ON t.id = tb.token_id
 		LEFT JOIN contracts c ON c.id = t.contract_id
@@ -357,7 +363,7 @@ func getWalletBalancesByTokenID(ctx context.Context, pool *pgxpool.Pool, walletA
 	for rows.Next() {
 		var item WalletTokenBalance
 		var balanceStr string
-		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress); err != nil {
+		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress, &item.LogoURL); err != nil {
 			return nil, fmt.Errorf("ошибка сканирования строки: %w", err)
 		}
 		item.Balance = balanceStr
@@ -370,7 +376,7 @@ func getWalletBalancesByTokenID(ctx context.Context, pool *pgxpool.Pool, walletA
 func getWalletBalancesBySymbol(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
 	// Проверяем наличие колонки symbol в token_balances (миграция 002)
 	rows, err := pool.Query(ctx, `
-		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, '')
+		SELECT tb.balance::text, COALESCE(t.standard, ''), COALESCE(t.symbol, ''), COALESCE(t.name, ''), COALESCE(t.decimals, 0), COALESCE(t.is_verified, false), COALESCE(c.address, ''), COALESCE(t.logo_url, '')
 		FROM token_balances tb
 		JOIN tokens t ON t.symbol = tb.symbol
 		LEFT JOIN contracts c ON c.id = t.contract_id
@@ -387,7 +393,7 @@ func getWalletBalancesBySymbol(ctx context.Context, pool *pgxpool.Pool, walletAd
 	for rows.Next() {
 		var item WalletTokenBalance
 		var balanceStr string
-		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress); err != nil {
+		if err := rows.Scan(&balanceStr, &item.Standard, &item.Symbol, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress, &item.LogoURL); err != nil {
 			return nil, nil
 		}
 		item.Balance = balanceStr
