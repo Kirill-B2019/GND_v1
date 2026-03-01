@@ -5,6 +5,7 @@ package api
 
 import (
 	"GND/core"
+	"GND/tokens/deployer"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -28,7 +29,8 @@ func TestDeployToken_NoAPIKey_Returns401(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	// Ненулевой deployer, чтобы проверка 503 не сработала и сработала проверка API key.
+	server := NewServer(nil, bc, core.NewMempool(), deployer.NewDeployer(nil, nil, nil), nil)
 
 	body := map[string]interface{}{
 		"name":         "Test",
@@ -71,7 +73,8 @@ func TestDeployToken_InvalidAPIKey_Returns401(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	// Ненулевой deployer, чтобы проверка 503 не сработала и сработала проверка API key.
+	server := NewServer(nil, bc, core.NewMempool(), deployer.NewDeployer(nil, nil, nil), nil)
 
 	body := map[string]interface{}{
 		"name":         "Test",
@@ -105,7 +108,7 @@ func TestDeployToken_ValidAPIKey_NoDeployer_Returns503(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil, nil)
 
 	body := map[string]interface{}{
 		"name":         "Test",

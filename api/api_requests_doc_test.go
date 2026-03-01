@@ -25,7 +25,7 @@ func setupServerForDocTest(t *testing.T) *Server {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	return NewServer(nil, bc, core.NewMempool(), nil)
+	return NewServer(nil, bc, core.NewMempool(), nil, nil)
 }
 
 func TestDocURLs_HealthAndMetrics(t *testing.T) {

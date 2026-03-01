@@ -23,3 +23,6 @@ env/
 .env.*.local
 *.secret
 *.pem
+/api/rest_contract_test.go
+/gnd_node_emulate.exe
+/scripts/emulate_restart.ps1

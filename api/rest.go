@@ -4,6 +4,7 @@
 package api
 
 import (
+	"GND/audit"
 	"GND/core"
 	"GND/tokens/deployer"
 	"GND/tokens/interfaces"
@@ -11,12 +12,14 @@ import (
 	tokentypes "GND/tokens/types"
 	"GND/types"
 	"GND/vm"
+	"GND/vm/compiler"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"math/big"
@@ -73,16 +76,18 @@ type Server struct {
 	core     *core.Blockchain
 	mempool  *core.Mempool
 	deployer *deployer.Deployer
+	cfg      *core.Config
 }
 
-// NewServer создает новый экземпляр сервера. deployer может быть nil — тогда POST /token/deploy недоступен.
-func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Mempool, tokenDeployer *deployer.Deployer) *Server {
+// NewServer создает новый экземпляр сервера. deployer может быть nil — тогда POST /token/deploy недоступен. cfg опционально — для health (chain_id, subnet_id).
+func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Mempool, tokenDeployer *deployer.Deployer, cfg *core.Config) *Server {
 	server := &Server{
 		router:   gin.Default(),
 		db:       db,
 		core:     blockchain,
 		mempool:  mempool,
 		deployer: tokenDeployer,
+		cfg:      cfg,
 	}
 	server.setupRoutes()
 	return server
@@ -177,15 +182,23 @@ func (s *Server) SetAlertThresholds(c *gin.Context) {
 	})
 }
 
-// HealthCheck возвращает статус сервера
+// HealthCheck возвращает статус сервера и идентификаторы сети (для мостов и подсетей)
 func (s *Server) HealthCheck(c *gin.Context) {
+	data := gin.H{
+		"status":    "ok",
+		"version":   "1.0.0",
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	if s.cfg != nil {
+		data["network_id"] = s.cfg.NetworkID
+		data["chain_id"] = s.cfg.ChainID
+		if s.cfg.SubnetID != "" {
+			data["subnet_id"] = s.cfg.SubnetID
+		}
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data: gin.H{
-			"status":    "ok",
-			"version":   "1.0.0",
-			"timestamp": time.Now().Format(time.RFC3339),
-		},
+		Data:    data,
 	})
 }
 
@@ -433,6 +446,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 		Params      map[string]interface{} `json:"params"`
 		Description string                 `json:"description"`
 		MetadataCID string                 `json:"metadata_cid"`
+		Metadata    json.RawMessage        `json:"metadata"`
 		SourceCode  string                 `json:"source_code"`
 		GasLimit    uint64                 `json:"gas_limit"`
 		GasPrice    *big.Int               `json:"gas_price"`
@@ -459,6 +473,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 		Params:      paramsData.Params,
 		Description: paramsData.Description,
 		MetadataCID: paramsData.MetadataCID,
+		Metadata:    paramsData.Metadata,
 		SourceCode:  paramsData.SourceCode,
 		GasLimit:    paramsData.GasLimit,
 		GasPrice:    paramsData.GasPrice,
@@ -499,22 +514,91 @@ func (s *Server) GetContract(c *gin.Context) {
 	})
 }
 
+// CompileContract компилирует исходный код Solidity. POST /contract/compile
+func (s *Server) CompileContract(c *gin.Context) {
+	var req struct {
+		Source   string `json:"source"`
+		Name     string `json:"name"`
+		Standard string `json:"standard"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный формат данных", Code: http.StatusBadRequest})
+		return
+	}
+	if req.Source == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Поле source обязательно", Code: http.StatusBadRequest})
+		return
+	}
+	if req.Standard == "" {
+		req.Standard = "GND-st1"
+	}
+	if req.Name == "" {
+		req.Name = "Contract"
+	}
+	solc := compiler.DefaultSolidityCompiler{SolcPath: "solc"}
+	metadata := compiler.ContractMetadata{
+		Name:     req.Name,
+		Standard: req.Standard,
+		Compiler: "solc",
+		Version:  "0.8.0",
+	}
+	result, err := solc.Compile([]byte(req.Source), metadata)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Ошибка компиляции: " + err.Error(),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
+			"bytecode": result.Bytecode,
+			"abi":      result.ABI,
+			"warnings": result.Warnings,
+			"errors":   result.Errors,
+		},
+	})
+}
+
+// AnalyzeContract выполняет проверки безопасности по исходному коду. POST /contract/analyze
+func (s *Server) AnalyzeContract(c *gin.Context) {
+	var req struct {
+		Source string `json:"source"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный формат данных", Code: http.StatusBadRequest})
+		return
+	}
+	if req.Source == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Поле source обязательно", Code: http.StatusBadRequest})
+		return
+	}
+	issues := audit.RunSecurityChecksSource(req.Source, "source")
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    gin.H{"issues": issues},
+	})
+}
+
 // DeployToken создаёт и регистрирует токен. Требуется заголовок X-API-Key (внешняя система / api-keys).
+// Поле owner необязательно: если пусто — создаётся новый кошелёк и назначается владельцем токена (регистрация в один клик).
 func (s *Server) DeployToken(c *gin.Context) {
+	if s.deployer == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Сервис деплоя токенов недоступен",
+			Code:    http.StatusServiceUnavailable,
+		})
+		return
+	}
 	apiKey := c.GetHeader("X-API-Key")
 	if !ValidateAPIKey(c.Request.Context(), s.db, apiKey) {
 		c.JSON(http.StatusUnauthorized, APIResponse{
 			Success: false,
 			Error:   "Неверный или отсутствующий X-API-Key",
 			Code:    http.StatusUnauthorized,
-		})
-		return
-	}
-	if s.deployer == nil {
-		c.JSON(http.StatusServiceUnavailable, APIResponse{
-			Success: false,
-			Error:   "Сервис деплоя токенов недоступен",
-			Code:    http.StatusServiceUnavailable,
 		})
 		return
 	}
@@ -537,6 +621,30 @@ func (s *Server) DeployToken(c *gin.Context) {
 	if req.Standard == "" {
 		req.Standard = "GND-st1"
 	}
+
+	ownerWalletCreated := false
+	if strings.TrimSpace(req.Owner) == "" {
+		if s.core == nil {
+			c.JSON(http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Поле owner обязательно: сервис создания кошельков недоступен",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		wallet, err := s.core.CreateWallet(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, APIResponse{
+				Success: false,
+				Error:   "Ошибка создания кошелька для владельца токена: " + err.Error(),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		req.Owner = string(wallet.Address)
+		ownerWalletCreated = true
+	}
+
 	params := tokentypes.TokenParams{
 		Name:        req.Name,
 		Symbol:      req.Symbol,
@@ -554,16 +662,19 @@ func (s *Server) DeployToken(c *gin.Context) {
 		})
 		return
 	}
+	data := gin.H{
+		"address":              token.GetAddress(),
+		"name":                 token.GetName(),
+		"symbol":               token.GetSymbol(),
+		"decimals":             token.GetDecimals(),
+		"total_supply":         token.GetTotalSupply().String(),
+		"standard":             token.GetStandard(),
+		"owner":                req.Owner,
+		"owner_wallet_created": ownerWalletCreated,
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data: gin.H{
-			"address":      token.GetAddress(),
-			"name":         token.GetName(),
-			"symbol":       token.GetSymbol(),
-			"decimals":     token.GetDecimals(),
-			"total_supply": token.GetTotalSupply().String(),
-			"standard":     token.GetStandard(),
-		},
+		Data:    data,
 	})
 }
 
@@ -599,6 +710,8 @@ func (s *Server) setupRoutes() {
 
 	// Контракты
 	api.POST("/contract", s.DeployContract)
+	api.POST("/contract/compile", s.CompileContract)
+	api.POST("/contract/analyze", s.AnalyzeContract)
 	api.GET("/contract/:address", s.GetContract)
 
 	// Токены (создание — по API-ключу; операции — без ключа в текущей реализации)
@@ -806,7 +919,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	if evmInstance != nil && pool != nil {
 		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))
 	}
-	server := NewServer(pool, bc, mp, tokenDeployer)
+	server := NewServer(pool, bc, mp, tokenDeployer, cfg)
 	addr := fmt.Sprintf(":%d", cfg.Server.REST.Port)
 	log.Printf("=== REST API Server запущен на %s ===\nДоступен по /api/v1/* (health, wallet, transaction, block, contract, token/deploy, token/transfer и др.)", addr)
 	if err := server.Start(addr); err != nil {

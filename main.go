@@ -70,6 +70,7 @@ func main() {
 		log.Fatal("Конфигурация PoA не найдена")
 	}
 	consensus.InitPoaConsensus(&poaConfig)
+	consensus.LoadSelectionRules("config/consensus.json")
 
 	// 3. Инициализация пула соединений
 	pool, err := core.InitDBPool(ctx, cfg.DB)

@@ -370,7 +370,7 @@ func TestGetMetrics_Gin(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics", nil)
 	w := httptest.NewRecorder()

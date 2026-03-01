@@ -187,7 +187,7 @@ func TestCreateWallet_NoAPIKey_Returns401(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/wallet", bytes.NewReader(nil))
 	req.Header.Set("Content-Type", "application/json")
@@ -223,7 +223,7 @@ func TestCreateWallet_InvalidAPIKey_Returns401(t *testing.T) {
 	}
 	genesis.Hash = genesis.CalculateHash()
 	bc := core.NewBlockchain(genesis, nil)
-	server := NewServer(nil, bc, core.NewMempool(), nil)
+	server := NewServer(nil, bc, core.NewMempool(), nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/wallet", bytes.NewReader(nil))
 	req.Header.Set("Content-Type", "application/json")

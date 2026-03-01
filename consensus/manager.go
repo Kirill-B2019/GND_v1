@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync"
 )
 
 // Типы консенсуса
@@ -37,6 +38,43 @@ type ConsensusSettings struct {
 	PoA PoAConfig `json:"poa"`
 }
 
+// SelectionRule — правило выбора консенсуса по адресу (модульная конструкция, без хардфорка)
+type SelectionRule struct {
+	AddressPrefix string `json:"address_prefix"` // префикс адреса получателя (например "GNDct")
+	Default       bool   `json:"default"`        // если true — правило по умолчанию
+	Consensus     string `json:"consensus"`      // "poa" или "pos"
+}
+
+type consensusFile struct {
+	Consensus      []map[string]interface{} `json:"consensus"`
+	SelectionRules []SelectionRule          `json:"selection_rules"`
+}
+
+var (
+	selectionRules   []SelectionRule
+	selectionRulesMu sync.RWMutex
+)
+
+// LoadSelectionRules загружает правила выбора консенсуса из consensus.json (поле selection_rules).
+// Вызывать при старте ноды (например из main). Если файл отсутствует или правил нет — используется встроенная логика.
+func LoadSelectionRules(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var cf consensusFile
+	if err := json.Unmarshal(data, &cf); err != nil {
+		return
+	}
+	selectionRulesMu.Lock()
+	if len(cf.SelectionRules) == 0 {
+		selectionRules = nil
+	} else {
+		selectionRules = cf.SelectionRules
+	}
+	selectionRulesMu.Unlock()
+}
+
 // Загрузка consensus.json
 func LoadConsensusSettings(path string) (*ConsensusSettings, error) {
 	data, err := os.ReadFile(path)
@@ -50,8 +88,30 @@ func LoadConsensusSettings(path string) (*ConsensusSettings, error) {
 	return &cs, nil
 }
 
-// Автоматический выбор консенсуса по адресу назначения
+// Автоматический выбор консенсуса по адресу назначения.
+// Если загружены selection_rules из конфига — используются они; иначе встроенная логика (GNDct → poa, иначе pos).
 func SelectConsensusForTx(toAddress string) ConsensusType {
+	selectionRulesMu.RLock()
+	rules := selectionRules
+	selectionRulesMu.RUnlock()
+
+	if len(rules) > 0 {
+		var defaultConsensus ConsensusType
+		for _, r := range rules {
+			if r.Default {
+				defaultConsensus = ConsensusType(strings.ToLower(r.Consensus))
+				continue
+			}
+			if r.AddressPrefix != "" && strings.HasPrefix(toAddress, r.AddressPrefix) {
+				return ConsensusType(strings.ToLower(r.Consensus))
+			}
+		}
+		if defaultConsensus != "" {
+			return defaultConsensus
+		}
+	}
+
+	// Встроенная логика по умолчанию
 	if strings.HasPrefix(toAddress, "GNDct") {
 		return ConsensusPoA
 	}

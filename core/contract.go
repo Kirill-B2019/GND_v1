@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -50,6 +51,7 @@ type ContractParams struct {
 	Params      map[string]interface{} `json:"params"`
 	Description string                 `json:"description"`
 	MetadataCID string                 `json:"metadata_cid"`
+	Metadata    json.RawMessage        `json:"metadata"` // Метаданные контракта (JSON), хранятся на нашей стороне
 	SourceCode  string                 `json:"source_code"`
 	GasLimit    uint64                 `json:"gas_limit"`
 	GasPrice    *big.Int               `json:"gas_price"`

@@ -54,18 +54,76 @@ func CheckEvents(contractCode string) bool {
 	return strings.Contains(contractCode, "event")
 }
 
+// RunSecurityChecksSource выполняет проверки безопасности по исходному коду (Solidity).
+// Используется для отчёта до деплоя (API /contract/analyze).
+func RunSecurityChecksSource(sourceCode string, location string) []SecurityIssue {
+	var issues []SecurityIssue
+	if location == "" {
+		location = "source"
+	}
+
+	if CheckReentrancy(sourceCode) {
+		issues = append(issues, SecurityIssue{
+			Title:       "Возможная атака повторного входа (reentrancy)",
+			Description: "В коде обнаружен вызов внешнего контракта до изменения storage.",
+			Severity:    "critical",
+			Location:    location,
+		})
+	}
+
+	publicFuncs := CheckPublicFunctions(sourceCode)
+	for _, f := range publicFuncs {
+		issues = append(issues, SecurityIssue{
+			Title:       "Открытая функция без модификатора доступа",
+			Description: "Функция может быть вызвана любым адресом: " + f,
+			Severity:    "medium",
+			Location:    location,
+		})
+	}
+
+	if !CheckOwnerCheck(sourceCode) {
+		issues = append(issues, SecurityIssue{
+			Title:       "Нет проверки владельца в критических функциях",
+			Description: "В коде отсутствует проверка owner или onlyOwner.",
+			Severity:    "high",
+			Location:    location,
+		})
+	}
+
+	if CheckDeprecatedUsage(sourceCode) {
+		issues = append(issues, SecurityIssue{
+			Title:       "Использование устаревших конструкций",
+			Description: "В коде найдено использование tx.origin.",
+			Severity:    "low",
+			Location:    location,
+		})
+	}
+
+	if !CheckEvents(sourceCode) {
+		issues = append(issues, SecurityIssue{
+			Title:       "Нет событий для отслеживания действий",
+			Description: "В коде отсутствуют события (event) для важных функций.",
+			Severity:    "info",
+			Location:    location,
+		})
+	}
+
+	return issues
+}
+
 // Комплексная проверка контракта
 func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 	var issues []SecurityIssue
 
 	code := string(contract.Bytecode())
+	loc := string(contract.Address())
 
 	if CheckOverflow(1<<63, 1<<63) {
 		issues = append(issues, SecurityIssue{
 			Title:       "Возможное переполнение",
 			Description: "Обнаружено потенциальное переполнение при сложении uint64.",
 			Severity:    "high",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 
@@ -74,7 +132,7 @@ func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 			Title:       "Возможная атака повторного входа (reentrancy)",
 			Description: "В коде контракта обнаружен вызов внешнего контракта до изменения storage.",
 			Severity:    "critical",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 
@@ -84,7 +142,7 @@ func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 			Title:       "Открытая функция без модификатора доступа",
 			Description: "Функция может быть вызвана любым адресом: " + f,
 			Severity:    "medium",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 
@@ -93,7 +151,7 @@ func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 			Title:       "Нет проверки владельца в критических функциях",
 			Description: "В коде отсутствует проверка owner или onlyOwner.",
 			Severity:    "high",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 
@@ -102,7 +160,7 @@ func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 			Title:       "Использование устаревших конструкций",
 			Description: "В коде найдено использование tx.origin.",
 			Severity:    "low",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 
@@ -111,7 +169,7 @@ func RunSecurityChecks(contract vm.Contract) []SecurityIssue {
 			Title:       "Нет событий для отслеживания действий",
 			Description: "В коде отсутствуют события (event) для важных функций.",
 			Severity:    "info",
-			Location:    string(contract.Address()),
+			Location:    loc,
 		})
 	}
 

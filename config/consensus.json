@@ -1,18 +1,10 @@
 {
   "consensus": [
-    {
-    "type": "pos",
-    "average_block_delay": "60s",
-    "initial_base_target": 153722867,
-    "initial_balance": "10000000"
-  },
-    {
-    "type": "poa",
-    "round_duration": "17s",
-    "sync_duration": "3s",
-    "ban_duration_blocks": 100,
-    "warnings_for_ban": 3,
-    "max_bans_percentage": 40
-    }
+    {"type": "pos", "average_block_delay": "60s", "initial_base_target": 153722867, "initial_balance": "10000000"},
+    {"type": "poa", "round_duration": "17s", "sync_duration": "3s", "ban_duration_blocks": 100, "warnings_for_ban": 3, "max_bans_percentage": 40}
+  ],
+  "selection_rules": [
+    {"address_prefix": "GNDct", "consensus": "poa"},
+    {"default": true, "consensus": "pos"}
   ]
 }

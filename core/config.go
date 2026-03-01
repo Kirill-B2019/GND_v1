@@ -17,6 +17,8 @@ type Config struct {
 	ConsensusType string                   `json:"consensus_type"`
 	GasLimit      uint64                   `json:"gas_limit"`
 	NetworkID     string                   `json:"network_id"`
+	ChainID       int64                    `json:"chain_id"`  // Идентификатор сети для мостов и подсетей
+	SubnetID      string                   `json:"subnet_id"` // Идентификатор подсети (опционально)
 	MaxWorkers    int                      `json:"MaxWorkers"`
 	Coins         []CoinConfig             `json:"coins"`
 	Consensus     []map[string]interface{} `json:"consensus"`

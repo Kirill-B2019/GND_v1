@@ -105,6 +105,76 @@ func TestNewBlockchain(t *testing.T) {
 	}
 }
 
+// TestNodeRestartWithoutDBReset проверяет, что после «перезапуска» (новое подключение к той же БД)
+// данные не теряются: генезис и блоки остаются в БД и успешно загружаются.
+func TestNodeRestartWithoutDBReset(t *testing.T) {
+	data, err := os.ReadFile("config/db.json")
+	if err != nil {
+		t.Skipf("config/db.json не найден, пропуск: %v", err)
+		return
+	}
+	var dbCfg DBConfig
+	if err := json.Unmarshal(data, &dbCfg); err != nil {
+		t.Fatalf("ошибка парсинга config/db.json: %v", err)
+	}
+	ctx := context.Background()
+	cfg := core.DBConfig{
+		Host:     dbCfg.DB.Host,
+		Port:     dbCfg.DB.Port,
+		User:     dbCfg.DB.User,
+		Password: dbCfg.DB.Password,
+		DBName:   dbCfg.DB.DBName,
+		SSLMode:  dbCfg.DB.SSLMode,
+		MaxConns: dbCfg.DB.MaxConns,
+		MinConns: dbCfg.DB.MinConns,
+	}
+
+	// «Первый запуск»: подключаемся, сохраняем генезис при необходимости
+	pool1, err := core.InitDBPool(ctx, cfg)
+	if err != nil {
+		t.Skipf("подключение к БД недоступно: %v", err)
+		return
+	}
+	genesis := &core.Block{
+		Index:        0,
+		Timestamp:    time.Now().UTC(),
+		PrevHash:     "",
+		Hash:         "genesis_restart_test",
+		Consensus:    "poa",
+		Nonce:        0,
+		Status:       "finalized",
+		Transactions: []*core.Transaction{},
+	}
+	genesis.Hash = genesis.CalculateHash()
+	var exists bool
+	_ = pool1.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM blocks WHERE index = 0)").Scan(&exists)
+	if !exists {
+		if err := genesis.SaveToDB(ctx, pool1); err != nil {
+			t.Fatalf("сохранение генезиса: %v", err)
+		}
+	}
+	pool1.Close()
+
+	// «Перезапуск»: новое подключение к той же БД
+	pool2, err := core.InitDBPool(ctx, cfg)
+	if err != nil {
+		t.Fatalf("повторное подключение к БД: %v", err)
+	}
+	defer pool2.Close()
+
+	chain, err := core.LoadBlockchainFromDB(pool2)
+	if err != nil {
+		t.Fatalf("LoadBlockchainFromDB после перезапуска: %v", err)
+	}
+	if chain == nil || chain.Genesis == nil {
+		t.Fatal("блокчейн или генезис не загружены после перезапуска")
+	}
+	if chain.Genesis.Index != 0 {
+		t.Errorf("ожидался index генезиса 0, получен %d", chain.Genesis.Index)
+	}
+	t.Log("перезапуск ноды без обнуления БД: генезис успешно загружен")
+}
+
 // TestCheckPortsFree_Free проверяет, что checkPortsFree возвращает nil для свободных портов.
 func TestCheckPortsFree_Free(t *testing.T) {
 	// Используем порты из высокого диапазона, чтобы не конфликтовать с реальными сервисами

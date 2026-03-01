@@ -663,6 +663,11 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 		0, // blockID will be set when block is created
 		0, // txID will be set when transaction is created
 	)
+	contract.SourceCode = params.SourceCode
+	contract.Compiler = params.Compiler
+	if len(params.Metadata) > 0 {
+		contract.Metadata = params.Metadata
+	}
 
 	// Save contract to database
 	if err := contract.SaveToDB(context.Background(), bc.Pool); err != nil {
