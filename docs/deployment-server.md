@@ -283,3 +283,5 @@ export PATH=$PATH:/usr/local/go/bin
 Чтобы сделать это постоянным, добавьте эту строку в `~/.bashrc`, `~/.profile` или `~/.zshrc` и выполните `source ~/.bashrc` (или перезайдите в терминал).
 
 **Проверка:** в новом терминале выполните `go version` — должна вывестись версия Go.
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

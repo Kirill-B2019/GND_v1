@@ -357,3 +357,5 @@ $data = $response->json('data');
 | POST    | /api/v1/admin/wallets/:address/delete   | То же (мягкое удаление). |
 
 Все маршруты требуют заголовок **X-Admin-Token** равный **GND_ADMIN_SECRET**.
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

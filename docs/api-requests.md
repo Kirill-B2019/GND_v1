@@ -217,3 +217,5 @@ curl -s "https://main-node.gnd-net.com/api/v1/token/GND_контракт_ток�
 | Токен | `GET /api/v1/token/:address/balance/:owner` | 200 с балансом или 404/500 |
 
 Запуск проверки: `go test ./api/... -run TestDocURLs -v`
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

@@ -198,5 +198,6 @@ text
 - [contracts.md](contracts.md) - работа со смарт-контрактами
 - [integration.md](integration.md) - интеграция с GND
 
-
 ---
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

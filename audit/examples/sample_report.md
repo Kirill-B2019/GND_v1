@@ -153,3 +153,4 @@
 
 [^9]: https://n8n.io/workflows/1690-markdown-report-generation/
 
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

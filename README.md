@@ -118,10 +118,11 @@
 ## Лицензия
 
 Корпоративная лицензия. Все права защищены.
-KB @CerbeRus - Nexus Invest Team
 
 ## Контакты
 
 - Website: [https://gnd-net.com](https://gnd-net.com)
 - Email: info@gnd-net.com
 - Telegram: [@gnd_net](https://t.me/gnd_net)
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

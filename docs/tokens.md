@@ -178,3 +178,5 @@ await token.crossChainTransfer("ethereum", recipient, amount);
 - [Примеры контрактов](../tokens/standards/gndst1/)
 - [Тесты](../tokens/standards/gndst1/gndst1_test.go)
 - [Интеграция](../integration/)
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

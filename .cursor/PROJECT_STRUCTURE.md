@@ -214,3 +214,5 @@ GND_v1/
 - `monitoring`, `audit` — используют core/types по необходимости
 
 Новые пакеты размещать в соответствии с этой схемой и добавлять в этот файл и в `docs/FileStructure.md`.
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,9 +107,14 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 		}
 		_, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
 		if err == nil {
-			// Токен уже есть — обновляем circulating_supply из конфига (на случай если колонка добавили позже или значение поменялось)
-			_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, updated_at = $2 WHERE symbol = $3`,
-				circulating, time.Now().UTC(), coin.Symbol)
+			// Токен уже есть — обновляем circulating_supply и logo_url из конфига
+			if coin.CoinLogo != "" {
+				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, logo_url = $2, updated_at = $3 WHERE symbol = $4`,
+					circulating, strings.TrimSpace(coin.CoinLogo), time.Now().UTC(), coin.Symbol)
+			} else {
+				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, updated_at = $2 WHERE symbol = $3`,
+					circulating, time.Now().UTC(), coin.Symbol)
+			}
 			continue
 		}
 		addr := coin.ContractAddress
@@ -117,6 +123,7 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 		}
 		t := NewToken(addr, coin.Symbol, coin.Name, coin.Decimals, coin.TotalSupply, circulating, ownerAddress, "coin", coin.Standard, genesisBlockID, 0)
 		t.IsVerified = true
+		t.LogoURL = strings.TrimSpace(coin.CoinLogo)
 		if err := t.SaveToDB(ctx, pool); err != nil {
 			return fmt.Errorf("деплой монеты %s: %w", coin.Symbol, err)
 		}

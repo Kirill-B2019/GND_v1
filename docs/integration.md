@@ -318,3 +318,5 @@ curl -X POST -H "Content-Type: application/json" \
 - Профилактика
 
 ---
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

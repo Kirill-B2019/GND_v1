@@ -159,3 +159,5 @@
 2. Запуск: `./gnd-node` или через systemd (см. docs/deployment-server.md).
 3. REST: `http://31.128.41.155:8182/api/v1` или https://main-node.gnd-net.com/api/v1 (документация: api.gnd-net.com).
 4. Документация по запросам: docs/api-requests.md, полное описание API: docs/api.md.
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

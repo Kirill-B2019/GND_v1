@@ -172,4 +172,6 @@ txProcessor := NewBatchProcessor(pool, 100, func(batch []interface{}) error {
 for _, tx := range transactions {
     txProcessor.Add(tx)
 }
-``` 
+```
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div> 

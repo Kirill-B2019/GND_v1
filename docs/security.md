@@ -15,3 +15,5 @@
 - [Смарт-контракты](contracts.md)
 - [Создание токена через API](api-token-deploy.md)
 - [Развертывание](deployment-server.md)
+
+<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
