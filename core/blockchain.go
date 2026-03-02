@@ -107,13 +107,13 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 		}
 		_, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
 		if err == nil {
-			// Токен уже есть — обновляем circulating_supply и logo_url из конфига
+			// Токен уже есть — обновляем decimals, total_supply, circulating_supply и logo_url из конфига
 			if coin.CoinLogo != "" {
-				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, logo_url = $2, updated_at = $3 WHERE symbol = $4`,
-					circulating, strings.TrimSpace(coin.CoinLogo), time.Now().UTC(), coin.Symbol)
+				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET decimals = $1, total_supply = $2, circulating_supply = $3, logo_url = $4, updated_at = $5 WHERE symbol = $6`,
+					coin.Decimals, coin.TotalSupply, circulating, strings.TrimSpace(coin.CoinLogo), time.Now().UTC(), coin.Symbol)
 			} else {
-				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET circulating_supply = $1, updated_at = $2 WHERE symbol = $3`,
-					circulating, time.Now().UTC(), coin.Symbol)
+				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET decimals = $1, total_supply = $2, circulating_supply = $3, updated_at = $4 WHERE symbol = $5`,
+					coin.Decimals, coin.TotalSupply, circulating, time.Now().UTC(), coin.Symbol)
 			}
 			continue
 		}

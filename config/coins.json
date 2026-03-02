@@ -14,12 +14,12 @@
     {
       "name": "Ganymede Governance",
       "symbol": "GANI",
-      "decimals": 18,
+      "decimals": 6,
       "description": "Нативная монета управления. Фиксированная эмиссия 100 млн GANI. Только governance.",
-      "contract_address": "GANI first voice",
+      "contract_address": "GANI FIRST VOICE",
       "coin_logo": "/api/v1/uploads/coin_logos/gani.png",
-      "total_supply": "100000000000000000000000000",
-      "circulating_supply": "20000000000000000000000000",
+      "total_supply": "100000000000000",
+      "circulating_supply": "20000000000000",
       "standard": "GND-st1"
     }
   ]
