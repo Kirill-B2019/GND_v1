@@ -255,7 +255,7 @@ func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int,
 		solcPath = "solc"
 	}
 	source := fmt.Sprintf(`
-	pragma solidity ^0.8.0;
+	pragma solidity ^0.8.20;
 
 	contract %s {
 		string public name = "%s";
@@ -284,7 +284,7 @@ func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int,
 	metadata := compiler.ContractMetadata{
 		Name:        name,
 		Standard:    "GND-st1",
-		Version:     "1.0.0",
+		Version:     "0.8.20",
 		Compiler:    "solc",
 		Description: fmt.Sprintf("Token %s (%s)", name, symbol),
 		Params: map[string]interface{}{

@@ -1,6 +1,6 @@
 {
   "evm": {
     "gas_limit": 10000000,
-    "solc_path": "solc"
+    "solc_path": "/root/GND_v1/solc-0.8.20"
   }
 }

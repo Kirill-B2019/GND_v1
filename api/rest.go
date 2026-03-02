@@ -677,7 +677,7 @@ func (s *Server) CompileContract(c *gin.Context) {
 		Name:     req.Name,
 		Standard: req.Standard,
 		Compiler: "solc",
-		Version:  "0.8.0",
+		Version:  "0.8.20",
 	}
 	result, err := solc.Compile([]byte(req.Source), metadata)
 	if err != nil {

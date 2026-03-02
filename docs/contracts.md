@@ -11,12 +11,20 @@
 ### 1.1. Загрузка и компиляция
 
 - Загрузка байткода смарт-контракта (полученного из Solidity-компилятора) осуществляется через специальный модуль.
-- Для компиляции Solidity используется внешний **solc** (Solidity Compiler). Его нужно установить и либо добавить в `PATH`, либо указать полный путь в конфиге.
-- **Установка solc:**  
-  - Windows: [Solidity releases](https://github.com/ethereum/solidity/releases) (solc-windows.exe → переименовать в `solc.exe`, положить в каталог из `PATH`) или `choco install solidity`.  
-  - Linux: `sudo apt install solc` или бинарник с GitHub.  
-  - После установки проверка: `solc --version`.
+- Для компиляции Solidity используется внешний **solc** (Solidity Compiler). Требуется **solc 0.8.20 или новее** (контракты используют `pragma solidity ^0.8.20`). Установите solc и добавьте в `PATH` или укажите полный путь в конфиге.
+- **Установка solc 0.8.20+:**  
+  - Windows: скачать [Solidity releases](https://github.com/ethereum/solidity/releases) (файл `solc-windows.exe` для нужной версии), переименовать в `solc.exe`, положить в каталог из `PATH`; или `choco install solidity`.  
+  - Linux (пример для v0.8.20, бинарник в релизе называется `solc-static-linux`):
+    ```bash
+    wget https://github.com/ethereum/solidity/releases/download/v0.8.20/solc-static-linux -O solc-0.8.20
+    chmod +x solc-0.8.20
+    sudo mv solc-0.8.20 /usr/local/bin/solc
+    solc --version
+    ```
+    Пакет `apt install solc` часто даёт старую версию (например 0.8.16) — для контрактов с `^0.8.20` нужен бинарник с [releases](https://github.com/ethereum/solidity/releases).  
+  - После установки проверка: `solc --version` (должно быть 0.8.20 или выше).
 - Путь к исполняемому файлу задаётся в `config/evm.json` полем `"solc_path"` (например `"solc"` при наличии в PATH или `"C:\\path\\to\\solc.exe"` на Windows). Если не указан, используется `"solc"`.
+- При отправке своего кода на компиляцию через API используйте `pragma solidity ^0.8.20` или установите совместимую версию solc.
 - Предусмотрена предварительная компиляция и проверка корректности кода до деплоя в сеть.
 - Сохраняется байткод и метаданные (версия компилятора, стандарт токена, владелец и пр.).
 
