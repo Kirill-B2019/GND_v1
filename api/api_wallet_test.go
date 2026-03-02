@@ -151,18 +151,17 @@ func TestWalletCreateHandlerWithoutAuth(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		return
 	}
-	// Проверяем тело ответа только если статус 200
+	// Проверяем тело ответа только если статус 200 (private_key в ответе не возвращаем)
 	var response struct {
-		Address    string `json:"address"`
-		PublicKey  string `json:"publicKey"`
-		PrivateKey string `json:"privateKey"`
+		Address   string `json:"address"`
+		PublicKey string `json:"publicKey"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Errorf("invalid response body: %v", err)
 		return
 	}
-	if response.Address == "" || response.PublicKey == "" || response.PrivateKey == "" {
-		t.Error("response missing required fields")
+	if response.Address == "" || response.PublicKey == "" {
+		t.Error("response missing required fields (address, publicKey)")
 	}
 
 	// Проверяем, что все ожидаемые запросы были выполнены
@@ -285,18 +284,17 @@ func TestWalletCreateHandlerInvalidKey(t *testing.T) {
 		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
 		return
 	}
-	// Проверяем тело ответа только если статус 200
+	// Проверяем тело ответа только если статус 200 (private_key в API не возвращаем)
 	var response struct {
-		Address    string `json:"address"`
-		PublicKey  string `json:"publicKey"`
-		PrivateKey string `json:"privateKey"`
+		Address   string `json:"address"`
+		PublicKey string `json:"publicKey"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Errorf("invalid response body: %v", err)
 		return
 	}
-	if response.Address == "" || response.PublicKey == "" || response.PrivateKey == "" {
-		t.Error("response missing required fields")
+	if response.Address == "" || response.PublicKey == "" {
+		t.Error("response missing required fields (address, publicKey)")
 	}
 
 	// Проверяем, что все ожидаемые запросы были выполнены

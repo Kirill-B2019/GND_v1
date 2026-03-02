@@ -241,7 +241,9 @@ func (s *Server) AdminListWallets(c *gin.Context) {
 			"blocked":          blocked,
 		})
 	}
-	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"wallets": list}})
+	// private_key не возвращаем; добавляем массив metadata (лого, адрес контракта)
+	metadata := s.getTokenMetadata(c.Request.Context())
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"wallets": list, "metadata": metadata}})
 }
 
 // AdminUpdateWallet обновляет имя и/или роль кошелька по адресу.

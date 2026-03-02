@@ -212,7 +212,33 @@ func (s *Server) HealthCheck(c *gin.Context) {
 	})
 }
 
+// getTokenMetadata возвращает массив метаданных токенов (logo_url, contract_address) из БД. Не возвращает private_key.
+func (s *Server) getTokenMetadata(ctx context.Context) []gin.H {
+	if s.db == nil {
+		return nil
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT COALESCE(c.address, ''), COALESCE(t.logo_url, '')
+		FROM tokens t
+		LEFT JOIN contracts c ON c.id = t.contract_id
+		ORDER BY t.symbol`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var list []gin.H
+	for rows.Next() {
+		var addr, logo string
+		if err := rows.Scan(&addr, &logo); err != nil {
+			continue
+		}
+		list = append(list, gin.H{"logo_url": logo, "contract_address": addr})
+	}
+	return list
+}
+
 // CreateWallet создаёт новый кошелёк. Требуется заголовок X-API-Key.
+// В ответе нет private_key; добавлен массив metadata (лого, адрес контракта).
 func (s *Server) CreateWallet(c *gin.Context) {
 	apiKey := c.GetHeader("X-API-Key")
 	if !ValidateAPIKey(c.Request.Context(), s.db, apiKey) {
@@ -235,9 +261,22 @@ func (s *Server) CreateWallet(c *gin.Context) {
 	if wallet.SignerWalletID != nil {
 		log.Printf("[REST] Кошелёк создан через signing_service, запись в signer_wallets: %s (адрес: %s)", wallet.SignerWalletID.String(), wallet.Address)
 	}
+	// Ответ без private_key: только address, public_key, signer_wallet_id и metadata
+	data := gin.H{
+		"address":  string(wallet.Address),
+		"metadata": s.getTokenMetadata(c.Request.Context()),
+	}
+	if wallet.PrivateKey != nil {
+		data["public_key"] = wallet.PublicKeyHex()
+	} else {
+		data["public_key"] = ""
+	}
+	if wallet.SignerWalletID != nil {
+		data["signer_wallet_id"] = wallet.SignerWalletID.String()
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    wallet,
+		Data:    data,
 	})
 }
 
@@ -889,18 +928,27 @@ func (s *Server) setupRoutes() {
 	api.POST("/token/deploy", s.DeployToken)
 	api.POST("/token/logo/upload", s.TokenLogoUpload)
 	api.PATCH("/token/logo", s.TokenLogoSet)
-	// Токены
+	// Токены (amount принимается как строка или число)
 	api.POST("/token/transfer", func(c *gin.Context) {
 		var req struct {
-			TokenAddress string   `json:"token_address"`
-			From         string   `json:"from"`
-			To           string   `json:"to"`
-			Amount       *big.Int `json:"amount"`
+			TokenAddress string `json:"token_address"`
+			From         string `json:"from"`
+			To           string `json:"to"`
+			Amount       string `json:"amount"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, APIResponse{
 				Success: false,
 				Error:   "Неверный формат данных",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		amount := new(big.Int)
+		if _, ok := amount.SetString(strings.TrimSpace(req.Amount), 10); !ok {
+			c.JSON(http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Некорректная сумма (amount)",
 				Code:    http.StatusBadRequest,
 			})
 			return
@@ -915,7 +963,7 @@ func (s *Server) setupRoutes() {
 			return
 		}
 		if gnd, ok := token.(interfaces.TokenInterface); ok {
-			err := gnd.Transfer(c.Request.Context(), req.From, req.To, req.Amount)
+			err := gnd.Transfer(c.Request.Context(), req.From, req.To, amount)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, APIResponse{
 					Success: false,
