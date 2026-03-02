@@ -331,22 +331,39 @@ type WalletTokenBalance struct {
 }
 
 // GetWalletTokenBalances возвращает все балансы кошелька: нативные (GND, GANI) из native_balances + контрактные из token_balances.
-func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
+// Если nc != nil и заданы адреса контрактов GND/GANI, нативные берутся только из token_balances (режим «всё на контрактах»).
+func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string, nc *NativeContractsConfig) ([]WalletTokenBalance, error) {
 	var out []WalletTokenBalance
 	// 1) Нативные балансы (GND, GANI) из native_balances с метаданными из tokens
 	nativeList, err := getNativeWalletBalances(ctx, pool, walletAddress)
 	if err != nil {
 		return nil, err
 	}
-	out = append(out, nativeList...)
-	// 2) Контрактные токены из token_balances (исключаем дубликаты по символу GND/GANI)
+	for _, item := range nativeList {
+		if nc != nil && item.Symbol == GasSymbol && nc.GndContractAddress != "" {
+			continue // GND в режиме контрактов — из token_balances
+		}
+		if nc != nil && item.Symbol == "GANI" && nc.GaniContractAddress != "" {
+			continue // GANI в режиме контрактов — из token_balances
+		}
+		out = append(out, item)
+	}
+	// 2) Контрактные токены из token_balances; в режиме контрактов включаем GND/GANI из token_balances
 	tokenList, err := getWalletBalancesByTokenID(ctx, pool, walletAddress)
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range tokenList {
 		if IsNativeSymbol(item.Symbol) {
-			continue // уже добавлены из native_balances
+			if nc == nil {
+				continue // уже из native_balances
+			}
+			if item.Symbol == GasSymbol && nc.GndContractAddress == "" {
+				continue
+			}
+			if item.Symbol == "GANI" && nc.GaniContractAddress == "" {
+				continue
+			}
 		}
 		out = append(out, item)
 	}

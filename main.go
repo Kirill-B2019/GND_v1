@@ -124,7 +124,7 @@ func main() {
 		genesis.Hash = genesis.CalculateHash()
 		blockchain = core.NewBlockchain(genesis, pool)
 	} else {
-		blockchain, err = core.LoadBlockchainFromDB(pool)
+		blockchain, err = core.LoadBlockchainFromDB(pool, cfg)
 		if err != nil {
 			log.Fatalf("Ошибка загрузки блокчейна: %v", err)
 		}

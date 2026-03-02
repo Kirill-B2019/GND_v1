@@ -366,7 +366,11 @@ func (s *Server) GetBalance(c *gin.Context) {
 	balances := []core.WalletTokenBalance{}
 	if s.core.Pool != nil {
 		var err error
-		balances, err = core.GetWalletTokenBalances(c.Request.Context(), s.core.Pool, address)
+		var nc *core.NativeContractsConfig
+		if s.cfg != nil && s.cfg.NativeContracts != nil {
+			nc = s.cfg.NativeContracts
+		}
+		balances, err = core.GetWalletTokenBalances(c.Request.Context(), s.core.Pool, address, nc)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, APIResponse{
 				Success: false,

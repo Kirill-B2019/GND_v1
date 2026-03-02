@@ -1,0 +1,6 @@
+{
+  "comment": "Адреса задеплоенных контрактов GND и GANI. Пустые до деплоя; после деплоя — единственный источник истины по балансам.",
+  "gnd_contract_address": "",
+  "gani_contract_address": "",
+  "fee_collector_address": ""
+}

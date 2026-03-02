@@ -2,7 +2,7 @@
 
 | KB @CerbeRus - Nexus Invest Team 2026
 
-**Статус:** реализовано (миграция 012, core/native.go, state, blockchain, API, GND_admin, документация). Лимит циркулирующего предложения (жёсткая проверка в AddBalance) — реализован.
+**Статус:** реализовано (миграция 012, core/native.go, state, blockchain, API, GND_admin, документация). Лимит циркулирующего предложения (жёсткая проверка в AddBalance) — реализован. Поддержан режим «всё на контрактах»: при задании адресов в `config/native_contracts.json` GND/GANI учитываются через `token_balances`; см. [deployment-contracts-variant-c.md](deployment-contracts-variant-c.md).
 
 ## 1. Цель
 

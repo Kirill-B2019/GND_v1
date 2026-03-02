@@ -6,25 +6,35 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Основной конфиг блокчейна (config.json)
+// NativeContractsConfig — адреса задеплоенных контрактов GND/GANI (всё на контрактах).
+// Если заданы — нода использует token_balances по token_id вместо native_balances.
+type NativeContractsConfig struct {
+	GndContractAddress  string `json:"gnd_contract_address"`
+	GaniContractAddress string `json:"gani_contract_address"`
+	FeeCollectorAddress string `json:"fee_collector_address"`
+}
+
 type Config struct {
-	Port          int                      `json:"port"`
-	NodeName      string                   `json:"node_name"`
-	ConsensusType string                   `json:"consensus_type"`
-	GasLimit      uint64                   `json:"gas_limit"`
-	NetworkID     string                   `json:"network_id"`
-	ChainID       int64                    `json:"chain_id"`  // Идентификатор сети для мостов и подсетей
-	SubnetID      string                   `json:"subnet_id"` // Идентификатор подсети (опционально)
-	MaxWorkers    int                      `json:"MaxWorkers"`
-	Coins         []CoinConfig             `json:"coins"`
-	Consensus     []map[string]interface{} `json:"consensus"`
-	EVM           EVMConfig                `json:"evm"`
-	Server        ServerConfig             `json:"server"`
-	DB            DBConfig                 `json:"database"`
+	Port            int                      `json:"port"`
+	NodeName        string                   `json:"node_name"`
+	ConsensusType   string                   `json:"consensus_type"`
+	GasLimit        uint64                   `json:"gas_limit"`
+	NetworkID       string                   `json:"network_id"`
+	ChainID         int64                    `json:"chain_id"`  // Идентификатор сети для мостов и подсетей
+	SubnetID        string                   `json:"subnet_id"` // Идентификатор подсети (опционально)
+	MaxWorkers      int                      `json:"MaxWorkers"`
+	Coins           []CoinConfig             `json:"coins"`
+	Consensus       []map[string]interface{} `json:"consensus"`
+	EVM             EVMConfig                `json:"evm"`
+	Server          ServerConfig             `json:"server"`
+	DB              DBConfig                 `json:"database"`
+	NativeContracts *NativeContractsConfig   `json:"-"` // загружается из native_contracts.json
 }
 
 type GlobalConfig struct {
@@ -104,12 +114,13 @@ type ServerConfig struct {
 // Загрузка основного конфига и конфига базы данных, слияние в одну структуру
 func InitGlobalConfigDefault() (*GlobalConfig, error) {
 	const (
-		mainPath      = "config/config.json"
-		dbPath        = "config/db.json"
-		coinsPath     = "config/coins.json"
-		consensusPath = "config/consensus.json"
-		evmPath       = "config/evm.json"
-		serversPath   = "config/servers.json"
+		mainPath            = "config/config.json"
+		dbPath              = "config/db.json"
+		coinsPath           = "config/coins.json"
+		consensusPath       = "config/consensus.json"
+		evmPath             = "config/evm.json"
+		serversPath         = "config/servers.json"
+		nativeContractsPath = "config/native_contracts.json"
 	)
 
 	var cfg Config
@@ -171,6 +182,22 @@ func InitGlobalConfigDefault() (*GlobalConfig, error) {
 		var serversCfg serversWrapper
 		if err := json.Unmarshal(data, &serversCfg); err == nil {
 			cfg.Server = serversCfg.Server
+		}
+	}
+
+	// Native contracts (GND/GANI на контрактах)
+	if data, err := os.ReadFile(nativeContractsPath); err == nil {
+		var nc struct {
+			Gnd  string `json:"gnd_contract_address"`
+			Gani string `json:"gani_contract_address"`
+			Fee  string `json:"fee_collector_address"`
+		}
+		if err := json.Unmarshal(data, &nc); err == nil {
+			cfg.NativeContracts = &NativeContractsConfig{
+				GndContractAddress:  strings.TrimSpace(nc.Gnd),
+				GaniContractAddress: strings.TrimSpace(nc.Gani),
+				FeeCollectorAddress: strings.TrimSpace(nc.Fee),
+			}
 		}
 	}
 

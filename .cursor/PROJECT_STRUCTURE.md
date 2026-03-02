@@ -32,11 +32,12 @@ GND_v1/
 │   └── settings.json
 │
 ├── config/
-│   ├── config.json      # основной конфиг ноды
-│   ├── db.json          # параметры PostgreSQL
+│   ├── config.json         # основной конфиг ноды
+│   ├── db.json             # параметры PostgreSQL
 │   ├── consensus.json
 │   ├── evm.json
 │   ├── coins.json
+│   ├── native_contracts.json  # адреса контрактов GND/GANI (режим «всё на контрактах»)
 │   ├── servers.json
 │   └── req.conf
 │

@@ -38,8 +38,9 @@ func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
 	}
 }
 
-// LoadBlockchainFromDB loads blockchain from database
-func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
+// LoadBlockchainFromDB loads blockchain from database.
+// Если передан cfg с NativeContracts (адреса контрактов GND/GANI), перед загрузкой состояния включается режим «всё на контрактах».
+func LoadBlockchainFromDB(pool *pgxpool.Pool, configOptional ...*Config) (*Blockchain, error) {
 	ctx := context.Background()
 	genesis, err := GetBlockByNumber(pool, 0)
 	if err != nil {
@@ -48,6 +49,10 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool) (*Blockchain, error) {
 
 	state := NewState()
 	state.SetPool(pool)
+	if len(configOptional) > 0 && configOptional[0] != nil && configOptional[0].NativeContracts != nil {
+		nc := configOptional[0].NativeContracts
+		state.SetNativeContractAddresses(nc.GndContractAddress, nc.GaniContractAddress)
+	}
 	if err := state.LoadFromDB(ctx); err != nil {
 		return nil, fmt.Errorf("failed to load state from DB: %w", err)
 	}

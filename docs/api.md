@@ -45,7 +45,7 @@ Response 401: неверный или отсутствующий X-API-Key
 ```http
 GET /api/v1/wallet/:address/balance
 ```
-Возвращает все балансы кошелька: **нативные монеты (GND, GANI)** из таблицы `native_balances` и контрактные токены из `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified, token_address). API-ключ не требуется.
+Возвращает все балансы кошелька: **нативные монеты (GND, GANI)** из таблицы `native_balances` (либо из `token_balances` при включённом режиме «всё на контрактах», см. `config/native_contracts.json`) и контрактные токены из `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified, token_address). API-ключ не требуется.
 
 Response:
 ```json

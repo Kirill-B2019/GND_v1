@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 
@@ -199,10 +200,12 @@ func GetStateNonce(ctx context.Context, pool *pgxpool.Pool, address string, bloc
 
 // State представляет состояние блокчейна
 type State struct {
-	balances map[types.Address]map[string]*big.Int
-	nonces   map[types.Address]uint64
-	pool     *pgxpool.Pool
-	mutex    sync.RWMutex
+	balances         map[types.Address]map[string]*big.Int
+	nonces           map[types.Address]uint64
+	pool             *pgxpool.Pool
+	mutex            sync.RWMutex
+	gndContractAddr  string // если задан — GND берётся из token_balances по token_id
+	ganiContractAddr string
 }
 
 // NewState создает новое состояние
@@ -215,13 +218,76 @@ func NewState() *State {
 
 // SetPool устанавливает пул соединений с БД
 func (s *State) SetPool(pool *pgxpool.Pool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.pool = pool
 }
 
-// GetBalance возвращает баланс адреса
+// SetNativeContractAddresses задаёт адреса контрактов GND/GANI (режим «всё на контрактах»).
+// Пустые строки — использовать native_balances по-прежнему.
+func (s *State) SetNativeContractAddresses(gndAddr, ganiAddr string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.gndContractAddr = strings.TrimSpace(gndAddr)
+	s.ganiContractAddr = strings.TrimSpace(ganiAddr)
+}
+
+// getTokenIDForNativeContractLocked возвращает token_id по символу и адресу контракта (tokens JOIN contracts).
+// Вызывать при удержанном s.mutex (RLock или Lock).
+func (s *State) getTokenIDForNativeContractLocked(symbol, contractAddr string) (int, error) {
+	if s.pool == nil || contractAddr == "" {
+		return -1, fmt.Errorf("no pool or contract address")
+	}
+	var tokenID int
+	err := s.pool.QueryRow(context.Background(), `
+		SELECT t.id FROM tokens t
+		INNER JOIN contracts c ON t.contract_id = c.id
+		WHERE t.symbol = $1 AND c.address = $2`,
+		symbol, contractAddr,
+	).Scan(&tokenID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			return -1, fmt.Errorf("token not found for %s at %s", symbol, contractAddr)
+		}
+		return -1, err
+	}
+	return tokenID, nil
+}
+
+// GetBalance возвращает баланс адреса. Для GND/GANI в режиме контрактов — из token_balances.
 func (s *State) GetBalance(address types.Address, symbol string) *big.Int {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
+
+	// Режим «всё на контрактах»: GND/GANI из token_balances по token_id
+	if symbol == GasSymbol && s.gndContractAddr != "" {
+		if tokenID, err := s.getTokenIDForNativeContractLocked(GasSymbol, s.gndContractAddr); err == nil {
+			var balanceStr string
+			if err := s.pool.QueryRow(context.Background(),
+				`SELECT COALESCE(balance::text, '0') FROM token_balances WHERE token_id = $1 AND address = $2`,
+				tokenID, string(address)).Scan(&balanceStr); err == nil {
+				b := new(big.Int)
+				if _, ok := b.SetString(balanceStr, 10); ok {
+					return b
+				}
+			}
+			return big.NewInt(0)
+		}
+	}
+	if symbol == "GANI" && s.ganiContractAddr != "" {
+		if tokenID, err := s.getTokenIDForNativeContractLocked("GANI", s.ganiContractAddr); err == nil {
+			var balanceStr string
+			if err := s.pool.QueryRow(context.Background(),
+				`SELECT COALESCE(balance::text, '0') FROM token_balances WHERE token_id = $1 AND address = $2`,
+				tokenID, string(address)).Scan(&balanceStr); err == nil {
+				b := new(big.Int)
+				if _, ok := b.SetString(balanceStr, 10); ok {
+					return b
+				}
+			}
+			return big.NewInt(0)
+		}
+	}
 
 	if balances, ok := s.balances[address]; ok {
 		if balance, ok := balances[symbol]; ok {
@@ -266,11 +332,38 @@ func (s *State) getCirculatingSupplyCap(symbol string) (*big.Int, error) {
 }
 
 // AddBalance добавляет баланс адресу. Для нативных монет (GND, GANI) проверяет лимит циркулирующего предложения.
+// В режиме контрактов (gnd/gani_contract_address заданы) обновляет token_balances.
 func (s *State) AddBalance(address types.Address, symbol string, amount *big.Int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if IsNativeSymbol(symbol) && s.pool != nil && amount.Sign() > 0 {
+	if amount.Sign() <= 0 {
+		return nil
+	}
+
+	// Режим контрактов: GND/GANI — в token_balances
+	if symbol == GasSymbol && s.gndContractAddr != "" && s.pool != nil {
+		tokenID, err := s.getTokenIDForNativeContractLocked(GasSymbol, s.gndContractAddr)
+		if err == nil {
+			_, err = s.pool.Exec(context.Background(), `
+				INSERT INTO token_balances (token_id, address, balance) VALUES ($1, $2, $3)
+				ON CONFLICT (token_id, address) DO UPDATE SET balance = token_balances.balance + $3`,
+				tokenID, string(address), amount.String())
+			return err
+		}
+	}
+	if symbol == "GANI" && s.ganiContractAddr != "" && s.pool != nil {
+		tokenID, err := s.getTokenIDForNativeContractLocked("GANI", s.ganiContractAddr)
+		if err == nil {
+			_, err = s.pool.Exec(context.Background(), `
+				INSERT INTO token_balances (token_id, address, balance) VALUES ($1, $2, $3)
+				ON CONFLICT (token_id, address) DO UPDATE SET balance = token_balances.balance + $3`,
+				tokenID, string(address), amount.String())
+			return err
+		}
+	}
+
+	if IsNativeSymbol(symbol) && s.pool != nil {
 		cap, err := s.getCirculatingSupplyCap(symbol)
 		if err == nil && cap != nil && cap.Sign() >= 0 {
 			current := s.getTotalNativeBalanceLocked(symbol)
@@ -291,10 +384,46 @@ func (s *State) AddBalance(address types.Address, symbol string, amount *big.Int
 	return nil
 }
 
-// SubBalance вычитает баланс у адреса
+// SubBalance вычитает баланс у адреса. В режиме контрактов обновляет token_balances.
 func (s *State) SubBalance(address types.Address, symbol string, amount *big.Int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	if amount.Sign() <= 0 {
+		return nil
+	}
+
+	// Режим контрактов: GND/GANI — в token_balances
+	if symbol == GasSymbol && s.gndContractAddr != "" && s.pool != nil {
+		tokenID, err := s.getTokenIDForNativeContractLocked(GasSymbol, s.gndContractAddr)
+		if err == nil {
+			res, err := s.pool.Exec(context.Background(), `
+				UPDATE token_balances SET balance = balance - $3 WHERE token_id = $1 AND address = $2 AND balance >= $3`,
+				tokenID, string(address), amount.String())
+			if err != nil {
+				return err
+			}
+			if res.RowsAffected() == 0 {
+				return errors.New("insufficient balance")
+			}
+			return nil
+		}
+	}
+	if symbol == "GANI" && s.ganiContractAddr != "" && s.pool != nil {
+		tokenID, err := s.getTokenIDForNativeContractLocked("GANI", s.ganiContractAddr)
+		if err == nil {
+			res, err := s.pool.Exec(context.Background(), `
+				UPDATE token_balances SET balance = balance - $3 WHERE token_id = $1 AND address = $2 AND balance >= $3`,
+				tokenID, string(address), amount.String())
+			if err != nil {
+				return err
+			}
+			if res.RowsAffected() == 0 {
+				return errors.New("insufficient balance")
+			}
+			return nil
+		}
+	}
 
 	if s.balances[address] == nil {
 		s.balances[address] = make(map[string]*big.Int)
@@ -363,11 +492,17 @@ func (s *State) SaveToDB() error {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	// Сохраняем нативные балансы (GND, GANI) в native_balances
+	// Сохраняем нативные балансы (GND, GANI) в native_balances только если не включён режим контрактов
 	for address, balances := range s.balances {
 		for symbol, balance := range balances {
 			if !IsNativeSymbol(symbol) {
 				continue
+			}
+			if symbol == GasSymbol && s.gndContractAddr != "" {
+				continue // GND в token_balances
+			}
+			if symbol == "GANI" && s.ganiContractAddr != "" {
+				continue // GANI в token_balances
 			}
 			_, err := s.pool.Exec(context.Background(), `
 				INSERT INTO native_balances (address, symbol, balance, updated_at)
@@ -401,7 +536,7 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		return errors.New("database pool not set")
 	}
 
-	// 1. Загружаем нативные балансы (GND, GANI) из native_balances
+	// 1. Загружаем нативные балансы (GND, GANI) из native_balances; в режиме контрактов GND/GANI не грузим (источник — token_balances)
 	rowsNative, err := s.pool.Query(ctx, `SELECT address, symbol, balance FROM native_balances`)
 	if err != nil {
 		return err
@@ -413,6 +548,12 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		if err := rowsNative.Scan(&address, &symbol, &balanceStr); err != nil {
 			rowsNative.Close()
 			return err
+		}
+		if symbol == GasSymbol && s.gndContractAddr != "" {
+			continue
+		}
+		if symbol == "GANI" && s.ganiContractAddr != "" {
+			continue
 		}
 		balance := new(big.Int)
 		if _, ok := balance.SetString(balanceStr, 10); !ok {
