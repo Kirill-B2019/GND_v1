@@ -274,6 +274,9 @@ func (s *Server) CreateWallet(c *gin.Context) {
 	if wallet.SignerWalletID != nil {
 		data["signer_wallet_id"] = wallet.SignerWalletID.String()
 	}
+	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
+		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "wallet_create", "GND_SYSTEM", string(wallet.Address), "")
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
 		Data:    data,
@@ -623,6 +626,9 @@ func (s *Server) DeployContract(c *gin.Context) {
 		})
 		return
 	}
+	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
+		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "contract_deploy", params.From, address, address)
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
 		Data:    gin.H{"address": address},
@@ -826,6 +832,13 @@ func (s *Server) DeployToken(c *gin.Context) {
 			Code:    http.StatusBadRequest,
 		})
 		return
+	}
+	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
+		payload := req.Symbol
+		if req.Name != "" {
+			payload = req.Name + "|" + req.Symbol
+		}
+		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "token_deploy", deployFrom, token.GetAddress(), payload)
 	}
 	data := gin.H{
 		"address":              token.GetAddress(),
@@ -1240,6 +1253,7 @@ func (s *Server) setupRoutes() {
 		admin.POST("/wallets/:address/enable", s.AdminEnableWallet)
 		admin.DELETE("/wallets/:address", s.AdminDeleteWallet)
 		admin.POST("/wallets/:address/delete", s.AdminDeleteWallet)
+		admin.POST("/record-transaction", s.AdminRecordTransaction)
 	}
 }
 

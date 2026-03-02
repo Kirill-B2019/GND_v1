@@ -263,6 +263,36 @@ func newSystemTransaction(blockID int, ts time.Time, txType string, sender, reci
 	return tx
 }
 
+// RecordAdminTransaction записывает в БД транзакцию административного действия (создание кошелька, деплой контракта, верификация контракта, создание API-ключа).
+// Используется блок генезиса (block_id). Если genesisBlockID <= 0, берётся id из blocks WHERE index = 0.
+func RecordAdminTransaction(ctx context.Context, pool *pgxpool.Pool, genesisBlockID int64, txType, sender, recipient, payload string) error {
+	if pool == nil {
+		return nil
+	}
+	blockID := genesisBlockID
+	if blockID <= 0 {
+		if err := pool.QueryRow(ctx, `SELECT id FROM blocks WHERE index = 0 LIMIT 1`).Scan(&blockID); err != nil {
+			return fmt.Errorf("genesis block not found: %w", err)
+		}
+	}
+	ts := time.Now().UTC()
+	tx := &Transaction{
+		BlockID:    int(blockID),
+		Sender:     types.Address(sender),
+		Recipient:  types.Address(recipient),
+		Value:      big.NewInt(0),
+		Fee:        big.NewInt(0),
+		Nonce:      0,
+		Type:       txType,
+		Status:     "confirmed",
+		Timestamp:  ts,
+		Payload:    []byte(payload),
+		IsVerified: true,
+	}
+	tx.Hash = tx.CalculateHash()
+	return tx.SaveToDB(ctx, pool)
+}
+
 // saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp). contract_id в SQL = NULL.
 func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *Transaction) error {
 	feeStr := "0"

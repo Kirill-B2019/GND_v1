@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"GND/core"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -87,6 +89,9 @@ func (s *Server) AdminCreateKey(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Ошибка сохранения ключа: " + err.Error(), Code: http.StatusInternalServerError})
 		return
 	}
+	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
+		_ = core.RecordAdminTransaction(ctx, s.core.Pool, s.core.Genesis.ID, "api_key_create", "GND_SYSTEM", "GND_SYSTEM", req.Name)
+	}
 
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -155,6 +160,44 @@ func (s *Server) AdminListKeys(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"keys": list}})
+}
+
+// AdminRecordTransaction записывает в БД транзакцию административного действия (например contract_verify).
+// POST /api/v1/admin/record-transaction. Тело: { "type": "contract_verify", "sender": "GND_SYSTEM", "recipient": "<address>", "payload": "" }
+func (s *Server) AdminRecordTransaction(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	var req struct {
+		Type      string `json:"type"`
+		Sender    string `json:"sender"`
+		Recipient string `json:"recipient"`
+		Payload   string `json:"payload"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Type == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите type (contract_verify и др.)", Code: http.StatusBadRequest})
+		return
+	}
+	if req.Sender == "" {
+		req.Sender = "GND_SYSTEM"
+	}
+	if req.Recipient == "" {
+		req.Recipient = "GND_SYSTEM"
+	}
+	ctx := c.Request.Context()
+	if s.core == nil || s.core.Pool == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "Блокчейн недоступен", Code: http.StatusServiceUnavailable})
+		return
+	}
+	var genesisID int64
+	if s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	if err := core.RecordAdminTransaction(ctx, s.core.Pool, genesisID, req.Type, req.Sender, req.Recipient, req.Payload); err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: "Ошибка записи транзакции: " + err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": req.Type}})
 }
 
 // AdminRevokeKey отключает ключ (disabled = true).
