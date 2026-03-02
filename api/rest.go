@@ -668,7 +668,11 @@ func (s *Server) CompileContract(c *gin.Context) {
 	if req.Name == "" {
 		req.Name = "Contract"
 	}
-	solc := compiler.DefaultSolidityCompiler{SolcPath: "solc"}
+	solcPath := "solc"
+	if s.cfg != nil && s.cfg.EVM.SolcPath != "" {
+		solcPath = s.cfg.EVM.SolcPath
+	}
+	solc := compiler.DefaultSolidityCompiler{SolcPath: solcPath}
 	metadata := compiler.ContractMetadata{
 		Name:     req.Name,
 		Standard: req.Standard,

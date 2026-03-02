@@ -143,11 +143,16 @@ func main() {
 	if gasLimit == 0 {
 		gasLimit = 10_000_000
 	}
+	solcPath := cfg.EVM.SolcPath
+	if solcPath == "" {
+		solcPath = "solc"
+	}
 	evmInstance := vm.NewEVM(vm.EVMConfig{
 		Blockchain: blockchain,
 		State:      blockchain.State,
 		GasLimit:   gasLimit,
 		Coins:      convertCoinsToInterface(cfg.Coins),
+		SolcPath:   solcPath,
 	})
 
 	// 8. Первый запуск: деплой монет из config (если ещё нет в БД), генезис, начисление балансов

@@ -88,6 +88,7 @@ type ConsensusConfig struct {
 
 type EVMConfig struct {
 	GasLimit uint64 `json:"gas_limit"`
+	SolcPath string `json:"solc_path"` // путь к solc (например "solc" или "C:\\...\\solc.exe"); пусто — "solc"
 }
 
 type ServerRPCConfig struct {

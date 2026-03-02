@@ -1,5 +1,6 @@
 {
   "evm": {
-    "gas_limit": 10000000
+    "gas_limit": 10000000,
+    "solc_path": "solc"
   }
 }

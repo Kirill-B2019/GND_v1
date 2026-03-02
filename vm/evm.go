@@ -54,6 +54,7 @@ type EVMConfig struct {
 	State      core.StateIface
 	GasLimit   uint64
 	Coins      []CoinConfig
+	SolcPath   string // путь к solc (пусто — "solc")
 }
 
 // EVM represents the Ethereum Virtual Machine

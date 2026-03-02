@@ -19,8 +19,12 @@ func (e *EVM) DeployGNDst1Token(ctx context.Context, name, symbol string, decima
 		return "", fmt.Errorf("не удалось получить адрес отправителя")
 	}
 
-	// Генерируем байткод
-	bytecode, err := generateBytecode(name, symbol, decimals, totalSupply)
+	// Генерируем байткод (путь к solc из конфига EVM)
+	solcPath := e.config.SolcPath
+	if solcPath == "" {
+		solcPath = "solc"
+	}
+	bytecode, err := generateBytecode(name, symbol, decimals, totalSupply, solcPath)
 	if err != nil {
 		return "", fmt.Errorf("ошибка генерации байткода: %v", err)
 	}

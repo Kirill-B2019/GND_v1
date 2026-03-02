@@ -250,7 +250,10 @@ func (cr ContractRegistryType) Get(addr core.Address) (Contract, bool) {
 	return c, ok
 }
 
-func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int) ([]byte, error) {
+func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int, solcPath string) ([]byte, error) {
+	if solcPath == "" {
+		solcPath = "solc"
+	}
 	source := fmt.Sprintf(`
 	pragma solidity ^0.8.0;
 
@@ -272,9 +275,9 @@ func generateBytecode(name, symbol string, decimals uint8, totalSupply *big.Int)
 		}
 	}`, symbol, name, symbol, decimals, totalSupply.String())
 
-	// Создаем компилятор с путем к solc
+	// Создаем компилятор с путем к solc (из конфига или "solc")
 	solc := compiler.DefaultSolidityCompiler{
-		SolcPath: "solc", // или укажите полный путь к solc
+		SolcPath: solcPath,
 	}
 
 	// Создаем метаданные контракта
