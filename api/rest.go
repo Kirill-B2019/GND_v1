@@ -617,6 +617,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 		Signature:   paramsData.Signature,
 		TotalSupply: paramsData.TotalSupply,
 	}
+	// При деплое с адреса gndself_address комиссия за деплой не взимается (при наличии такой логики в core).
 	address, err := s.core.DeployContract(&params)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
@@ -777,41 +778,50 @@ func (s *Server) DeployToken(c *gin.Context) {
 	ownerWalletCreated := false
 
 	owner := strings.TrimSpace(req.Owner)
+	gndself := ""
+	if s.cfg != nil && s.cfg.NativeContracts != nil && s.cfg.NativeContracts.GndselfAddress != "" {
+		gndself = strings.TrimSpace(s.cfg.NativeContracts.GndselfAddress)
+	}
 	if deployFrom == "" {
 		if owner == "" {
-			if s.core == nil {
+			if gndself != "" {
+				// Адрес не указан — владелец и деплойер = gndself_address (системный токен).
+				owner = gndself
+				deployFrom = gndself
+			} else if s.core == nil {
 				c.JSON(http.StatusBadRequest, APIResponse{
 					Success: false,
 					Error:   "Поле owner или deploy_wallet обязательно: сервис создания кошельков недоступен",
 					Code:    http.StatusBadRequest,
 				})
 				return
+			} else {
+				wallet, err := s.core.CreateWallet(c.Request.Context())
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, APIResponse{
+						Success: false,
+						Error:   "Ошибка создания кошелька для владельца токена: " + err.Error(),
+						Code:    http.StatusInternalServerError,
+					})
+					return
+				}
+				owner = string(wallet.Address)
+				deployFrom = owner
+				ownerWalletCreated = true
 			}
-			wallet, err := s.core.CreateWallet(c.Request.Context())
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, APIResponse{
-					Success: false,
-					Error:   "Ошибка создания кошелька для владельца токена: " + err.Error(),
-					Code:    http.StatusInternalServerError,
-				})
-				return
-			}
-			owner = string(wallet.Address)
-			deployFrom = owner
-			ownerWalletCreated = true
 		} else {
 			deployFrom = owner
 		}
 	} else {
 		// deploy_wallet задан; owner может быть пустым (системный токен) или отдельным.
-		// owner оставляем как есть; deployFrom уже установлен.
+		// Если owner не указан — присваиваем gndself_address (системный токен).
+		if owner == "" && gndself != "" {
+			owner = gndself
+		}
 	}
 
-	// При owner = gndself_address комиссия за деплой не взимается (платформа не платит себе).
-	var skipDeployFee bool
-	if s.cfg != nil && s.cfg.NativeContracts != nil && s.cfg.NativeContracts.GndselfAddress != "" {
-		skipDeployFee = strings.TrimSpace(owner) == s.cfg.NativeContracts.GndselfAddress
-	}
+	// При owner или deployFrom = gndself_address комиссия за деплой не взимается.
+	skipDeployFee := gndself != "" && (owner == gndself || deployFrom == gndself)
 
 	params := tokentypes.TokenParams{
 		Name:          req.Name,

@@ -1,28 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./IGNDst1.sol";
+
 /// @title GNDst-1: Мультистандартный токен для блокчейна ГАНИМЕД
 /// @notice Совместим с ERC-20, TRC-20 и расширен новыми функциями
-
-interface IGNDst1 {
-    // Базовые методы ERC-20/TRC-20
-    function totalSupply() external view returns (uint256);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address to, uint256 amount) external returns (bool);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-
-    // Расширенные методы GNDst-1
-    function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external returns (bool);
-    function setKycStatus(address user, bool status) external;
-    function isKycPassed(address user) external view returns (bool);
-    function moduleCall(bytes32 moduleId, bytes calldata data) external returns (bytes memory);
-    function snapshot() external returns (uint256);
-    function getSnapshotBalance(address user, uint256 snapshotId) external view returns (uint256);
-    function claimDividends(uint256 snapshotId) external;
-    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external;
-}
 
 contract GNDst1Token is IGNDst1 {
     string public name = "Ganimed Token";
