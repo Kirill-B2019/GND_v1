@@ -28,5 +28,5 @@ env/
 /scripts/emulate_restart.ps1
 /db/old DB/
 .idea
-
+test_output.txt
 /db/

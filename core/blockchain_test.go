@@ -10,14 +10,10 @@ import (
 )
 
 func TestGenesisTimestamp_InFirstPartitionRange(t *testing.T) {
-	// Время генезиса должно попадать в партицию transactions_2025_06 (2025-06-01 .. 2025-07-01)
-	start := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)
-	if genesisTimestamp.Before(start) || !genesisTimestamp.Before(end) {
-		t.Errorf("genesisTimestamp %v должен быть в [%v, %v)", genesisTimestamp, start, end)
-	}
-	if genesisTimestamp != start {
-		t.Errorf("genesisTimestamp ожидался %v, получен %v", start, genesisTimestamp)
+	// Время генезиса — 2025-06-01 00:00 по Москве
+	expected := time.Date(2025, 6, 1, 0, 0, 0, 0, Moscow)
+	if !genesisTimestamp.Equal(expected) {
+		t.Errorf("genesisTimestamp ожидался %v (Москва), получен %v", expected, genesisTimestamp)
 	}
 }
 

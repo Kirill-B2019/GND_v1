@@ -78,7 +78,7 @@ func (s *Server) AdminCreateKey(c *gin.Context) {
 	permsJSON, _ := json.Marshal(perms)
 
 	ctx := c.Request.Context()
-	now := time.Now().UTC()
+	now := core.BlockchainNow()
 	var id int
 	err := s.db.QueryRow(ctx, `
 		INSERT INTO public.api_keys (name, key_prefix, key_hash, permissions, expires_at, disabled, created_at)

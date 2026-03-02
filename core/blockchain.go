@@ -117,10 +117,10 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 			// Токен уже есть — обновляем decimals, total_supply, circulating_supply и logo_url из конфига
 			if coin.CoinLogo != "" {
 				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET decimals = $1, total_supply = $2, circulating_supply = $3, logo_url = $4, updated_at = $5 WHERE symbol = $6`,
-					coin.Decimals, coin.TotalSupply, circulating, strings.TrimSpace(coin.CoinLogo), time.Now().UTC(), coin.Symbol)
+					coin.Decimals, coin.TotalSupply, circulating, strings.TrimSpace(coin.CoinLogo), BlockchainNow(), coin.Symbol)
 			} else {
 				_, _ = pool.Exec(ctx, `UPDATE public.tokens SET decimals = $1, total_supply = $2, circulating_supply = $3, updated_at = $4 WHERE symbol = $5`,
-					coin.Decimals, coin.TotalSupply, circulating, time.Now().UTC(), coin.Symbol)
+					coin.Decimals, coin.TotalSupply, circulating, BlockchainNow(), coin.Symbol)
 			}
 			continue
 		}
@@ -140,10 +140,10 @@ func EnsureCoinsDeployed(ctx context.Context, pool *pgxpool.Pool, cfg *Config, o
 	return nil
 }
 
-// genesisTimestamp — фиксированное время генезиса, чтобы системные транзакции попадали в существующую партицию transactions (например 2025_06).
-var genesisTimestamp = time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+// genesisTimestamp задаётся в core/time.go (Москва). Записи в transactions используют BlockchainNow().
 
 // EnsureGenesisTransactions при загрузке из БД дописывает системные транзакции в transactions, если для генезис-блока их ещё нет.
+// Timestamp записей — BlockchainNow() (Москва), чтобы строка попала в текущую партицию transactions (RANGE по timestamp).
 func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Blockchain, wallet *Wallet, cfg *Config) error {
 	if pool == nil || bc == nil || bc.Genesis == nil {
 		return nil
@@ -153,10 +153,10 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 	if err != nil || count > 0 {
 		return err
 	}
-	// В таблице transactions для генезиса пусто — вставляем системные транзакции (как в FirstLaunch)
+	ts := BlockchainNow()
 	sysTxGenesis := newSystemTransaction(
 		int(bc.Genesis.ID),
-		genesisTimestamp,
+		ts,
 		"genesis",
 		types.Address("GND_GENESIS"),
 		types.Address(wallet.Address),
@@ -175,7 +175,7 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 		amount.SetString(amountStr, 10)
 		sysTxMint := newSystemTransaction(
 			int(bc.Genesis.ID),
-			genesisTimestamp,
+			ts,
 			"initial_mint",
 			types.Address("GND_GENESIS"),
 			types.Address(wallet.Address),
@@ -188,7 +188,7 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 	}
 	txCount := 1 + len(cfg.Coins)
 	_, _ = pool.Exec(ctx, `UPDATE blocks SET tx_count = $1, updated_at = $2 WHERE id = $3`,
-		txCount, time.Now().UTC(), bc.Genesis.ID)
+		txCount, BlockchainNow(), bc.Genesis.ID)
 	bc.Genesis.TxCount = uint32(txCount)
 	return nil
 }
@@ -200,7 +200,7 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 	// 1. Генезис: сохраняем блок (финализирован)
 	bc.Genesis.Timestamp = genesisTimestamp
 	bc.Genesis.CreatedAt = genesisTimestamp
-	bc.Genesis.UpdatedAt = time.Now().UTC()
+	bc.Genesis.UpdatedAt = BlockchainNow()
 	bc.Genesis.Status = "finalized"
 	bc.Genesis.Hash = bc.Genesis.CalculateHash()
 
@@ -213,9 +213,10 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 	if wallet != nil {
 		recipient = types.Address(wallet.Address)
 	}
+	// Timestamp записи — текущее время, чтобы попасть в существующую партицию transactions
 	sysTxGenesis := newSystemTransaction(
 		int(bc.Genesis.ID),
-		bc.Genesis.Timestamp,
+		BlockchainNow(),
 		"genesis",
 		types.Address("GND_GENESIS"),
 		recipient,
@@ -229,7 +230,7 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 	// 3. Обновляем tx_count генезис-блока (только одна транзакция)
 	bc.Genesis.TxCount = 1
 	if _, err := pool.Exec(ctx, `UPDATE blocks SET tx_count = 1, updated_at = $1 WHERE id = $2`,
-		time.Now().UTC(), bc.Genesis.ID); err != nil {
+		BlockchainNow(), bc.Genesis.ID); err != nil {
 		return fmt.Errorf("обновление tx_count генезис-блока: %w", err)
 	}
 
@@ -275,7 +276,7 @@ func RecordAdminTransaction(ctx context.Context, pool *pgxpool.Pool, genesisBloc
 			return fmt.Errorf("genesis block not found: %w", err)
 		}
 	}
-	ts := time.Now().UTC()
+	ts := BlockchainNow()
 	tx := &Transaction{
 		BlockID:    int(blockID),
 		Sender:     types.Address(sender),
@@ -323,7 +324,7 @@ func (bc *Blockchain) storeBlock(block *Block) error {
 	block.TxCount = uint32(len(block.Transactions))
 	// created_at — когда блок создан (временная метка блока), updated_at — когда финализирован (сейчас)
 	block.CreatedAt = block.Timestamp
-	block.UpdatedAt = time.Now().UTC()
+	block.UpdatedAt = BlockchainNow()
 
 	err := bc.Pool.QueryRow(ctx, `
 		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)

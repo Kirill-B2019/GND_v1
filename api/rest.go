@@ -197,7 +197,7 @@ func (s *Server) HealthCheck(c *gin.Context) {
 	data := gin.H{
 		"status":    "ok",
 		"version":   "1.0.0",
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp": core.BlockchainNow().Format(time.RFC3339),
 	}
 	if s.cfg != nil {
 		data["network_id"] = s.cfg.NetworkID
@@ -456,7 +456,7 @@ func (s *Server) SendTransaction(c *gin.Context) {
 		GasPrice:   fee,
 		Symbol:     "GND",
 		IsVerified: true, // транзакции с нативной монетой GND верифицированы
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  core.BlockchainNow(),
 		Status:     "pending",
 	}
 	tx.Hash = tx.CalculateHash()

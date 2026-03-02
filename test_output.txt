@@ -1,0 +1,17 @@
+ok  	GND	1.946s
+ok  	GND/api	0.759s
+ok  	GND/api/middleware	2.693s
+ok  	GND/audit	0.769s
+ok  	GND/consensus	2.417s
+ok  	GND/core	0.786s
+ok  	GND/core/crypto	2.088s
+ok  	GND/integration	0.773s
+ok  	GND/monitoring	1.990s
+ok  	GND/signing_service/crypto	2.167s
+ok  	GND/signing_service/service	2.281s
+ok  	GND/signing_service/storage	2.179s
+ok  	GND/tokens	1.960s
+ok  	GND/tokens/deployer	2.183s
+ok  	GND/tokens/handlers	2.553s
+ok  	GND/tokens/interfaces	1.771s
+ok  	GND/tokens/registry	2.188s
