@@ -195,6 +195,14 @@ type PostgreSQL struct {
 - Балансы по токенам хранятся в **token_balances** (поля `token_id`, `address`, `balance`; опционально `symbol` при использовании state.SaveToDB).
 - REST-эндпоинт **GET /api/v1/wallet/:address/balance** возвращает все записи из `token_balances` для данного адреса с подтянутыми из таблицы **tokens** полями: `standard`, `symbol`, `name`, `decimals`, `is_verified`, а также адрес контракта токена из **contracts** (`token_address`). Поддерживаются схемы с `token_id` и с `symbol` в token_balances.
 
+### Таблица native_balances (нативные монеты GND, GANI)
+
+- **Назначение:** хранение балансов нативных монет L1 (GND и GANI). Источник истины для нативных активов; изменяются только нодой (применение транзакций, списание газа, первый запуск).
+- **Структура:** `address` (VARCHAR), `symbol` (VARCHAR, CHECK symbol IN ('GND','GANI')), `balance` (NUMERIC), `updated_at` (TIMESTAMP). Первичный ключ — (address, symbol).
+- **Загрузка при старте:** `core.State.LoadFromDB` сначала загружает нативные балансы из `native_balances`, затем контрактные из `token_balances` (JOIN tokens).
+- **Сохранение:** после применения каждого блока вызывается `State.SaveToDB()`, который записывает нативные балансы в `native_balances` и nonces в `accounts`. Это обеспечивает сохранность при перезагрузке ноды и защиту от потери данных.
+- **Миграции:** `012_native_balances.sql` — создание таблицы; `013_native_balances_backfill.sql` — перенос существующих балансов GND/GANI из `token_balances` в `native_balances` без полного сброса блокчейна (выполнять после 012 на уже работающей БД).
+
 ### Валидация (консенсус)
 
 - Контракты валидируются по **PoA** (Proof of Authority).

@@ -44,6 +44,7 @@ GND_v1/
 │   ├── block.go
 │   ├── blockchain.go
 │   ├── config.go
+│   ├── native.go        # нативные монеты GND/GANI: NativeSymbols, IsNativeSymbol, GasSymbol
 │   ├── pool.go          # InitDBPool, pgxpool
 │   ├── state.go
 │   ├── transaction.go
@@ -108,11 +109,17 @@ GND_v1/
 │   │   ├── balance.go
 │   │   └── info.go
 │   ├── standards/
-│   │   └── gndst1/
-│   │       ├── gndst1.go
-│   │       ├── gndst1_test.go
-│   │       ├── gndst1.abi.json
-│   │       └── gndst1Base.sol
+│   │   ├── gndst1/
+│   │   │   ├── gndst1.go
+│   │   │   ├── gndst1_test.go
+│   │   │   ├── gndst1.abi.json
+│   │   │   └── gndst1Base.sol
+│   │   └── native/
+│   │       ├── INativeCoin.sol
+│   │       ├── IGND.sol
+│   │       ├── IGANI.sol
+│   │       ├── GNDCoinBase.sol
+│   │       └── GANICoinBase.sol
 │   └── utils/
 │       ├── helpers.go
 │       └── events.go

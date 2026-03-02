@@ -186,7 +186,7 @@ journalctl -u gnd-node -f
 ## 4. Баланс аккаунта и несколько кошельков
 
 - Балансы по всем токенам хранятся в **token_balances** (поля `token_id`, `address`, `balance`; при необходимости поддерживается также схема с колонкой `symbol`). Поле `accounts.balance` в БД по проектной логике не синхронизируется из `token_balances` (источник истины — `token_balances`).
-- REST **GET /api/v1/wallet/:address/balance** возвращает все токены кошелька из `token_balances` с подтянутыми из таблицы `tokens` полями: `standard`, `symbol`, `name`, `decimals`, `is_verified`, а также адрес контракта токена (`token_address`). API-ключ для этого запроса не требуется.
+- REST **GET /api/v1/wallet/:address/balance** возвращает все балансы: нативные монеты (GND, GANI) из `native_balances` и контрактные токены из `token_balances` с полями из `tokens`. **GET /api/v1/coin/:symbol/balance/:owner** — баланс нативной монеты по символу; **GET /api/v1/coin/:symbol/supply** — total_supply и circulating_supply. API-ключ не требуется.
 - У одного аккаунта может быть несколько кошельков (разные ключи/адреса); валидатор использует один загруженный кошелёк (`LoadWallet`). Остальные адреса также могут иметь записи в `accounts` и `token_balances`.
 
 ---
@@ -242,6 +242,23 @@ scripts\run_tests.bat
 ```
 
 Тесты, требующие БД (например `main_test.TestNewBlockchain`, `api_wallet_test`, `audit.TestBlockchainIntegration`), при недоступном PostgreSQL пропускаются (`t.Skip`).
+
+---
+
+## Готовность к развёртыванию контрактов
+
+Перед развёртыванием контрактов (токенов) и ноды проверьте:
+
+| Проверка | Действие |
+|----------|----------|
+| **Миграции БД** | Приведены в порядок: 001 → … → 011 → **012_native_balances.sql**. При обновлении без сброса после 012 выполнить **013_native_balances_backfill.sql** (см. [SCHEMA_VERIFICATION.md](../db/SCHEMA_VERIFICATION.md)). |
+| **config/coins.json** | Заполнены `total_supply`, `circulating_supply` (в wei) для GND и GANI; при первом запуске монеты деплоятся из конфига, начальная эмиссия ограничена `circulating_supply`. |
+| **config/db.json** | Параметры подключения к PostgreSQL (без паролей в репозитории; использовать env или плейсхолдеры). |
+| **config/config.json** | При необходимости: `api_key` для тестов, параметры сети (chain_id, network_id). |
+| **Деплой токенов через API** | POST `/api/v1/token/deploy` с заголовком `X-API-Key`; EVM и deployer переданы при старте REST (см. [api-token-deploy.md](api-token-deploy.md)). |
+| **Нативные монеты** | GND/GANI — в `native_balances`; лимит циркуляции проверяется при любом начислении (AddBalance). Переводы — через POST `/api/v1/token/transfer` с полем `symbol` (GND или GANI). |
+
+После применения миграций и запуска ноды: проверка `GET /api/v1/health`, затем при необходимости деплой тестового токена через API и проверка баланса `GET /api/v1/wallet/:address/balance`.
 
 ---
 

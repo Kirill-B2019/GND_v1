@@ -12,6 +12,7 @@ import (
 
 	"GND/types"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -230,10 +231,55 @@ func (s *State) GetBalance(address types.Address, symbol string) *big.Int {
 	return big.NewInt(0)
 }
 
-// AddBalance добавляет баланс адресу
+// getTotalNativeBalanceLocked возвращает сумму балансов по нативному символу (вызывать при удержанном mutex).
+func (s *State) getTotalNativeBalanceLocked(symbol string) *big.Int {
+	total := big.NewInt(0)
+	for _, balances := range s.balances {
+		if b, ok := balances[symbol]; ok && b != nil {
+			total.Add(total, b)
+		}
+	}
+	return total
+}
+
+// getCirculatingSupplyCap возвращает лимит циркулирующего предложения из tokens.circulating_supply по символу.
+func (s *State) getCirculatingSupplyCap(symbol string) (*big.Int, error) {
+	if s.pool == nil {
+		return nil, nil
+	}
+	var capStr string
+	err := s.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(circulating_supply::text, total_supply::text) FROM tokens WHERE symbol = $1`,
+		symbol,
+	).Scan(&capStr)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	cap := new(big.Int)
+	if _, ok := cap.SetString(capStr, 10); !ok {
+		return nil, fmt.Errorf("invalid circulating_supply for %s", symbol)
+	}
+	return cap, nil
+}
+
+// AddBalance добавляет баланс адресу. Для нативных монет (GND, GANI) проверяет лимит циркулирующего предложения.
 func (s *State) AddBalance(address types.Address, symbol string, amount *big.Int) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	if IsNativeSymbol(symbol) && s.pool != nil && amount.Sign() > 0 {
+		cap, err := s.getCirculatingSupplyCap(symbol)
+		if err == nil && cap != nil && cap.Sign() >= 0 {
+			current := s.getTotalNativeBalanceLocked(symbol)
+			newTotal := new(big.Int).Add(current, amount)
+			if newTotal.Cmp(cap) > 0 {
+				return fmt.Errorf("circulating supply limit exceeded for %s: current + amount > cap", symbol)
+			}
+		}
+	}
 
 	if s.balances[address] == nil {
 		s.balances[address] = make(map[string]*big.Int)
@@ -277,49 +323,57 @@ func (s *State) IncrementNonce(address types.Address) {
 	s.nonces[address]++
 }
 
-// ApplyTransaction применяет транзакцию к состоянию
+// ApplyTransaction применяет транзакцию к состоянию. Используется tx.Symbol (GND или GANI); при пустом — GND.
 func (s *State) ApplyTransaction(tx *Transaction) error {
 	// Проверяем nonce
 	if int64(tx.Nonce) != s.GetNonce(types.Address(tx.Sender)) {
 		return errors.New("invalid nonce")
 	}
 
-	// Проверяем баланс
+	// Проверяем баланс (сумма + газ при необходимости)
 	if !tx.HasSufficientBalance() {
 		return errors.New("insufficient balance")
 	}
 
-	// Вычитаем баланс отправителя
-	if err := s.SubBalance(types.Address(tx.Sender), "GND", tx.Value); err != nil {
+	symbol := tx.Symbol
+	if symbol == "" {
+		symbol = GasSymbol // GND
+	}
+	if !IsNativeSymbol(symbol) {
+		return errors.New("symbol must be native (GND or GANI)")
+	}
+
+	// Списываем баланс отправителя по символу транзакции
+	if err := s.SubBalance(types.Address(tx.Sender), symbol, tx.Value); err != nil {
 		return err
 	}
 
-	// Добавляем баланс получателю
-	if err := s.AddBalance(types.Address(tx.Recipient), "GND", tx.Value); err != nil {
-		// Откатываем списание если не удалось начислить
-		s.AddBalance(types.Address(tx.Sender), "GND", tx.Value)
+	// Начисляем баланс получателю
+	if err := s.AddBalance(types.Address(tx.Recipient), symbol, tx.Value); err != nil {
+		s.AddBalance(types.Address(tx.Sender), symbol, tx.Value)
 		return err
 	}
 
-	// Увеличиваем nonce отправителя
 	s.IncrementNonce(types.Address(tx.Sender))
-
 	return nil
 }
 
-// SaveToDB сохраняет состояние в БД
+// SaveToDB сохраняет состояние в БД. Нативные балансы (GND, GANI) — в native_balances; nonces — в accounts.
 func (s *State) SaveToDB() error {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	// Сохраняем балансы
+	// Сохраняем нативные балансы (GND, GANI) в native_balances
 	for address, balances := range s.balances {
 		for symbol, balance := range balances {
+			if !IsNativeSymbol(symbol) {
+				continue
+			}
 			_, err := s.pool.Exec(context.Background(), `
-				INSERT INTO token_balances (address, symbol, balance)
-				VALUES ($1, $2, $3)
+				INSERT INTO native_balances (address, symbol, balance, updated_at)
+				VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
 				ON CONFLICT (address, symbol) DO UPDATE
-				SET balance = $3`, address, symbol, balance)
+				SET balance = $3, updated_at = CURRENT_TIMESTAMP`, address, symbol, balance.String())
 			if err != nil {
 				return err
 			}
@@ -341,13 +395,37 @@ func (s *State) SaveToDB() error {
 	return nil
 }
 
-// LoadFromDB загружает состояние из БД
+// LoadFromDB загружает состояние из БД. Сначала нативные балансы (native_balances), затем контрактные токены (token_balances JOIN tokens).
 func (s *State) LoadFromDB(ctx context.Context) error {
 	if s.pool == nil {
 		return errors.New("database pool not set")
 	}
 
-	// Загружаем балансы (symbol через JOIN с tokens — совместимо со схемой без колонки symbol в token_balances)
+	// 1. Загружаем нативные балансы (GND, GANI) из native_balances
+	rowsNative, err := s.pool.Query(ctx, `SELECT address, symbol, balance FROM native_balances`)
+	if err != nil {
+		return err
+	}
+	for rowsNative.Next() {
+		var address types.Address
+		var symbol string
+		var balanceStr string
+		if err := rowsNative.Scan(&address, &symbol, &balanceStr); err != nil {
+			rowsNative.Close()
+			return err
+		}
+		balance := new(big.Int)
+		if _, ok := balance.SetString(balanceStr, 10); !ok {
+			continue
+		}
+		if s.balances[address] == nil {
+			s.balances[address] = make(map[string]*big.Int)
+		}
+		s.balances[address][symbol] = balance
+	}
+	rowsNative.Close()
+
+	// 2. Загружаем балансы контрактных токенов (token_balances JOIN tokens); нативные не перезаписываем
 	rows, err := s.pool.Query(ctx, `
 		SELECT tb.address, t.symbol, tb.balance
 		FROM token_balances tb
@@ -364,6 +442,9 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		if err := rows.Scan(&address, &symbol, &balanceStr); err != nil {
 			return err
 		}
+		if IsNativeSymbol(symbol) {
+			continue // уже загружены из native_balances
+		}
 		balance := new(big.Int)
 		balance.SetString(balanceStr, 10)
 		if s.balances[address] == nil {
@@ -372,7 +453,7 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 		s.balances[address][symbol] = balance
 	}
 
-	// Загружаем nonces
+	// 3. Загружаем nonces
 	rows, err = s.pool.Query(ctx, `
 		SELECT address, nonce
 		FROM accounts`)
@@ -395,21 +476,18 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 	return nil
 }
 
-// ApplyExecutionResult применяет результат выполнения контракта
+// ApplyExecutionResult применяет результат выполнения контракта. Газ списывается в GND.
 func (s *State) ApplyExecutionResult(tx *Transaction, result *types.ExecutionResult) error {
-	// Обновляем балансы
 	gasUsed := new(big.Int).SetUint64(result.GasUsed)
-	if err := s.SubBalance(types.Address(tx.Sender), "GND", gasUsed); err != nil {
+	if err := s.SubBalance(types.Address(tx.Sender), GasSymbol, gasUsed); err != nil {
 		return err
 	}
 
-	// Применяем изменения состояния
 	for _, change := range result.StateChanges {
 		switch change.Type {
 		case types.ChangeTypeBalance:
 			if err := s.AddBalance(types.Address(change.Address), change.Symbol, change.Amount); err != nil {
-				// Откатываем списание газа если не удалось применить изменение
-				s.AddBalance(types.Address(tx.Sender), "GND", gasUsed)
+				s.AddBalance(types.Address(tx.Sender), GasSymbol, gasUsed)
 				return err
 			}
 		}

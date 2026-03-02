@@ -20,6 +20,7 @@
 | **blocks** | merkle_root, height, version, size, difficulty, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized | ✓ Все колонки | — |
 | **transactions** | signature, is_verified; sequence transactions_id_seq | ✓ | — |
 | **token_balances** | symbol, UNIQUE (address, symbol) WHERE symbol IS NOT NULL | ✓ | — |
+| **native_balances** | 012: address, symbol (GND|GANI), balance, updated_at; PK (address, symbol) | миграция 012 | Нативные монеты L1 |
 | **events** | block_id, tx_id, address, topics, data, index, removed, status, processed_at | ✓ Все колонки | — |
 | **events** — триггер | update_events_updated_at (002/001) | ✓ Добавлен в конец файла | Раньше отсутствовал |
 | **states** | 002 | ✓ Таблица и индексы | — |
@@ -32,7 +33,7 @@
 
 ## Замечание по коду
 
-- **core/state.go** (SaveToDB): выполняется `INSERT INTO token_balances (address, symbol, balance)` без `token_id`. В схеме у `token_balances` колонка `token_id` объявлена как `NOT NULL` и входит в первичный ключ. Этот фрагмент кода не соответствует текущей схеме (либо это устаревший путь, либо нужна доработка кода/схемы).
+- **core/state.go** (SaveToDB): нативные балансы (GND, GANI) записываются в таблицу **native_balances** (миграция 012); контрактные токены по-прежнему в `token_balances` с `token_id`. Соответствие схеме обеспечено.
 
 ---
 
@@ -40,6 +41,7 @@
 
 1. Создать БД и роль `gnduser`.
 2. Выполнить **console_21.sql** — этого достаточно для получения актуальной схемы (миграции 001, 002, 004–009 уже учтены в файле).
-3. При развёртывании по миграциям: 001 → 002 → 004–009 → 010 → **011_tokens_logo_url.sql** (колонка logo_url для логотипов токенов).
+3. При развёртывании по миграциям: 001 → 002 → 004–009 → 010 → **011_tokens_logo_url.sql** → **012_native_balances.sql** (таблица нативных балансов GND/GANI).
+4. **Без полного сброса:** после 012 выполнить **013_native_balances_backfill.sql** — перенос текущих балансов GND/GANI из `token_balances` в `native_balances`; затем перезапустить ноду.
 
 <div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>

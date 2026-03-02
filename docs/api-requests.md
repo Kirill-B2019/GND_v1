@@ -41,10 +41,18 @@ curl -s -X POST "https://main-node.gnd-net.com/api/v1/wallet" \
 # Ответ: { "success": true, "data": { "address": "GND...", "publicKey": "0x...", "privateKey": "0x..." } }
 # Без ключа или с неверным ключом: 401, "Неверный или отсутствующий X-API-Key"
 
-# Балансы по адресу кошелька — все токены из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified). API-ключ не требуется.
+# Балансы по адресу кошелька — нативные монеты (GND, GANI) из native_balances + контрактные токены из token_balances. API-ключ не требуется.
 curl -s "https://main-node.gnd-net.com/api/v1/wallet/GND9jbK6Vca5VcZxATt3zb9yz5KQeMwjHFrz/balance"
 
 # Ответ: { "success": true, "data": { "address": "GND...", "balances": [ { "token_address": "...", "balance": "...", "standard": "GND-st1", "symbol": "GND", "name": "...", "decimals": 18, "is_verified": true }, ... ] } }
+
+# Баланс нативной монеты по символу и адресу (GND или GANI)
+curl -s "https://main-node.gnd-net.com/api/v1/coin/GND/balance/GND9jbK6Vca5VcZxATt3zb9yz5KQeMwjHFrz"
+# Ответ: { "success": true, "data": { "symbol": "GND", "owner": "GND...", "balance": "100000000000000000000000000" } }
+
+# Предложение нативной монеты (total_supply, circulating_supply)
+curl -s "https://main-node.gnd-net.com/api/v1/coin/GND/supply"
+# Ответ: { "success": true, "data": { "symbol": "GND", "name": "Ganymede Coin", "decimals": 18, "total_supply": "...", "circulating_supply": "..." } }
 ```
 
 ---
@@ -152,10 +160,20 @@ curl -s -X POST "https://main-node.gnd-net.com/api/v1/token/deploy" \
 
 ---
 
-## Токены (GND-st1)
+## Токены (GND-st1) и нативные монеты (GND, GANI)
 
 ```bash
-# Перевод токена
+# Перевод нативной монеты (GND или GANI): указывайте symbol, token_address не нужен
+curl -s -X POST "https://main-node.gnd-net.com/api/v1/token/transfer" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "GND",
+    "from": "GND...",
+    "to": "GND...",
+    "amount": "1000000000000000000"
+  }'
+
+# Перевод контрактного токена (указывайте token_address)
 curl -s -X POST "https://main-node.gnd-net.com/api/v1/token/transfer" \
   -H "Content-Type: application/json" \
   -d '{

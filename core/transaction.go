@@ -83,19 +83,38 @@ func (tx *Transaction) Validate() error {
 	return nil
 }
 
-// HasSufficientBalance checks if the sender has enough balance for the transaction
+// HasSufficientBalance проверяет достаточность баланса: сумма перевода по tx.Symbol (или GND) и газ — всегда в GND.
 func (tx *Transaction) HasSufficientBalance() bool {
 	state := GetState()
 	if state == nil {
 		return false
 	}
 
-	requiredBalance := new(big.Int).Mul(tx.Value, big.NewInt(1))
-	gasCost := new(big.Int).Mul(tx.GasPrice, big.NewInt(int64(tx.GasLimit)))
-	requiredBalance.Add(requiredBalance, gasCost)
+	symbol := tx.Symbol
+	if symbol == "" {
+		symbol = "GND"
+	}
 
-	balance := state.GetBalance(tx.Sender, "GND")
-	return balance.Cmp(requiredBalance) >= 0
+	// Сумма перевода — из баланса по символу транзакции
+	balanceForValue := state.GetBalance(tx.Sender, symbol)
+	if balanceForValue.Cmp(tx.Value) < 0 {
+		return false
+	}
+
+	// Газ оплачивается только в GND
+	gasCost := new(big.Int).Mul(tx.GasPrice, big.NewInt(int64(tx.GasLimit)))
+	balanceGND := state.GetBalance(tx.Sender, GasSymbol)
+	if balanceGND.Cmp(gasCost) < 0 {
+		return false
+	}
+
+	// Если перевод в GND, то нужна сумма + газ из одного баланса GND
+	if symbol == GasSymbol {
+		required := new(big.Int).Add(tx.Value, gasCost)
+		return balanceGND.Cmp(required) >= 0
+	}
+	// Если перевод в GANI — значение из GANI, газ из GND — оба проверены выше
+	return true
 }
 
 // IsContractCall checks if the transaction is a contract call

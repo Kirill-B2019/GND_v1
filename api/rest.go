@@ -280,7 +280,87 @@ func (s *Server) CreateWallet(c *gin.Context) {
 	})
 }
 
+// GetNativeCoinBalance возвращает баланс нативной монеты (GND, GANI) для адреса. GET /api/v1/coin/:symbol/balance/:owner
+func (s *Server) GetNativeCoinBalance(c *gin.Context) {
+	symbol := strings.TrimSpace(strings.ToUpper(c.Param("symbol")))
+	owner := strings.TrimSpace(c.Param("owner"))
+	if !core.IsNativeSymbol(symbol) {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Допустимые символы нативных монет: GND, GANI",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	if owner == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Укажите owner (адрес)",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	var balance *big.Int
+	if s.core != nil && s.core.State != nil {
+		balance = s.core.State.GetBalance(types.Address(owner), symbol)
+	} else {
+		balance = big.NewInt(0)
+	}
+	if balance == nil {
+		balance = big.NewInt(0)
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
+			"symbol":  symbol,
+			"owner":   owner,
+			"balance": balance.String(),
+		},
+	})
+}
+
+// GetNativeCoinSupply возвращает total_supply и circulating_supply нативной монеты из БД. GET /api/v1/coin/:symbol/supply
+func (s *Server) GetNativeCoinSupply(c *gin.Context) {
+	symbol := strings.TrimSpace(strings.ToUpper(c.Param("symbol")))
+	if !core.IsNativeSymbol(symbol) {
+		c.JSON(http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Допустимые символы нативных монет: GND, GANI",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	if s.core == nil || s.core.Pool == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{
+			Success: false,
+			Error:   "Сервис недоступен",
+			Code:    http.StatusServiceUnavailable,
+		})
+		return
+	}
+	tok, err := core.GetTokenBySymbol(c.Request.Context(), s.core.Pool, symbol)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   "Монета не найдена: " + symbol,
+			Code:    http.StatusNotFound,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data: gin.H{
+			"symbol":             symbol,
+			"name":               tok.Name,
+			"decimals":           tok.Decimals,
+			"total_supply":       tok.TotalSupply,
+			"circulating_supply": tok.CirculatingSupply,
+		},
+	})
+}
+
 // GetBalance возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
+// Включает нативные монеты (GND, GANI) из native_balances.
 func (s *Server) GetBalance(c *gin.Context) {
 	address := c.Param("address")
 	balances := []core.WalletTokenBalance{}
@@ -928,10 +1008,14 @@ func (s *Server) setupRoutes() {
 	api.POST("/token/deploy", s.DeployToken)
 	api.POST("/token/logo/upload", s.TokenLogoUpload)
 	api.PATCH("/token/logo", s.TokenLogoSet)
-	// Токены (amount принимается как строка или число)
+	// Нативные монеты (GND, GANI): баланс по символу и предложение (total_supply, circulating_supply)
+	api.GET("/coin/:symbol/balance/:owner", s.GetNativeCoinBalance)
+	api.GET("/coin/:symbol/supply", s.GetNativeCoinSupply)
+	// Токены (amount — строка или число). Для нативных монет: symbol=GND|GANI, token_address пустой.
 	api.POST("/token/transfer", func(c *gin.Context) {
 		var req struct {
 			TokenAddress string `json:"token_address"`
+			Symbol       string `json:"symbol"`
 			From         string `json:"from"`
 			To           string `json:"to"`
 			Amount       string `json:"amount"`
@@ -953,6 +1037,42 @@ func (s *Server) setupRoutes() {
 			})
 			return
 		}
+		symbol := strings.TrimSpace(req.Symbol)
+		// Перевод нативной монеты (GND, GANI) через state
+		if core.IsNativeSymbol(symbol) && (req.TokenAddress == "" || strings.TrimSpace(req.TokenAddress) == "") {
+			st := core.GetState()
+			if st == nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Состояние ноды недоступно",
+					Code:    http.StatusInternalServerError,
+				})
+				return
+			}
+			err := st.TransferToken(types.Address(req.From), types.Address(req.To), symbol, amount)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, APIResponse{
+					Success: false,
+					Error:   "Ошибка перевода нативной монеты: " + err.Error(),
+					Code:    http.StatusBadRequest,
+				})
+				return
+			}
+			if err := st.SaveToDB(); err != nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Ошибка сохранения состояния",
+					Code:    http.StatusInternalServerError,
+				})
+				return
+			}
+			c.JSON(http.StatusOK, APIResponse{
+				Success: true,
+				Data:    "Перевод нативной монеты выполнен успешно",
+			})
+			return
+		}
+		// Контрактный токен по адресу
 		token, err := registry.GetToken(req.TokenAddress)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, APIResponse{

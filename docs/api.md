@@ -45,7 +45,7 @@ Response 401: неверный или отсутствующий X-API-Key
 ```http
 GET /api/v1/wallet/:address/balance
 ```
-Возвращает все токены кошелька из таблицы `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified). API-ключ не требуется.
+Возвращает все балансы кошелька: **нативные монеты (GND, GANI)** из таблицы `native_balances` и контрактные токены из `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified, token_address). API-ключ не требуется.
 
 Response:
 ```json
@@ -55,11 +55,11 @@ Response:
     "address": "GND...",
     "balances": [
       {
-        "token_address": "GNDct...",
-        "balance": "1000000000000000000",
+        "token_address": "",
+        "balance": "100000000000000000000000000",
         "standard": "GND-st1",
         "symbol": "GND",
-        "name": "GND",
+        "name": "Ganymede Coin",
         "decimals": 18,
         "is_verified": true
       }
@@ -67,8 +67,62 @@ Response:
   }
 }
 ```
+Для нативных монет поле `token_address` может быть пустым (источник истины — L1 state).
+
+### Нативные монеты (GND, GANI)
+
+Нативные монеты — активы протокола L1; их балансы хранятся в `native_balances` и в состоянии ноды.
+
+#### Баланс нативной монеты по адресу
+```http
+GET /api/v1/coin/:symbol/balance/:owner
+```
+Возвращает баланс нативной монеты (symbol: **GND** или **GANI**) для адреса `owner`. Допустимые значения `symbol`: GND, GANI.
+
+Response 200:
+```json
+{
+  "success": true,
+  "data": {
+    "symbol": "GND",
+    "owner": "GND...",
+    "balance": "100000000000000000000000000"
+  }
+}
+```
+400 — неверный symbol (не GND/GANI). API-ключ не требуется.
+
+#### Предложение нативной монеты (total_supply, circulating_supply)
+```http
+GET /api/v1/coin/:symbol/supply
+```
+Возвращает данные из таблицы `tokens` для нативной монеты: `total_supply`, `circulating_supply` (лимит циркуляции), `name`, `decimals`. Допустимые значения `symbol`: GND, GANI.
+
+Response 200:
+```json
+{
+  "success": true,
+  "data": {
+    "symbol": "GND",
+    "name": "Ganymede Coin",
+    "decimals": 18,
+    "total_supply": "1000000000000000000000000000",
+    "circulating_supply": "100000000000000000000000000"
+  }
+}
+```
+404 — монета не найдена в БД.
 
 ### Токены
+
+#### Перевод (в т.ч. нативные монеты GND, GANI)
+```http
+POST /api/v1/token/transfer
+Content-Type: application/json
+
+{ "from": "GND...", "to": "GND...", "amount": "1000000000000000000", "symbol": "GND" }
+```
+Для **нативных монет** указывайте `symbol` (GND или GANI) и не передавайте `token_address` (или передайте пустую строку). Для контрактного токена указывайте `token_address` и при необходимости `symbol`. API-ключ не требуется.
 
 #### Создание токена (требуется X-API-Key)
 
@@ -102,21 +156,11 @@ Response:
 }
 ```
 
-#### Получение баланса токена
+#### Получение баланса по контракту токена
 ```http
-GET /token/balance/{address}
-Content-Type: application/json
-
-{
-    "tokenAddr": "GND..."
-}
-
-Response:
-{
-    "address": "GND...",
-    "balance": "1000000000000000000"
-}
+GET /api/v1/token/:address/balance/:owner
 ```
+Возвращает баланс контрактного токена с адресом `address` для владельца `owner`. Для **нативных монет (GND, GANI)** используйте **GET /api/v1/coin/:symbol/balance/:owner** (например `GET /api/v1/coin/GND/balance/GND...`) или общий список **GET /api/v1/wallet/:address/balance**.
 
 ### Транзакции
 

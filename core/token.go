@@ -330,19 +330,58 @@ type WalletTokenBalance struct {
 	LogoURL      string `json:"logo_url,omitempty"`
 }
 
-// GetWalletTokenBalances возвращает все балансы токенов кошелька из token_balances с полями из tokens (standard, symbol, name, decimals, is_verified)
-// Поддерживаются схемы: (token_id, address, balance) и (address, symbol, balance) — при отсутствии строк по token_id выполняется запрос по symbol
+// GetWalletTokenBalances возвращает все балансы кошелька: нативные (GND, GANI) из native_balances + контрактные из token_balances.
 func GetWalletTokenBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
-	// 1) Основной запрос: token_balances с token_id, JOIN tokens
-	result, err := getWalletBalancesByTokenID(ctx, pool, walletAddress)
+	var out []WalletTokenBalance
+	// 1) Нативные балансы (GND, GANI) из native_balances с метаданными из tokens
+	nativeList, err := getNativeWalletBalances(ctx, pool, walletAddress)
 	if err != nil {
 		return nil, err
 	}
-	if len(result) > 0 {
-		return result, nil
+	out = append(out, nativeList...)
+	// 2) Контрактные токены из token_balances (исключаем дубликаты по символу GND/GANI)
+	tokenList, err := getWalletBalancesByTokenID(ctx, pool, walletAddress)
+	if err != nil {
+		return nil, err
 	}
-	// 2) Запасной вариант: если в token_balances есть колонка symbol и строки без token_id (например из state.SaveToDB)
-	return getWalletBalancesBySymbol(ctx, pool, walletAddress)
+	for _, item := range tokenList {
+		if IsNativeSymbol(item.Symbol) {
+			continue // уже добавлены из native_balances
+		}
+		out = append(out, item)
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	// 3) Запасной вариант: по symbol в token_balances (старая схема)
+	bySymbol, _ := getWalletBalancesBySymbol(ctx, pool, walletAddress)
+	return bySymbol, nil
+}
+
+// getNativeWalletBalances возвращает балансы нативных монет (GND, GANI) из native_balances с метаданными из tokens.
+func getNativeWalletBalances(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT nb.symbol, nb.balance::text,
+			COALESCE(t.standard, 'GND-st1'), COALESCE(t.name, nb.symbol), COALESCE(t.decimals, 18), COALESCE(t.is_verified, true), COALESCE(c.address, ''), COALESCE(t.logo_url, '')
+		FROM native_balances nb
+		LEFT JOIN tokens t ON t.symbol = nb.symbol
+		LEFT JOIN contracts c ON c.id = t.contract_id
+		WHERE nb.address = $1`,
+		walletAddress,
+	)
+	if err != nil {
+		return nil, nil // таблица native_balances может отсутствовать до миграции
+	}
+	defer rows.Close()
+	var result []WalletTokenBalance
+	for rows.Next() {
+		var item WalletTokenBalance
+		if err := rows.Scan(&item.Symbol, &item.Balance, &item.Standard, &item.Name, &item.Decimals, &item.IsVerified, &item.TokenAddress, &item.LogoURL); err != nil {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }
 
 func getWalletBalancesByTokenID(ctx context.Context, pool *pgxpool.Pool, walletAddress string) ([]WalletTokenBalance, error) {

@@ -41,28 +41,40 @@ func HexToPrivateKey(hexKey string) (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
-// Sign подписывает данные приватным ключом
+// p256CurveOrderSize — размер r/s в байтах для P-256 (N порядка 2^256)
+const p256CurveOrderSize = 32
+
+// Sign подписывает данные приватным ключом. Подпись: r (32 байта) || s (32 байта).
 func Sign(data []byte, privateKey *ecdsa.PrivateKey) ([]byte, error) {
 	hash := sha256.Sum256(data)
 	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign: %v", err)
 	}
-
-	// Объединяем r и s в одну подпись
-	signature := append(r.Bytes(), s.Bytes()...)
-	return signature, nil
+	rb := padBigIntBytes(r.Bytes(), p256CurveOrderSize)
+	sb := padBigIntBytes(s.Bytes(), p256CurveOrderSize)
+	return append(rb, sb...), nil
 }
 
-// Verify проверяет подпись
+// Verify проверяет подпись. Ожидает подпись длиной 64 байта (r || s по 32 байта).
 func Verify(data []byte, signature []byte, publicKey *ecdsa.PublicKey) bool {
+	if len(signature) != p256CurveOrderSize*2 {
+		return false
+	}
 	hash := sha256.Sum256(data)
-
-	// Разделяем подпись на r и s
-	r := new(big.Int).SetBytes(signature[:len(signature)/2])
-	s := new(big.Int).SetBytes(signature[len(signature)/2:])
-
+	r := new(big.Int).SetBytes(signature[:p256CurveOrderSize])
+	s := new(big.Int).SetBytes(signature[p256CurveOrderSize:])
 	return ecdsa.Verify(publicKey, hash[:], r, s)
+}
+
+// padBigIntBytes дополняет байты big.Int слева нулями до нужной длины.
+func padBigIntBytes(b []byte, size int) []byte {
+	if len(b) >= size {
+		return b[len(b)-size:]
+	}
+	padded := make([]byte, size)
+	copy(padded[size-len(b):], b)
+	return padded
 }
 
 // PublicKeyToAddress конвертирует публичный ключ в адрес

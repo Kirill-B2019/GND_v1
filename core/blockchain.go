@@ -160,8 +160,12 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 		return fmt.Errorf("дозапись системной транзакции genesis: %w", err)
 	}
 	for i, coin := range cfg.Coins {
+		amountStr := coin.CirculatingSupply
+		if amountStr == "" {
+			amountStr = coin.TotalSupply
+		}
 		amount := new(big.Int)
-		amount.SetString(coin.TotalSupply, 10)
+		amount.SetString(amountStr, 10)
 		sysTxMint := newSystemTransaction(
 			int(bc.Genesis.ID),
 			genesisTimestamp,
@@ -218,19 +222,38 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 	state.SetPool(pool)
 	bc.State = state
 
-	// 4. Начисляем начальный баланс в памяти
+	// 4. Начисляем начальный баланс в памяти (лимит — circulating_supply; проверка в AddBalance)
 	for _, coin := range cfg.Coins {
+		amountStr := coin.CirculatingSupply
+		if amountStr == "" {
+			amountStr = coin.TotalSupply
+		}
 		amount := new(big.Int)
-		amount.SetString(coin.TotalSupply, 10)
+		amount.SetString(amountStr, 10)
 		if err := state.Credit(types.Address(wallet.Address), coin.Symbol, amount); err != nil {
 			return fmt.Errorf("failed to add initial balance for %s: %v", coin.Symbol, err)
 		}
 	}
 
-	// 5. Сохраняем балансы в БД: только token_balances (accounts.balance при первом запуске не начисляем)
+	// 5. Сохраняем балансы в БД: нативные (GND, GANI) — в native_balances; остальные — в token_balances
 	for _, coin := range cfg.Coins {
+		amountStr := coin.CirculatingSupply
+		if amountStr == "" {
+			amountStr = coin.TotalSupply
+		}
 		amount := new(big.Int)
-		amount.SetString(coin.TotalSupply, 10)
+		amount.SetString(amountStr, 10)
+		if IsNativeSymbol(coin.Symbol) {
+			_, err := pool.Exec(ctx, `
+				INSERT INTO native_balances (address, symbol, balance, updated_at)
+				VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+				ON CONFLICT (address, symbol) DO UPDATE SET balance = $3, updated_at = CURRENT_TIMESTAMP`,
+				string(wallet.Address), coin.Symbol, amount.String())
+			if err != nil {
+				return fmt.Errorf("запись нативного баланса %s: %w", coin.Symbol, err)
+			}
+			continue
+		}
 		tok, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
 		if err != nil {
 			return fmt.Errorf("токен %s не найден после деплоя: %w", coin.Symbol, err)
@@ -245,10 +268,14 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		}
 	}
 
-	// 6. Транзакции о начислении на кошелёк (initial_mint по каждой монете)
+	// 6. Транзакции о начислении на кошелёк (initial_mint по каждой монете; объём — circulating_supply)
 	for i, coin := range cfg.Coins {
+		amountStr := coin.CirculatingSupply
+		if amountStr == "" {
+			amountStr = coin.TotalSupply
+		}
 		amount := new(big.Int)
-		amount.SetString(coin.TotalSupply, 10)
+		amount.SetString(amountStr, 10)
 		sysTxMint := newSystemTransaction(
 			int(bc.Genesis.ID),
 			bc.Genesis.Timestamp,
@@ -538,8 +565,15 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 		}
 	}
 
-	// Применяем транзакции
+	// Применяем транзакции к состоянию
 	bc.applyBlock(block)
+
+	// Сохраняем состояние (нативные балансы в native_balances, nonces в accounts) для сохранности при перезагрузке
+	if bc.Pool != nil && bc.State != nil {
+		if err := bc.State.SaveToDB(); err != nil {
+			fmt.Printf("предупреждение: не удалось сохранить состояние после блока %d: %v\n", block.ID, err)
+		}
+	}
 
 	// Добавляем блок в цепочку
 	bc.Blocks = append(bc.Blocks, block)
@@ -560,24 +594,25 @@ func (bc *Blockchain) ProcessTransaction(tx *Transaction) error {
 	return bc.processTransfer(tx)
 }
 
-// processTransfer обрабатывает обычный перевод
+// processTransfer обрабатывает перевод нативной монеты (GND или GANI)
 func (bc *Blockchain) processTransfer(tx *Transaction) error {
-	// Проверяем баланс отправителя
 	if !tx.HasSufficientBalance() {
 		return errors.New("insufficient balance")
 	}
-
-	// Выполняем перевод
-	if err := bc.State.SubBalance(types.Address(tx.Sender), "GND", tx.Value); err != nil {
+	symbol := tx.Symbol
+	if symbol == "" {
+		symbol = GasSymbol
+	}
+	if !IsNativeSymbol(symbol) {
+		return errors.New("symbol must be GND or GANI for native transfer")
+	}
+	if err := bc.State.SubBalance(types.Address(tx.Sender), symbol, tx.Value); err != nil {
 		return err
 	}
-
-	if err := bc.State.AddBalance(types.Address(tx.Recipient), "GND", tx.Value); err != nil {
-		// Откатываем списание если не удалось начислить
-		bc.State.AddBalance(types.Address(tx.Sender), "GND", tx.Value)
+	if err := bc.State.AddBalance(types.Address(tx.Recipient), symbol, tx.Value); err != nil {
+		bc.State.AddBalance(types.Address(tx.Sender), symbol, tx.Value)
 		return err
 	}
-
 	return nil
 }
 
