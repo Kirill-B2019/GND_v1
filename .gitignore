@@ -26,3 +26,6 @@ env/
 /api/rest_contract_test.go
 /gnd_node_emulate.exe
 /scripts/emulate_restart.ps1
+/db/old DB/
+.idea
+

@@ -4,7 +4,9 @@
     <file url="file://$PROJECT_DIR$/api/websocket.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/002_schema_additions.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/003_reset_database.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/cleanup_gnd_gani.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/console_21.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/create_transactions_partitions.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/dump0906.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/004_create_signer_wallets.sql" dialect="PostgreSQL" />
@@ -17,6 +19,7 @@
     <file url="file://$PROJECT_DIR$/db/migrations/011_tokens_logo_url.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/012_native_balances.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/013_native_balances_backfill.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/old DB/transactions.csv" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main_test.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/tokens/deployer/deployer.go" dialect="PostgreSQL" />

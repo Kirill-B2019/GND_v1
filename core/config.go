@@ -18,6 +18,7 @@ type NativeContractsConfig struct {
 	GndContractAddress  string `json:"gnd_contract_address"`
 	GaniContractAddress string `json:"gani_contract_address"`
 	FeeCollectorAddress string `json:"fee_collector_address"`
+	GndselfAddress      string `json:"gndself_address"` // мультиподписной кошелёк платформы; при owner = gndself_address комиссия за деплой не взимается
 }
 
 type Config struct {
@@ -189,15 +190,17 @@ func InitGlobalConfigDefault() (*GlobalConfig, error) {
 	// Native contracts (GND/GANI на контрактах)
 	if data, err := os.ReadFile(nativeContractsPath); err == nil {
 		var nc struct {
-			Gnd  string `json:"gnd_contract_address"`
-			Gani string `json:"gani_contract_address"`
-			Fee  string `json:"fee_collector_address"`
+			Gnd     string `json:"gnd_contract_address"`
+			Gani    string `json:"gani_contract_address"`
+			Fee     string `json:"fee_collector_address"`
+			Gndself string `json:"gndself_address"`
 		}
 		if err := json.Unmarshal(data, &nc); err == nil {
 			cfg.NativeContracts = &NativeContractsConfig{
 				GndContractAddress:  strings.TrimSpace(nc.Gnd),
 				GaniContractAddress: strings.TrimSpace(nc.Gani),
 				FeeCollectorAddress: strings.TrimSpace(nc.Fee),
+				GndselfAddress:      strings.TrimSpace(nc.Gndself),
 			}
 		}
 	}

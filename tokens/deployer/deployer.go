@@ -34,7 +34,8 @@ func NewDeployer(pool *pgxpool.Pool, eventManager coretypes.EventManager, evm co
 	}
 }
 
-// DeployToken деплоит новый токен
+// DeployToken деплоит новый токен.
+// При params.SkipDeployFee == true (owner = gndself_address) комиссию за деплой не взимать.
 func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParams) (interfaces.TokenInterface, error) {
 	// Проверяем параметры
 	if params.Name == "" || params.Symbol == "" {
@@ -60,9 +61,18 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		return nil, fmt.Errorf("failed to generate bytecode: %v", err)
 	}
 
+	// Определяем адрес, от имени которого выполняется деплой (оплачивает газ)
+	from := params.Owner
+	if params.Deployer != "" {
+		from = params.Deployer
+	}
+	if from == "" {
+		return nil, errors.New("deploy from address is empty")
+	}
+
 	// Деплоим контракт. nonce = UnixNano, чтобы каждый деплой получал уникальный адрес (избегаем duplicate key contracts_address_key)
 	addr, err := d.evm.DeployContract(
-		coretypes.Address(params.Owner),
+		coretypes.Address(from),
 		bytecode,
 		coretypes.ContractMeta{
 			Name:     params.Name,

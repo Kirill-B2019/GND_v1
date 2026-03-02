@@ -92,9 +92,12 @@ func main() {
 		log.Fatalf("Ошибка проверки генезис-блока: %v", err)
 	}
 
-	// 5. Генерация или загрузка кошелька валидатора (у аккаунта может быть несколько кошельков — загружаем первый/валидатора)
+	// 5. Генерация или загрузка кошелька валидатора. При отсутствии генезиса кошелёк не создаём — используем системный адрес.
 	var minerWallet *core.Wallet
-	if existingAccount {
+	if !genesisExists && !existingAccount {
+		// Пустая БД: только генезис, без создания кошелька
+		minerWallet = &core.Wallet{Address: core.Address("GND_GENESIS")}
+	} else if existingAccount {
 		minerWallet, err = core.LoadWallet(pool)
 		if err != nil {
 			log.Fatalf("Ошибка загрузки существующего кошелька: %v", err)

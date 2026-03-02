@@ -193,30 +193,32 @@ func EnsureGenesisTransactions(ctx context.Context, pool *pgxpool.Pool, bc *Bloc
 	return nil
 }
 
-// FirstLaunch initializes blockchain on first launch
+// FirstLaunch инициализирует блокчейн при первом запуске (пустая БД).
+// Создаётся только генезис-блок, одна нулевая транзакция; блок финализируется.
+// Кошелёк не создаётся, эмиссии и токены не разворачиваются.
 func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, wallet *Wallet, cfg *Config) error {
-	// 1. Генезис: сохраняем первым, чтобы иметь block ID для контрактов и транзакций
+	// 1. Генезис: сохраняем блок (финализирован)
 	bc.Genesis.Timestamp = genesisTimestamp
 	bc.Genesis.CreatedAt = genesisTimestamp
 	bc.Genesis.UpdatedAt = time.Now().UTC()
+	bc.Genesis.Status = "finalized"
 	bc.Genesis.Hash = bc.Genesis.CalculateHash()
 
 	if err := bc.Genesis.SaveToDB(ctx, pool); err != nil {
 		return fmt.Errorf("failed to save genesis block: %v", err)
 	}
 
-	// 2. Деплой монет из config (контракты + токены в БД), с привязкой к генезис-блоку
-	if err := EnsureCoinsDeployed(ctx, pool, cfg, string(wallet.Address), int(bc.Genesis.ID)); err != nil {
-		return fmt.Errorf("проверка деплоя монет: %w", err)
+	// 2. Одна нулевая транзакция генезиса (без эмиссий и токенов)
+	recipient := types.Address("GND_GENESIS")
+	if wallet != nil {
+		recipient = types.Address(wallet.Address)
 	}
-
-	// 2.1. Транзакция о создании генезис-блока (данные в таблице transactions)
 	sysTxGenesis := newSystemTransaction(
 		int(bc.Genesis.ID),
 		bc.Genesis.Timestamp,
 		"genesis",
 		types.Address("GND_GENESIS"),
-		types.Address(wallet.Address),
+		recipient,
 		big.NewInt(0),
 		"",
 	)
@@ -224,86 +226,17 @@ func (bc *Blockchain) FirstLaunch(ctx context.Context, pool *pgxpool.Pool, walle
 		return fmt.Errorf("запись системной транзакции genesis: %w", err)
 	}
 
-	// 3. Инициализируем состояние и привязываем пул БД
+	// 3. Обновляем tx_count генезис-блока (только одна транзакция)
+	bc.Genesis.TxCount = 1
+	if _, err := pool.Exec(ctx, `UPDATE blocks SET tx_count = 1, updated_at = $1 WHERE id = $2`,
+		time.Now().UTC(), bc.Genesis.ID); err != nil {
+		return fmt.Errorf("обновление tx_count генезис-блока: %w", err)
+	}
+
+	// 4. Инициализируем состояние (без начисления балансов)
 	state := NewState()
 	state.SetPool(pool)
 	bc.State = state
-
-	// 4. Начисляем начальный баланс в памяти (лимит — circulating_supply; проверка в AddBalance)
-	for _, coin := range cfg.Coins {
-		amountStr := coin.CirculatingSupply
-		if amountStr == "" {
-			amountStr = coin.TotalSupply
-		}
-		amount := new(big.Int)
-		amount.SetString(amountStr, 10)
-		if err := state.Credit(types.Address(wallet.Address), coin.Symbol, amount); err != nil {
-			return fmt.Errorf("failed to add initial balance for %s: %v", coin.Symbol, err)
-		}
-	}
-
-	// 5. Сохраняем балансы в БД: нативные (GND, GANI) — в native_balances; остальные — в token_balances
-	for _, coin := range cfg.Coins {
-		amountStr := coin.CirculatingSupply
-		if amountStr == "" {
-			amountStr = coin.TotalSupply
-		}
-		amount := new(big.Int)
-		amount.SetString(amountStr, 10)
-		if IsNativeSymbol(coin.Symbol) {
-			_, err := pool.Exec(ctx, `
-				INSERT INTO native_balances (address, symbol, balance, updated_at)
-				VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-				ON CONFLICT (address, symbol) DO UPDATE SET balance = $3, updated_at = CURRENT_TIMESTAMP`,
-				string(wallet.Address), coin.Symbol, amount.String())
-			if err != nil {
-				return fmt.Errorf("запись нативного баланса %s: %w", coin.Symbol, err)
-			}
-			continue
-		}
-		tok, err := GetTokenBySymbol(ctx, pool, coin.Symbol)
-		if err != nil {
-			return fmt.Errorf("токен %s не найден после деплоя: %w", coin.Symbol, err)
-		}
-		_, err = pool.Exec(ctx, `
-			INSERT INTO token_balances (token_id, address, balance)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (token_id, address) DO UPDATE SET balance = $3`,
-			tok.ID, string(wallet.Address), amount.String())
-		if err != nil {
-			return fmt.Errorf("запись баланса %s: %w", coin.Symbol, err)
-		}
-	}
-
-	// 6. Транзакции о начислении на кошелёк (initial_mint по каждой монете; объём — circulating_supply)
-	for i, coin := range cfg.Coins {
-		amountStr := coin.CirculatingSupply
-		if amountStr == "" {
-			amountStr = coin.TotalSupply
-		}
-		amount := new(big.Int)
-		amount.SetString(amountStr, 10)
-		sysTxMint := newSystemTransaction(
-			int(bc.Genesis.ID),
-			bc.Genesis.Timestamp,
-			"initial_mint",
-			types.Address("GND_GENESIS"),
-			types.Address(wallet.Address),
-			amount,
-			coin.Symbol,
-		)
-		if err := saveSystemTransaction(ctx, pool, 2+i, sysTxMint); err != nil {
-			return fmt.Errorf("запись системной транзакции initial_mint %s: %w", coin.Symbol, err)
-		}
-	}
-
-	// 7. Обновляем tx_count генезис-блока в БД (1 genesis + N initial_mint)
-	txCount := 1 + len(cfg.Coins)
-	if _, err := pool.Exec(ctx, `UPDATE blocks SET tx_count = $1, updated_at = $2 WHERE id = $3`,
-		txCount, time.Now().UTC(), bc.Genesis.ID); err != nil {
-		return fmt.Errorf("обновление tx_count генезис-блока: %w", err)
-	}
-	bc.Genesis.TxCount = uint32(txCount)
 
 	return nil
 }

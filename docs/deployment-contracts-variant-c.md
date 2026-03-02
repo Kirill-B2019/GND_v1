@@ -34,7 +34,8 @@
 3. Указать в **config/native_contracts.json**:
    - `gnd_contract_address` — адрес задеплоенного GND-контракта;
    - `gani_contract_address` — адрес задеплоенного GANI-контракта;
-   - при необходимости `fee_collector_address` для сборщика комиссий.
+   - при необходимости `fee_collector_address` для сборщика комиссий;
+   - `gndself_address` — мультиподписной кошелёк платформы (GNDSelf); при **owner = gndself_address** комиссия за деплой токена не взимается.
 
 После перезапуска нода переходит в режим «всё на контрактах»: балансы GND/GANI читаются и изменяются только через `token_balances` (по token_id, связанному с этими контрактами). Таблица `native_balances` для GND/GANI больше не используется для учёта.
 

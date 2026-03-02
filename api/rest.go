@@ -740,13 +740,14 @@ func (s *Server) DeployToken(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name        string   `json:"name"`
-		Symbol      string   `json:"symbol"`
-		Decimals    uint8    `json:"decimals"`
-		TotalSupply *big.Int `json:"total_supply"`
-		Owner       string   `json:"owner"`
-		Standard    string   `json:"standard"`
-		LogoURL     string   `json:"logo_url"`
+		Name         string   `json:"name"`
+		Symbol       string   `json:"symbol"`
+		Decimals     uint8    `json:"decimals"`
+		TotalSupply  *big.Int `json:"total_supply"`
+		Owner        string   `json:"owner"`
+		Standard     string   `json:"standard"`
+		LogoURL      string   `json:"logo_url"`
+		DeployWallet string   `json:"deploy_wallet"` // опциональный кошелёк деплоя (оплачивает газ)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
@@ -760,37 +761,62 @@ func (s *Server) DeployToken(c *gin.Context) {
 		req.Standard = "GND-st1"
 	}
 
+	// Определяем кошелёк деплоя (оплачивает газ) и владельца.
+	// Сценарии:
+	// - deploy_wallet не задан, owner задан: деплой и владение от одного кошелька (как раньше).
+	// - deploy_wallet не задан, owner пустой: создаём кошелёк, он же owner и деплойер (как раньше).
+	// - deploy_wallet задан, owner пустой: деплой выполняется от deploy_wallet, токен считается системным (владелец не задан).
+	// - deploy_wallet задан, owner задан: деплой от deploy_wallet, владелец — owner.
+	deployFrom := strings.TrimSpace(req.DeployWallet)
 	ownerWalletCreated := false
-	if strings.TrimSpace(req.Owner) == "" {
-		if s.core == nil {
-			c.JSON(http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "Поле owner обязательно: сервис создания кошельков недоступен",
-				Code:    http.StatusBadRequest,
-			})
-			return
+
+	owner := strings.TrimSpace(req.Owner)
+	if deployFrom == "" {
+		if owner == "" {
+			if s.core == nil {
+				c.JSON(http.StatusBadRequest, APIResponse{
+					Success: false,
+					Error:   "Поле owner или deploy_wallet обязательно: сервис создания кошельков недоступен",
+					Code:    http.StatusBadRequest,
+				})
+				return
+			}
+			wallet, err := s.core.CreateWallet(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, APIResponse{
+					Success: false,
+					Error:   "Ошибка создания кошелька для владельца токена: " + err.Error(),
+					Code:    http.StatusInternalServerError,
+				})
+				return
+			}
+			owner = string(wallet.Address)
+			deployFrom = owner
+			ownerWalletCreated = true
+		} else {
+			deployFrom = owner
 		}
-		wallet, err := s.core.CreateWallet(c.Request.Context())
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, APIResponse{
-				Success: false,
-				Error:   "Ошибка создания кошелька для владельца токена: " + err.Error(),
-				Code:    http.StatusInternalServerError,
-			})
-			return
-		}
-		req.Owner = string(wallet.Address)
-		ownerWalletCreated = true
+	} else {
+		// deploy_wallet задан; owner может быть пустым (системный токен) или отдельным.
+		// owner оставляем как есть; deployFrom уже установлен.
+	}
+
+	// При owner = gndself_address комиссия за деплой не взимается (платформа не платит себе).
+	var skipDeployFee bool
+	if s.cfg != nil && s.cfg.NativeContracts != nil && s.cfg.NativeContracts.GndselfAddress != "" {
+		skipDeployFee = strings.TrimSpace(owner) == s.cfg.NativeContracts.GndselfAddress
 	}
 
 	params := tokentypes.TokenParams{
-		Name:        req.Name,
-		Symbol:      req.Symbol,
-		Decimals:    req.Decimals,
-		TotalSupply: req.TotalSupply,
-		Owner:       req.Owner,
-		Standard:    req.Standard,
-		LogoURL:     strings.TrimSpace(req.LogoURL),
+		Name:          req.Name,
+		Symbol:        req.Symbol,
+		Decimals:      req.Decimals,
+		TotalSupply:   req.TotalSupply,
+		Owner:         owner,
+		Standard:      req.Standard,
+		LogoURL:       strings.TrimSpace(req.LogoURL),
+		Deployer:      deployFrom,
+		SkipDeployFee: skipDeployFee,
 	}
 	token, err := s.deployer.DeployToken(c.Request.Context(), params)
 	if err != nil {
@@ -808,9 +834,10 @@ func (s *Server) DeployToken(c *gin.Context) {
 		"decimals":             token.GetDecimals(),
 		"total_supply":         token.GetTotalSupply().String(),
 		"standard":             token.GetStandard(),
-		"owner":                req.Owner,
+		"owner":                owner,
 		"owner_wallet_created": ownerWalletCreated,
 		"logo_url":             params.LogoURL,
+		"deploy_fee_waived":    skipDeployFee, // true при owner = gndself_address
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
