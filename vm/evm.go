@@ -8,6 +8,7 @@ import (
 	"GND/types"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -133,8 +134,12 @@ func (e *EVM) DeployContract(
 			primarySymbol, requiredFee.String(), balance.String())
 	}
 
-	// Generate contract address using keccak256
-	addr := fmt.Sprintf("GNDct%x", hashBytes(append(bytecode, byte(nonce))))
+	// Уникальный адрес контракта: hash(bytecode, from, nonce). nonce кодируем 8 байтами, чтобы один кошелёк мог деплоить несколько контрактов без дубликата адреса.
+	data := append(bytecode, []byte(from.String())...)
+	nonceBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(nonceBuf, nonce)
+	data = append(data, nonceBuf...)
+	addr := fmt.Sprintf("GNDct%x", hashBytes(data))
 
 	// Check if contract already exists
 	if _, exists := ContractRegistry[core.Address(addr)]; exists {

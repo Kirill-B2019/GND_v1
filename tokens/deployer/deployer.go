@@ -60,7 +60,7 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 		return nil, fmt.Errorf("failed to generate bytecode: %v", err)
 	}
 
-	// Деплоим контракт (types.EVMInterface: from Address, gasPrice *big.Int, signature []byte)
+	// Деплоим контракт. nonce = UnixNano, чтобы каждый деплой получал уникальный адрес (избегаем duplicate key contracts_address_key)
 	addr, err := d.evm.DeployContract(
 		coretypes.Address(params.Owner),
 		bytecode,
@@ -69,10 +69,10 @@ func (d *Deployer) DeployToken(ctx context.Context, params tokentypes.TokenParam
 			Symbol:   params.Symbol,
 			Standard: params.Standard,
 		},
-		1000000,       // gas limit
-		big.NewInt(1), // gas price
-		0,             // nonce
-		[]byte(nil),   // signature
+		1000000,                       // gas limit
+		big.NewInt(1),                 // gas price
+		uint64(time.Now().UnixNano()), // nonce для уникального адреса
+		[]byte(nil),                   // signature
 		params.TotalSupply,
 	)
 	if err != nil {

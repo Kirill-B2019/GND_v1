@@ -3,6 +3,8 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -699,9 +701,16 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 		return "", fmt.Errorf("invalid bytecode: %v", err)
 	}
 
+	// Уникальный адрес контракта: hash(bytecode, from, nonce). При nonce=0 подставляем UnixNano, чтобы один кошелёк мог деплоить несколько контрактов без дубликата contracts_address_key
+	nonce := params.Nonce
+	if nonce == 0 {
+		nonce = uint64(time.Now().UnixNano())
+	}
+	contractAddress := generateContractAddress(bytecode, params.From, nonce)
+
 	// Create new contract
 	contract := NewContract(
-		params.From,
+		contractAddress,
 		params.Owner,
 		bytecode,
 		nil, // ABI will be added later
@@ -722,6 +731,18 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	}
 
 	return contract.Address, nil
+}
+
+// generateContractAddress формирует уникальный адрес контракта по bytecode, адресу создателя и nonce (избегает дубликата contracts_address_key)
+func generateContractAddress(bytecode []byte, creator string, nonce uint64) string {
+	h := sha256.New()
+	h.Write(bytecode)
+	h.Write([]byte(creator))
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
+	h.Write(nonceBuf[:])
+	sum := h.Sum(nil)
+	return "GNDct" + hex.EncodeToString(sum[:16]) // 16 байт = 32 hex-символа
 }
 
 // GetContract returns contract information by address
