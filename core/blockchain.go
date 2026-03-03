@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -330,13 +331,15 @@ func (bc *Blockchain) storeBlock(block *Block) error {
 	block.CreatedAt = block.Timestamp
 	block.UpdatedAt = BlockchainNow()
 
+	// nonce в БД — varchar, передаём строку
+	nonceStr := strconv.FormatUint(block.Nonce, 10)
 	err := bc.Pool.QueryRow(ctx, `
 		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (index) DO UPDATE SET tx_count = EXCLUDED.tx_count, updated_at = EXCLUDED.updated_at
 		RETURNING id`,
 		block.Index, block.Hash, block.PrevHash, block.Timestamp,
-		block.Miner, block.GasUsed, block.GasLimit, block.Consensus, block.Nonce,
+		block.Miner, block.GasUsed, block.GasLimit, block.Consensus, nonceStr,
 		block.TxCount, block.CreatedAt, block.UpdatedAt,
 	).Scan(&block.ID)
 	if err != nil {
