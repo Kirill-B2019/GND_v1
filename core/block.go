@@ -149,10 +149,18 @@ type blockNullables struct {
 	gasUsed    sql.NullInt64
 	gasLimit   sql.NullInt64
 	difficulty sql.NullInt64
+	status     sql.NullString
+	consensus  sql.NullString
 }
 
 func applyBlockNullables(block *Block, n blockNullables) {
 	block.MerkleRoot = n.merkleRoot.String
+	if n.status.Valid {
+		block.Status = n.status.String
+	}
+	if n.consensus.Valid {
+		block.Consensus = n.consensus.String
+	}
 	if n.height.Valid {
 		block.Height = uint64(n.height.Int64)
 	} else if block.Index != 0 {
@@ -204,12 +212,12 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		&block.ExtraData,
 		&block.CreatedAt,
 		&block.UpdatedAt,
-		&block.Status,
+		&n.status,
 		&block.ParentID,
 		&block.IsOrphaned,
 		&block.IsFinalized,
 		&block.Index,
-		&block.Consensus,
+		&n.consensus,
 	)
 	if err != nil {
 		return nil, err
@@ -249,12 +257,12 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 		&block.ExtraData,
 		&block.CreatedAt,
 		&block.UpdatedAt,
-		&block.Status,
+		&n.status,
 		&block.ParentID,
 		&block.IsOrphaned,
 		&block.IsFinalized,
 		&block.Index,
-		&block.Consensus,
+		&n.consensus,
 	)
 	if err != nil {
 		return nil, err
@@ -338,12 +346,12 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 		&block.ExtraData,
 		&block.CreatedAt,
 		&block.UpdatedAt,
-		&block.Status,
+		&n.status,
 		&block.ParentID,
 		&block.IsOrphaned,
 		&block.IsFinalized,
 		&block.Index,
-		&block.Consensus,
+		&n.consensus,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest block: %v", err)
@@ -441,12 +449,12 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 		&block.ExtraData,
 		&block.CreatedAt,
 		&block.UpdatedAt,
-		&block.Status,
+		&n.status,
 		&block.ParentID,
 		&block.IsOrphaned,
 		&block.IsFinalized,
 		&block.Index,
-		&block.Consensus,
+		&n.consensus,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by number: %v", err)
@@ -487,12 +495,12 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		&block.ExtraData,
 		&block.CreatedAt,
 		&block.UpdatedAt,
-		&block.Status,
+		&n.status,
 		&block.ParentID,
 		&block.IsOrphaned,
 		&block.IsFinalized,
 		&block.Index,
-		&block.Consensus,
+		&n.consensus,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %v", err)
@@ -541,12 +549,12 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 			&block.ExtraData,
 			&block.CreatedAt,
 			&block.UpdatedAt,
-			&block.Status,
+			&n.status,
 			&block.ParentID,
 			&block.IsOrphaned,
 			&block.IsFinalized,
 			&block.Index,
-			&block.Consensus,
+			&n.consensus,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan block: %v", err)
