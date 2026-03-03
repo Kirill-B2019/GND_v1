@@ -14,6 +14,7 @@ import (
 	"GND/vm"
 	"GND/vm/compiler"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -87,6 +88,7 @@ type Server struct {
 	mempool  *core.Mempool
 	deployer *deployer.Deployer
 	cfg      *core.Config
+	evm      *vm.EVM // для вызова контрактов (view) и отправки транзакций (write)
 }
 
 // NewServer создает новый экземпляр сервера. deployer может быть nil — тогда POST /token/deploy недоступен. cfg опционально — для health (chain_id, subnet_id).
@@ -698,6 +700,172 @@ func (s *Server) GetContractState(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: state})
 }
 
+// GetContractView возвращает данные для вкладки «Просмотр контракта»: ABI, список view/write функций, базовая инфо (name, symbol, decimals, totalSupply, address).
+// GET /api/v1/contract/:address/view
+func (s *Server) GetContractView(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	ctx := c.Request.Context()
+	contract, err := core.LoadContract(ctx, pool, address)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	state, err := core.GetContractState(ctx, pool, address, nil)
+	if err != nil {
+		state = &core.ContractState{Address: address}
+	}
+	var abiJSON json.RawMessage
+	if len(contract.ABI) > 0 {
+		abiJSON = contract.ABI
+	} else {
+		abiJSON = json.RawMessage("[]")
+	}
+	viewFuncs, writeFuncs, _ := ParseABIFunctions(contract.ABI)
+	out := gin.H{
+		"address":         address,
+		"name":            state.Name,
+		"symbol":          state.Symbol,
+		"owner":           state.Owner,
+		"decimals":        state.Decimals,
+		"total_supply":    state.TotalSupply,
+		"standard":        state.Standard,
+		"is_token":        state.IsToken,
+		"abi":             abiJSON,
+		"view_functions":  viewFuncs,
+		"write_functions": writeFuncs,
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: out})
+}
+
+// ContractCall выполняет вызов view/constant метода контракта (без создания транзакции). POST /api/v1/contract/:address/call
+// Body: { "data": "0x..." [, "from": "GN_..."] }. data — ABI-encoded calldata (selector + args).
+func (s *Server) ContractCall(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	if s.evm == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "EVM недоступен для вызова контракта", Code: http.StatusServiceUnavailable})
+		return
+	}
+	var req struct {
+		Data string `json:"data"` // hex с префиксом 0x
+		From string `json:"from"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Data == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите data (hex calldata)", Code: http.StatusBadRequest})
+		return
+	}
+	data, err := decodeHex(req.Data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный hex data: " + err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	from := strings.TrimSpace(req.From)
+	if from == "" {
+		from = "0x0000000000000000000000000000000000000000"
+	}
+	gasLimit := uint64(300000)
+	result, err := s.evm.CallContract(from, address, data, gasLimit, 0, 0)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Вызов контракта: " + err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	returnHex := ""
+	success := result != nil && result.Error == nil
+	if result != nil && len(result.ReturnData) > 0 {
+		returnHex = "0x" + hex.EncodeToString(result.ReturnData)
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    gin.H{"return_data": returnHex, "success": success},
+	})
+}
+
+// ContractSend создаёт и отправляет транзакцию вызова метода контракта (transfer, approve и т.д.). POST /api/v1/contract/:address/send
+// Body: { "from": "GN_...", "data": "0x...", "value": "0", "gas_limit": 100000 }.
+func (s *Server) ContractSend(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	if s.core == nil || s.evm == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "Нода недоступна для отправки транзакции", Code: http.StatusServiceUnavailable})
+		return
+	}
+	var req struct {
+		From     string `json:"from"`
+		Data     string `json:"data"`
+		Value    string `json:"value"`
+		GasLimit uint64 `json:"gas_limit"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный формат данных", Code: http.StatusBadRequest})
+		return
+	}
+	if strings.TrimSpace(req.From) == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите from (адрес отправителя)", Code: http.StatusBadRequest})
+		return
+	}
+	if strings.TrimSpace(req.Data) == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите data (hex calldata)", Code: http.StatusBadRequest})
+		return
+	}
+	data, err := decodeHex(req.Data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный hex data: " + err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	val := big.NewInt(0)
+	if req.Value != "" {
+		val.SetString(req.Value, 10)
+	}
+	gasLimit := req.GasLimit
+	if gasLimit == 0 {
+		gasLimit = 200000
+	}
+	tx := &core.Transaction{
+		Sender:    types.Address(strings.TrimSpace(req.From)),
+		Recipient: types.Address(address),
+		Data:      data,
+		GasLimit:  gasLimit,
+		GasPrice:  big.NewInt(0),
+		Value:     val,
+		Timestamp: core.BlockchainNow(),
+	}
+	hash, err := s.core.SendTransaction(tx)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Отправка транзакции: " + err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{
+		Success: true,
+		Data:    gin.H{"hash": hash, "message": "Транзакция отправлена в мемпул"},
+	})
+}
+
+func decodeHex(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		s = s[2:]
+	}
+	return hex.DecodeString(s)
+}
+
 // CompileContract компилирует исходный код Solidity. POST /contract/compile
 func (s *Server) CompileContract(c *gin.Context) {
 	var req struct {
@@ -1107,6 +1275,10 @@ func (s *Server) setupRoutes() {
 	api.GET("/contract/:address", s.GetContract)
 	// Состояние контракта (функции/геттеры: name, symbol, total_supply, balances). Query: addresses=addr1,addr2
 	api.GET("/contract/:address/state", s.GetContractState)
+	// Просмотр контракта: ABI, список view/write функций, базовая инфо. Чтение: POST /contract/:address/call. Запись: POST /contract/:address/send
+	api.GET("/contract/:address/view", s.GetContractView)
+	api.POST("/contract/:address/call", s.ContractCall)
+	api.POST("/contract/:address/send", s.ContractSend)
 
 	// Токены (создание — по API-ключу; операции — без ключа в текущей реализации)
 	api.POST("/token/deploy", s.DeployToken)
@@ -1483,6 +1655,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 		tokenDeployer = deployer.NewDeployer(pool, &noopEventManager{}, newEVMAdapter(evmInstance))
 	}
 	server := NewServer(pool, bc, mp, tokenDeployer, cfg)
+	server.evm = evmInstance
 	addr := fmt.Sprintf(":%d", cfg.Server.REST.Port)
 	log.Printf("=== REST API Server запущен на %s ===\nДоступен по /api/v1/* (health, wallet, transaction, block, contract, token/deploy, token/transfer и др.)", addr)
 	if err := server.Start(addr); err != nil {
