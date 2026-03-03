@@ -213,7 +213,7 @@ type PostgreSQL struct {
 ### Таблица account_states (снимки по блоку)
 
 - **Назначение:** снимок состояния аккаунта на конец блока (для исторических запросов «state at block N»). Заполняется при `State.SaveToDB(blockID)` при `blockID > 0` для всех адресов, затронутых в блоке.
-- **Структура:** `block_id` (BIGINT, FK → blocks.id), `address` (VARCHAR), `nonce`, `balance_wei`, `storage_root` (BYTEA). Первичный ключ — (block_id, address).
+- **Структура:** `block_id` (BIGINT, FK → blocks.id), `address` (VARCHAR), `nonce`, `balance_gnd`, `storage_root` (BYTEA). Первичный ключ — (block_id, address).
 - **Миграция:** `014_account_states_and_contract_storage.sql`.
 
 ### Таблица contract_storage (слоты storage контрактов по блоку)

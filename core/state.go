@@ -601,10 +601,10 @@ func (s *State) SaveToDB(blockID int64) error {
 			}
 			nonce := s.nonces[addr]
 			_, err := s.pool.Exec(ctx, `
-				INSERT INTO account_states (block_id, address, nonce, balance_wei, storage_root)
+				INSERT INTO account_states (block_id, address, nonce, balance_gnd, storage_root)
 				VALUES ($1, $2, $3, $4, NULL)
 				ON CONFLICT (block_id, address) DO UPDATE SET
-					nonce = $3, balance_wei = $4`,
+					nonce = $3, balance_gnd = $4`,
 				blockID, string(addr), nonce, balanceWei)
 			if err != nil {
 				return err

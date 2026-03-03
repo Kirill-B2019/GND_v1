@@ -15,7 +15,7 @@ type AccountStateAtBlock struct {
 	BlockID     int64  `json:"block_id"`
 	Address     string `json:"address"`
 	Nonce       uint64 `json:"nonce"`
-	BalanceWei  string `json:"balance_wei"`
+	BalanceGND  string `json:"balance_gnd"`
 	StorageRoot string `json:"storage_root,omitempty"` // hex
 }
 
@@ -31,14 +31,14 @@ func GetAccountStateAtBlock(ctx context.Context, pool *pgxpool.Pool, address str
 		return nil, fmt.Errorf("pool is nil")
 	}
 	var nonce int64
-	var balanceWei string
+	var balanceGnd string
 	var storageRoot []byte
 	err := pool.QueryRow(ctx, `
-		SELECT nonce, balance_wei, storage_root
+		SELECT nonce, balance_gnd, storage_root
 		FROM account_states
 		WHERE address = $1 AND block_id = $2`,
 		address, blockID,
-	).Scan(&nonce, &balanceWei, &storageRoot)
+	).Scan(&nonce, &balanceGnd, &storageRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func GetAccountStateAtBlock(ctx context.Context, pool *pgxpool.Pool, address str
 		BlockID:    blockID,
 		Address:    address,
 		Nonce:      uint64(nonce),
-		BalanceWei: balanceWei,
+		BalanceGND: balanceGnd,
 	}
 	if len(storageRoot) > 0 {
 		out.StorageRoot = "0x" + hex.EncodeToString(storageRoot)
@@ -103,7 +103,7 @@ func GetCurrentAccountState(ctx context.Context, pool *pgxpool.Pool, address str
 		BlockID:    0,
 		Address:    address,
 		Nonce:      uint64(nonce),
-		BalanceWei: balanceGnd,
+		BalanceGND: balanceGnd,
 	}, nil
 }
 

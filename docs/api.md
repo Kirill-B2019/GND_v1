@@ -170,13 +170,13 @@ GET /api/v1/token/:address/balance/:owner
 ```http
 GET /api/v1/state/account/:address
 ```
-Возвращает текущее состояние из таблицы `accounts`: `address`, `nonce`, `balance_wei` (balance_gnd), при наличии `storage_root` (hex). Ответ 404 — аккаунт не найден.
+Возвращает текущее состояние из таблицы `accounts`: `address`, `nonce`, `balance_gnd`, при наличии `storage_root` (hex). Ответ 404 — аккаунт не найден.
 
 #### Снимок состояния аккаунта на блок
 ```http
 GET /api/v1/state/account/:address/block/:blockId
 ```
-Возвращает снимок из `account_states` для указанного блока: `block_id`, `address`, `nonce`, `balance_wei`, `storage_root`. Ответ 404 — запись не найдена.
+Возвращает снимок из `account_states` для указанного блока: `block_id`, `address`, `nonce`, `balance_gnd`, `storage_root`. Ответ 404 — запись не найдена.
 
 #### Слоты storage контракта на блок
 ```http
