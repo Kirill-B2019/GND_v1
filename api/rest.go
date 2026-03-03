@@ -407,17 +407,33 @@ func (s *Server) GetBalance(c *gin.Context) {
 	})
 }
 
+// decodeSignatureHex декодирует подпись из hex-строки (0x или без префикса). Иначе возвращает []byte(s) как есть.
+func decodeSignatureHex(s string) []byte {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && (s[:2] == "0x" || s[:2] == "0X") {
+		s = s[2:]
+	}
+	if len(s) == 128 {
+		b, err := hex.DecodeString(s)
+		if err == nil && len(b) == 64 {
+			return b
+		}
+	}
+	return []byte(s)
+}
+
 // SendTransaction отправляет транзакцию
 func (s *Server) SendTransaction(c *gin.Context) {
 	var txData struct {
-		From      string   `json:"from"`
-		To        string   `json:"to"`
-		Value     *big.Int `json:"value"`
-		Fee       *big.Int `json:"fee"`
-		Nonce     uint64   `json:"nonce"`
-		Type      string   `json:"type"`
-		Data      string   `json:"data"`
-		Signature string   `json:"signature"`
+		From            string   `json:"from"`
+		To              string   `json:"to"`
+		Value           *big.Int `json:"value"`
+		Fee             *big.Int `json:"fee"`
+		Nonce           uint64   `json:"nonce"`
+		Type            string   `json:"type"`
+		Data            string   `json:"data"`
+		Signature       string   `json:"signature"`
+		SenderPublicKey string   `json:"sender_public_key"` // hex публичного ключа P-256 для проверки подписи
 	}
 	if err := c.ShouldBindJSON(&txData); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{
@@ -457,19 +473,22 @@ func (s *Server) SendTransaction(c *gin.Context) {
 		fee = big.NewInt(0)
 	}
 
+	sigBytes := decodeSignatureHex(txData.Signature)
+
 	tx := &core.Transaction{
-		Sender:     fromAddr,
-		Recipient:  toAddr,
-		Value:      value,
-		Nonce:      int64(txData.Nonce),
-		Data:       []byte(txData.Data),
-		Signature:  []byte(txData.Signature),
-		GasLimit:   21000, // Стандартный лимит газа для простой транзакции
-		GasPrice:   fee,
-		Symbol:     "GND",
-		IsVerified: true, // транзакции с нативной монетой GND верифицированы
-		Timestamp:  core.BlockchainNow(),
-		Status:     "pending",
+		Sender:             fromAddr,
+		Recipient:          toAddr,
+		Value:              value,
+		Nonce:              int64(txData.Nonce),
+		Data:               []byte(txData.Data),
+		Signature:          sigBytes,
+		GasLimit:           21000, // Стандартный лимит газа для простой транзакции
+		GasPrice:           fee,
+		Symbol:             "GND",
+		IsVerified:         false, // пользовательские транзакции требуют проверки подписи
+		SenderPublicKeyHex: strings.TrimSpace(txData.SenderPublicKey),
+		Timestamp:          core.BlockchainNow(),
+		Status:             "pending",
 	}
 	tx.Hash = tx.CalculateHash()
 
@@ -810,10 +829,12 @@ func (s *Server) ContractSend(c *gin.Context) {
 		return
 	}
 	var req struct {
-		From     string `json:"from"`
-		Data     string `json:"data"`
-		Value    string `json:"value"`
-		GasLimit uint64 `json:"gas_limit"`
+		From            string `json:"from"`
+		Data            string `json:"data"`
+		Value           string `json:"value"`
+		GasLimit        uint64 `json:"gas_limit"`
+		Signature       string `json:"signature"`
+		SenderPublicKey string `json:"sender_public_key"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный формат данных", Code: http.StatusBadRequest})
@@ -842,20 +863,24 @@ func (s *Server) ContractSend(c *gin.Context) {
 	}
 	fromAddr := strings.TrimSpace(req.From)
 	tx := &core.Transaction{
-		Sender:    types.Address(fromAddr),
-		Recipient: types.Address(address),
-		Data:      data,
-		GasLimit:  gasLimit,
-		GasPrice:  big.NewInt(1),
-		Value:     val,
-		Timestamp: core.BlockchainNow(),
-		Type:      "contract_call",
-		Status:    "pending",
-		Symbol:    "GND",
+		Sender:             types.Address(fromAddr),
+		Recipient:          types.Address(address),
+		Data:               data,
+		GasLimit:           gasLimit,
+		GasPrice:           big.NewInt(1),
+		Value:              val,
+		Timestamp:          core.BlockchainNow(),
+		Type:               "contract_call",
+		Status:             "pending",
+		Symbol:             "GND",
+		Signature:          decodeSignatureHex(req.Signature),
+		SenderPublicKeyHex: strings.TrimSpace(req.SenderPublicKey),
+		IsVerified:         false,
 	}
 	if s.core != nil && s.core.State != nil {
 		tx.Nonce = s.core.State.GetNonce(types.Address(fromAddr))
 	}
+	tx.Hash = tx.CalculateHash()
 	hash, err := s.core.SendTransaction(tx)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Отправка транзакции: " + err.Error(), Code: http.StatusBadRequest})

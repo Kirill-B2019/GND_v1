@@ -88,3 +88,44 @@ func PublicKeyToAddress(publicKey *ecdsa.PublicKey) string {
 func GetCurve() elliptic.Curve {
 	return elliptic.P256()
 }
+
+// ParsePublicKeyHex парсит P-256 публичный ключ из hex (uncompressed: 04 + X + Y = 130 hex символов).
+func ParsePublicKeyHex(hexStr string) (*ecdsa.PublicKey, error) {
+	s := hexStr
+	if len(s) >= 2 && (s[:2] == "0x" || s[:2] == "0X") {
+		s = s[2:]
+	}
+	if len(s) != 130 {
+		return nil, fmt.Errorf("ожидается 130 hex символов (uncompressed), получено %d", len(s))
+	}
+	if s[:2] != "04" {
+		return nil, fmt.Errorf("uncompressed ключ должен начинаться с 04")
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("hex: %w", err)
+	}
+	// b = 04 || X (32) || Y (32)
+	if len(b) != 65 {
+		return nil, fmt.Errorf("неверная длина ключа: %d", len(b))
+	}
+	x := new(big.Int).SetBytes(b[1:33])
+	y := new(big.Int).SetBytes(b[33:65])
+	return &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, nil
+}
+
+// PublicKeyToAddressP256 возвращает адрес в формате types (64 hex = SHA256(pubkey_bytes)).
+// Используется для сравнения с tx.Sender при проверке подписи.
+func PublicKeyToAddressP256(publicKey *ecdsa.PublicKey) string {
+	b := PublicKeyUncompressedBytes(publicKey)
+	hash := sha256.Sum256(b)
+	return hex.EncodeToString(hash[:])
+}
+
+// PublicKeyUncompressedBytes сериализует P-256 публичный ключ в uncompressed (04||X||Y).
+func PublicKeyUncompressedBytes(publicKey *ecdsa.PublicKey) []byte {
+	const size = 32
+	x := padBigIntBytes(publicKey.X.Bytes(), size)
+	y := padBigIntBytes(publicKey.Y.Bytes(), size)
+	return append(append([]byte{0x04}, x...), y...)
+}

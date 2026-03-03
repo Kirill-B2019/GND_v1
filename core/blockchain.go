@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"GND/core/crypto"
 	"GND/types"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -695,10 +696,37 @@ func (bc *Blockchain) processContract(tx *Transaction) error {
 	return nil
 }
 
-// ValidateTransaction проверяет транзакцию
+// ValidateTransaction проверяет транзакцию (формат, подпись, баланс, nonce).
 func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
 	if err := tx.Validate(); err != nil {
 		return err
+	}
+
+	// Проверка подписи для пользовательских транзакций (системные пропускаем).
+	if !IsSystemTransaction(tx) {
+		if tx.Hash == "" {
+			tx.Hash = tx.CalculateHash()
+		}
+		if len(tx.Signature) == 0 {
+			return errors.New("транзакция должна быть подписана (signature обязателен)")
+		}
+		if tx.SenderPublicKeyHex == "" {
+			return errors.New("для проверки подписи укажите sender_public_key (hex публичного ключа P-256)")
+		}
+		pubKey, err := crypto.ParsePublicKeyHex(tx.SenderPublicKeyHex)
+		if err != nil {
+			return fmt.Errorf("неверный sender_public_key: %w", err)
+		}
+		if !VerifyTransactionSignature(tx, pubKey) {
+			return errors.New("неверная подпись транзакции")
+		}
+		// Проверка соответствия адреса ключу (формат 64 hex)
+		if tx.Sender.IsValid() {
+			derivedAddr := crypto.PublicKeyToAddressP256(pubKey)
+			if derivedAddr != tx.Sender.String() {
+				return errors.New("адрес отправителя не соответствует публичному ключу")
+			}
+		}
 	}
 
 	// Проверяем баланс отправителя

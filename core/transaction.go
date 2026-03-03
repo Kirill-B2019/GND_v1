@@ -61,7 +61,10 @@ type Transaction struct {
 	ContractID sql.NullInt64 `json:"contract_id"`
 	Payload    []byte        `json:"payload"`
 	Symbol     string        `json:"symbol"`
-	IsVerified bool          `json:"is_verified"` // true для транзакций с нативной монетой (GND)
+	IsVerified bool          `json:"is_verified"` // true для системных/генезисных транзакций
+
+	// SenderPublicKeyHex — опционально: hex публичного ключа P-256 отправителя для проверки подписи (не сохраняется в БД).
+	SenderPublicKeyHex string `json:"sender_public_key,omitempty"`
 }
 
 // Validate checks if the transaction is valid
@@ -201,22 +204,43 @@ func (tx *Transaction) Sign(privateKey string) error {
 	return nil
 }
 
-// Verify проверяет подпись транзакции
-func (tx *Transaction) Verify() bool {
-	if tx.Signature == nil {
+// VerifyTransactionSignature проверяет подпись транзакции по хешу и публичному ключу P-256.
+// Хеш для проверки — tx.Hash (должен быть заполнен до вызова). Возвращает false при пустой подписи или неверной длине.
+func VerifyTransactionSignature(tx *Transaction, pubKey *ecdsa.PublicKey) bool {
+	if pubKey == nil || tx.Signature == nil || len(tx.Signature) != 64 {
 		return false
 	}
-
-	r := new(big.Int).SetBytes(tx.Signature[:len(tx.Signature)/2])
-	s := new(big.Int).SetBytes(tx.Signature[len(tx.Signature)/2:])
-
-	// Проверяем подпись
-	return crypto.Verify([]byte(tx.Hash), tx.Signature, &ecdsa.PublicKey{
-		Curve: crypto.GetCurve(),
-		X:     r,
-		Y:     s,
-	})
+	hashData := tx.Hash
+	if hashData == "" {
+		hashData = tx.CalculateHash()
+	}
+	return crypto.Verify([]byte(hashData), tx.Signature, pubKey)
 }
+
+// IsSystemTransaction возвращает true для генезисных и служебных транзакций, для которых подпись не проверяется.
+func IsSystemTransaction(tx *Transaction) bool {
+	if tx.IsVerified {
+		return true
+	}
+	sender := strings.TrimSpace(tx.Sender.String())
+	if systemSenders[sender] {
+		return true
+	}
+	if systemTxTypes[tx.Type] {
+		return true
+	}
+	return false
+}
+
+var (
+	systemSenders = map[string]bool{
+		"GND_GENESIS": true,
+	}
+	systemTxTypes = map[string]bool{
+		"genesis": true, "wallet_creation": true, "contract_deploy": true,
+		"token_mint": true, "contract_verify": true, "api_key_created": true,
+	}
+)
 
 // SaveToDB сохраняет транзакцию в БД (id берётся из nextval(transactions_id_seq), contract_id — NULL если не задан).
 // Колонка payload в БД — jsonb; передаём nil или JSON-совместимое значение.
