@@ -1,36 +1,47 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
-/// @title GANIToken — governance-токен GANI (Ganymede Governance) на контракте
-/// @notice GNDst-1/ERC-20. Фиксированная эмиссия 100 млн GANI (6 decimals). Минтинг отключён навсегда.
-/// @dev Вся эмиссия в конструкторе на один адрес (treasury); дальнейшее распределение — вручную/через контракты.
+/// @title GANIToken — governance-токен GANI (Ganimed Governance) на контракте
+/// @notice GNDst-1/ERC-20. Фиксированное предложение 100000000000000 (100M при 6 decimals). Минтинг отключён (только отдельным контрактом). Управляется только внешним контрактом (controller).
+/// @dev Вся эмиссия в конструкторе на контроллер; дальнейшее распределение — через контроллер/отдельные контракты.
 
 contract GANIToken {
-    string public constant name = "Ganymede Governance";
+    string public constant name = "Ganimed Governance";
     string public constant symbol = "GANI";
     uint8 public constant decimals = 6;
 
-    /// @notice Фиксированное предложение: 100M * 10^6
-    uint256 public constant TOTAL_SUPPLY = 100_000_000 * 10**6;
+    /// @notice Фиксированное предложение: 100000000000000 (100M * 10^6)
+    uint256 public constant TOTAL_SUPPLY = 100000000000000;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    address public immutable treasury;
+    address public immutable controller;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     error MintingDisabled();
+    error ZeroController();
+    error ControllerMustBeContract();
 
-    /// @param treasuryAddress Адрес, на который выпускается вся эмиссия (100M GANI)
-    constructor(address treasuryAddress) {
-        require(treasuryAddress != address(0), "zero treasury");
-        treasury = treasuryAddress;
+    /// @param controllerContract Адрес контракта-контроллера (только он управляет; должен быть контрактом). Вся эмиссия минтуется на него.
+    constructor(address controllerContract) {
+        if (controllerContract == address(0)) revert ZeroController();
+        if (_isContract(controllerContract) == false) revert ControllerMustBeContract();
+        controller = controllerContract;
         _totalSupply = TOTAL_SUPPLY;
-        _balances[treasuryAddress] = TOTAL_SUPPLY;
-        emit Transfer(address(0), treasuryAddress, TOTAL_SUPPLY);
+        _balances[controllerContract] = TOTAL_SUPPLY;
+        emit Transfer(address(0), controllerContract, TOTAL_SUPPLY);
+    }
+
+    function _isContract(address account) private view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
     }
 
     function totalSupply() external view returns (uint256) {
@@ -66,7 +77,7 @@ contract GANIToken {
         return true;
     }
 
-    /// @notice Минтинг отключён навсегда.
+    /// @notice Минтинг отключён (дополнительная эмиссия только отдельным контрактом при необходимости).
     function mint(address, uint256) external pure {
         revert MintingDisabled();
     }

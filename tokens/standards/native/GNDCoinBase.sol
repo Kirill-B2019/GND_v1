@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 import "./IGND.sol";
 
-/// @title GNDCoinBase — базовая обёртка нативной монеты GND (Ganymede Coin)
-/// @notice GND — нативная L1-монета; балансы и переводы обрабатываются протоколом (native_balances).
+/// @title GNDCoinBase — базовая обёртка нативной монеты GND (Ganimed)
+/// @notice GND — нативная L1-монета; балансы и переводы обрабатываются протоколом (native_balances). Управляется только внешним контрактом.
 /// @dev Развёртывается по фиксированному адресу; вызовы должны обрабатываться precompile ноды (balanceOf/totalSupply — чтение из state, transfer/approve/transferFrom — вызов L1). Распределения (пулы, vesting, сбор комиссий) реализуются отдельными контрактами, которые работают с GND через этот интерфейс.
 
 contract GNDCoinBase is IGND {
-    string public constant override name = "Ganymede Coin";
+    string public constant override name = "Ganimed";
     string public constant override symbol = "GND";
     uint8 public constant override decimals = 18;
 

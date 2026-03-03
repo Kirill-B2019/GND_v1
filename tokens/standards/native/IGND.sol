@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 import "./INativeCoin.sol";
 
-/// @title IGND — интерфейс нативной утилитарной монеты GND (Ganymede Coin)
-/// @notice Макс. эмиссия 1 млрд GND, decimals 18. Используется для комиссий, стейкинга, наград валидаторов.
+/// @title IGND — интерфейс нативной утилитарной монеты GND (Ganimed)
+/// @notice Макс. предложение 1e27 (1 млрд GND), decimals 18. Управляется только внешним контрактом. Используется для комиссий, стейкинга, наград валидаторов.
 /// @dev L1-монета; распределения (пулы, vesting) регулируются отдельными контрактами, использующими этот интерфейс.
 
 interface IGND is INativeCoin {

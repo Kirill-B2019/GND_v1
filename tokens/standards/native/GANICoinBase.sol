@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 import "./IGANI.sol";
 
-/// @title GANICoinBase — базовая обёртка нативной монеты GANI (Ganymede Governance)
+/// @title GANICoinBase — базовая обёртка нативной монеты GANI (Ganimed Governance)
 /// @notice GANI — нативная L1-монета с фиксированной эмиссией; только governance. Балансы и переводы обрабатываются протоколом (native_balances).
 /// @dev Развёртывается по фиксированному адресу; вызовы должны обрабатываться precompile ноды. Распределения (DAO, гранты, vesting, DEX) реализуются отдельными контрактами, которые работают с GANI через этот интерфейс.
 
 contract GANICoinBase is IGANI {
-    string public constant override name = "Ganymede Governance";
+    string public constant override name = "Ganimed Governance";
     string public constant override symbol = "GANI";
     uint8 public constant override decimals = 6;
 

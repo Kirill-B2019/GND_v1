@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 import "./INativeCoin.sol";
 
-/// @title IGANI — интерфейс нативной монеты управления GANI (Ganymede Governance)
-/// @notice Фиксированная эмиссия 100 млн GANI, decimals 18. Только governance.
+/// @title IGANI — интерфейс нативной монеты управления GANI (Ganimed Governance)
+/// @notice Фиксированное предложение 100000000000000 (100M при 6 decimals). Минт только отдельным контрактом. Управляется только внешним контрактом. Только governance.
 /// @dev L1-монета; распределения (DAO, гранты, vesting) регулируются отдельными контрактами, использующими этот интерфейс.
 
 interface IGANI is INativeCoin {

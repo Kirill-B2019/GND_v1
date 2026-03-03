@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 /// @title INativeCoin — интерфейс нативной монеты L1 ГАНИМЕД
 /// @notice Совместим с ядром ERC-20 / GNDst-1. Источник истины — состояние ноды (native_balances).

@@ -1,39 +1,50 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
-/// @title GNDToken — утилитарная монета GND (Ganymede Coin) на контракте
-/// @notice GNDst-1/ERC-20. Начальная эмиссия в конструкторе на treasury; минтинг после деплоя отключён.
-/// @dev Макс. эмиссия 1 млрд GND (18 decimals). Начальная циркуляция по ТЗ — 100M на treasury для распределения.
+/// @title GNDToken — утилитарная монета GND (Ganimed) на контракте
+/// @notice GNDst-1/ERC-20. Эмиссия только в конструкторе; минтинг отключён. Управляется только внешним контрактом (controller).
+/// @dev Макс. предложение 1e27 (1 млрд GND, 18 decimals).
 
 contract GNDToken {
-    string public constant name = "Ganymede Coin";
+    string public constant name = "Ganimed";
     string public constant symbol = "GND";
     uint8 public constant decimals = 18;
 
-    /// @notice Максимальное предложение: 1e9 * 10^18
-    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
+    /// @notice Максимальное предложение: 1000000000000000000000000000 (1e27)
+    uint256 public constant TOTAL_SUPPLY = 1000000000000000000000000000;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    address public immutable treasury;
+    address public immutable controller;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    error ExceedsMaxSupply();
     error MintingDisabled();
+    error ZeroController();
+    error ControllerMustBeContract();
+    error InvalidInitialSupply();
 
-    /// @param initialSupply Начальная эмиссия (например 100_000_000 * 10**18 для 100M GND)
-    /// @param treasuryAddress Адрес казначейства/мигратора, на который минтятся токены
-    constructor(uint256 initialSupply, address treasuryAddress) {
-        require(treasuryAddress != address(0), "zero treasury");
-        require(initialSupply <= MAX_SUPPLY && initialSupply > 0, "invalid initial supply");
-        treasury = treasuryAddress;
+    /// @param initialSupply Начальная эмиссия (не более TOTAL_SUPPLY)
+    /// @param controllerContract Адрес контракта-контроллера (только он управляет; должен быть контрактом)
+    constructor(uint256 initialSupply, address controllerContract) {
+        if (controllerContract == address(0)) revert ZeroController();
+        if (_isContract(controllerContract) == false) revert ControllerMustBeContract();
+        if (initialSupply == 0 || initialSupply > TOTAL_SUPPLY) revert InvalidInitialSupply();
+        controller = controllerContract;
         _totalSupply = initialSupply;
-        _balances[treasuryAddress] = initialSupply;
-        emit Transfer(address(0), treasuryAddress, initialSupply);
+        _balances[controllerContract] = initialSupply;
+        emit Transfer(address(0), controllerContract, initialSupply);
+    }
+
+    function _isContract(address account) private view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
     }
 
     function totalSupply() external view returns (uint256) {
@@ -69,7 +80,7 @@ contract GNDToken {
         return true;
     }
 
-    /// @notice Минтинг отключён навсегда после деплоя (только начальный mint в конструкторе).
+    /// @notice Минтинг отключён (дополнительная эмиссия только отдельным контрактом при необходимости).
     function mint(address, uint256) external pure {
         revert MintingDisabled();
     }
