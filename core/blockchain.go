@@ -43,6 +43,7 @@ func NewBlockchain(genesis *Block, pool *pgxpool.Pool) *Blockchain {
 }
 
 // LoadBlockchainFromDB loads blockchain from database.
+// Загружается вся цепочка блоков (ORDER BY index ASC), чтобы после перезапуска ноды (Ctrl+C и снова go run) последний блок считался и цепь продолжалась с следующего.
 // Если передан cfg с NativeContracts (адреса контрактов GND/GANI), перед загрузкой состояния включается режим «всё на контрактах».
 func LoadBlockchainFromDB(pool *pgxpool.Pool, configOptional ...*Config) (*Blockchain, error) {
 	ctx := context.Background()
@@ -64,11 +65,20 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool, configOptional ...*Config) (*Block
 		return nil, fmt.Errorf("failed to load state from DB: %w", err)
 	}
 
+	// Цепочка блоков по порядку index (генезис, 1, 2, …) — чтобы продолжить с последнего после перезапуска
+	blocks, err := LoadChainBlocksOrderedByIndex(pool, 10_000_000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chain blocks: %w", err)
+	}
+	if len(blocks) == 0 {
+		blocks = []*Block{genesis}
+	}
+
 	return &Blockchain{
 		Genesis: genesis,
 		State:   state,
 		Pool:    pool,
-		Blocks:  []*Block{genesis},
+		Blocks:  blocks,
 		Mempool: NewMempool(),
 	}, nil
 }
@@ -419,6 +429,7 @@ func (bc *Blockchain) LatestBlock() (*Block, error) {
 // miner — адрес валидатора. Вызывается по таймеру (например из main с интервалом round_duration).
 func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs int) error {
 	if mempool == nil {
+		fmt.Println("[BlockProducer] mempool == nil, блок не создаётся")
 		return nil
 	}
 	last, err := bc.LatestBlock()

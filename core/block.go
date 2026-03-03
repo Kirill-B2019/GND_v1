@@ -574,3 +574,63 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 
 	return blocks, nil
 }
+
+// LoadChainBlocksOrderedByIndex загружает цепочку блоков из БД по возрастанию index (генезис, 1, 2, …).
+// Используется при старте ноды после перезапуска, чтобы продолжить цепь с последнего блока.
+func LoadChainBlocksOrderedByIndex(pool *pgxpool.Pool, maxBlocks int) ([]*Block, error) {
+	if pool == nil || maxBlocks <= 0 {
+		return nil, nil
+	}
+	rows, err := pool.Query(context.Background(),
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index ASC LIMIT $1",
+		maxBlocks,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var blocks []*Block
+	for rows.Next() {
+		var block Block
+		var rewardStr, nonceStr string
+		var n blockNullables
+		err := rows.Scan(
+			&block.ID,
+			&block.Hash,
+			&block.PrevHash,
+			&n.merkleRoot,
+			&block.Timestamp,
+			&n.height,
+			&n.version,
+			&n.size,
+			&n.txCount,
+			&n.gasUsed,
+			&n.gasLimit,
+			&n.difficulty,
+			&nonceStr,
+			&block.Miner,
+			&rewardStr,
+			&block.ExtraData,
+			&block.CreatedAt,
+			&block.UpdatedAt,
+			&n.status,
+			&block.ParentID,
+			&block.IsOrphaned,
+			&block.IsFinalized,
+			&block.Index,
+			&n.consensus,
+		)
+		if err != nil {
+			return nil, err
+		}
+		applyBlockNullables(&block, n)
+		block.Nonce, _ = parseBlockNonce(nonceStr)
+		block.Reward = new(big.Int)
+		block.Reward.SetString(rewardStr, 10)
+		blocks = append(blocks, &block)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return blocks, nil
+}

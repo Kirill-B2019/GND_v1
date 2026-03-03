@@ -222,9 +222,19 @@ func runBlockProducer(blockchain *core.Blockchain, mempool *core.Mempool, miner 
 	logger := log.New(os.Stdout, "[BlockProducer] ", log.LstdFlags)
 	logger.Printf("Запущен: интервал %v, до %d транзакций в блок", interval, maxTxsPerBlock)
 	for range ticker.C {
-		if err := blockchain.ProduceNextBlock(mempool, miner, maxTxsPerBlock); err != nil {
-			logger.Printf("Ошибка создания блока: %v", err)
-		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Printf("Паника при создании блока (восстановление): %v", r)
+				}
+			}()
+			logger.Printf("Тик: создаём следующий блок")
+			if err := blockchain.ProduceNextBlock(mempool, miner, maxTxsPerBlock); err != nil {
+				logger.Printf("Ошибка создания блока: %v", err)
+				return
+			}
+			logger.Printf("Блок создан, высота цепи: %d", blockchain.Height())
+		}()
 	}
 }
 
