@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"GND/tokens/registry"
@@ -291,6 +292,79 @@ func GetTokensByOwner(ctx context.Context, pool *pgxpool.Pool, owner string) ([]
 	}
 
 	return tokens, nil
+}
+
+// ContractState — состояние контракта (результат «функций» контракта: name, symbol, total_supply, balances).
+// Используется для чтения и сравнения состояния в GND_admin.
+type ContractState struct {
+	Address     string            `json:"address"`
+	Name        string            `json:"name"`
+	Symbol      string            `json:"symbol"`
+	Owner       string            `json:"owner"`
+	Decimals    int               `json:"decimals"`
+	TotalSupply string            `json:"total_supply"`
+	Standard    string            `json:"standard"`
+	IsToken     bool              `json:"is_token"`
+	Balances    map[string]string `json:"balances"` // адрес -> баланс (строка)
+}
+
+// GetContractState возвращает состояние контракта по адресу: данные из contracts + tokens и балансы по указанным адресам.
+// accountAddresses — список адресов, для которых нужны balanceOf (для токена из token_balances).
+func GetContractState(ctx context.Context, pool *pgxpool.Pool, contractAddress string, accountAddresses []string) (*ContractState, error) {
+	contractAddress = strings.TrimSpace(contractAddress)
+	if contractAddress == "" {
+		return nil, errors.New("адрес контракта пуст")
+	}
+	var name, symbol, owner string
+	err := pool.QueryRow(ctx, `
+		SELECT COALESCE(name, ''), COALESCE(symbol, ''), COALESCE(owner, '')
+		FROM contracts WHERE address = $1`,
+		contractAddress,
+	).Scan(&name, &symbol, &owner)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("контракт не найден: %s", contractAddress)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ошибка загрузки контракта: %w", err)
+	}
+	out := &ContractState{
+		Address:  contractAddress,
+		Name:     name,
+		Symbol:   symbol,
+		Owner:    owner,
+		Balances: make(map[string]string),
+	}
+	var tokenID int
+	var decimals int
+	var totalSupply string
+	var standard string
+	err = pool.QueryRow(ctx, `
+		SELECT t.id, COALESCE(t.decimals, 0), COALESCE(t.total_supply::text, '0'), COALESCE(t.standard, '')
+		FROM tokens t
+		JOIN contracts c ON c.id = t.contract_id
+		WHERE c.address = $1`,
+		contractAddress,
+	).Scan(&tokenID, &decimals, &totalSupply, &standard)
+	if err == nil {
+		out.IsToken = true
+		out.Decimals = decimals
+		out.TotalSupply = totalSupply
+		out.Standard = standard
+		for _, addr := range accountAddresses {
+			addr = strings.TrimSpace(addr)
+			if addr == "" {
+				continue
+			}
+			var bal string
+			err := pool.QueryRow(ctx, `SELECT balance::text FROM token_balances WHERE token_id = $1 AND address = $2`, tokenID, addr).Scan(&bal)
+			if err == nil {
+				out.Balances[addr] = bal
+			} else {
+				out.Balances[addr] = "0"
+			}
+		}
+	}
+	return out, nil
 }
 
 // GetTokenBalance возвращает баланс токена для указанного адреса

@@ -162,6 +162,30 @@ GET /api/v1/token/:address/balance/:owner
 ```
 Возвращает баланс контрактного токена с адресом `address` для владельца `owner`. Для **нативных монет (GND, GANI)** используйте **GET /api/v1/coin/:symbol/balance/:owner** (например `GET /api/v1/coin/GND/balance/GND...`) или общий список **GET /api/v1/wallet/:address/balance**.
 
+### Состояния аккаунтов и контрактов (для GND_admin и клиентов)
+
+Состояния хранятся в памяти ноды и кэшируются; при применении блока записываются в БД (таблицы `accounts`, `account_states`, `contract_storage`). Эндпоинты чтения доступны без API-ключа; запись слота storage — только через админское API.
+
+#### Текущее состояние аккаунта
+```http
+GET /api/v1/state/account/:address
+```
+Возвращает текущее состояние из таблицы `accounts`: `address`, `nonce`, `balance_wei` (balance_gnd), при наличии `storage_root` (hex). Ответ 404 — аккаунт не найден.
+
+#### Снимок состояния аккаунта на блок
+```http
+GET /api/v1/state/account/:address/block/:blockId
+```
+Возвращает снимок из `account_states` для указанного блока: `block_id`, `address`, `nonce`, `balance_wei`, `storage_root`. Ответ 404 — запись не найдена.
+
+#### Слоты storage контракта на блок
+```http
+GET /api/v1/state/contract/:address/storage?block_id=123
+```
+Возвращает все слоты storage контракта на конец указанного блока из таблицы `contract_storage`. Ответ: `{ "success": true, "data": { "address": "...", "block_id": 123, "slots": [ { "slot_key": "0x...", "slot_value": "0x..." } ] } }`. Обязательный query-параметр: `block_id`.
+
+Запись слота storage контракта (импорт/админ) — см. [admin-api.md](admin-api.md) (POST /api/v1/admin/state/contract/:address/storage).
+
 ### Транзакции
 
 #### Отправка транзакции

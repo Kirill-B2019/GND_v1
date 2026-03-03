@@ -12,7 +12,7 @@
 |-----------|----------|
 | **Blockchain** | Цепочка блоков, генезис, загрузка/сохранение из БД, FirstLaunch (деплой монет, начисление балансов), системные транзакции. |
 | **Block** | Структура блока (Hash, PrevHash, Timestamp, Miner, Consensus, Index, Transactions), сохранение/загрузка из PostgreSQL. |
-| **State** | Балансы по адресам и токенам (GND, GANI и др.), nonce, token_balances, синхронизация с БД (LoadFromDB, SaveToDB), ApplyTransaction, ApplyExecutionResult. |
+| **State** | Балансы по адресам и токенам (GND, GANI и др.), nonce, token_balances; состояние в памяти и кэш; синхронизация с БД (LoadFromDB, SaveToDB(blockID)) — запись в accounts, native_balances, при blockID > 0 также в account_states и contract_storage; ApplyTransaction, ApplyExecutionResult (при системном владельце контракта комиссия не взимается). |
 | **Transaction** | Транзакция (Sender, Recipient, Value, Fee, Nonce, Hash, Type, Status), валидация, подпись, сохранение в БД (в т.ч. партиционированная таблица). |
 | **Mempool** | Очередь ожидающих транзакций (Add, Pop, GetPendingTransactions, Exists, GetTransaction). |
 | **Wallet** | Создание кошелька (NewWallet), загрузка из БД (LoadWallet), адрес и ключи. |
@@ -137,7 +137,7 @@
 
 ## 10. База данных
 
-**Хост/порт:** из config/db.json (по умолчанию 31.128.41.155:5432). Таблицы: accounts, wallets, blocks, transactions (партиционирована по времени), token_balances, tokens, contracts, states, events, api_keys, oracles, metrics, validators (poa_validators, pos_validators), logs, **signer_wallets** (миграции 004, 005). Миграции: db/migrations/004_create_signer_wallets.sql, db/migrations/005_wallets_private_key_nullable.sql, db/002_schema_additions.sql, db/003_reset_database.sql, db/dump.sql.
+**Хост/порт:** из config/db.json (по умолчанию 31.128.41.155:5432). Таблицы: accounts (в т.ч. balance_gnd, code_hash, storage_root, is_contract — миграция 014), account_states, contract_storage, wallets, blocks, transactions (партиционирована по времени), token_balances, tokens, contracts, states, events, api_keys, oracles, metrics, validators (poa_validators, pos_validators), logs, **signer_wallets** (миграции 004, 005). Миграции: db/migrations/014_account_states_and_contract_storage.sql, db/migrations/004_create_signer_wallets.sql, db/migrations/005_wallets_private_key_nullable.sql, db/002_schema_additions.sql, db/003_reset_database.sql, db/dump.sql.
 
 ---
 

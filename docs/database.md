@@ -121,15 +121,17 @@ type PostgreSQL struct {
   );
   ```
 
-- Аккаунты
+- Аккаунты (текущее состояние EOA и контрактов; миграция 014 добавляет balance_gnd, code_hash, storage_root, is_contract)
   ```sql
   CREATE TABLE accounts (
-      address VARCHAR(42) PRIMARY KEY,
-      balance NUMERIC,
+      id SERIAL PRIMARY KEY,
+      address VARCHAR(42) UNIQUE NOT NULL,
       nonce BIGINT,
-      code_hash VARCHAR(66),
-      created_at TIMESTAMP,
-      updated_at TIMESTAMP
+      balance_gnd NUMERIC(78,0) DEFAULT 0,
+      code_hash BYTEA,
+      storage_root BYTEA,
+      is_contract BOOLEAN DEFAULT FALSE,
+      ...
   );
   ```
 
@@ -199,9 +201,26 @@ type PostgreSQL struct {
 
 - **Назначение:** хранение балансов нативных монет L1 (GND и GANI). Источник истины для нативных активов; изменяются только нодой (применение транзакций, списание газа, первый запуск).
 - **Структура:** `address` (VARCHAR), `symbol` (VARCHAR, CHECK symbol IN ('GND','GANI')), `balance` (NUMERIC), `updated_at` (TIMESTAMP). Первичный ключ — (address, symbol).
-- **Загрузка при старте:** `core.State.LoadFromDB` сначала загружает нативные балансы из `native_balances`, затем контрактные из `token_balances` (JOIN tokens).
-- **Сохранение:** после применения каждого блока вызывается `State.SaveToDB()`, который записывает нативные балансы в `native_balances` и nonces в `accounts`. Это обеспечивает сохранность при перезагрузке ноды и защиту от потери данных.
+- **Загрузка при старте:** `core.State.LoadFromDB` сначала загружает нативные балансы из `native_balances`, затем контрактные из `token_balances` (JOIN tokens), затем nonces из `accounts`.
+- **Сохранение:** после применения каждого блока вызывается `State.SaveToDB(blockID)`. Состояния хранятся в памяти и кэшируются; при сохранении записываются: нативные балансы в `native_balances`, текущее состояние (nonce, balance_gnd) в `accounts`; при `blockID > 0` дополнительно — снимки в `account_states` и слоты storage контрактов в `contract_storage`. Это обеспечивает сохранность при перезагрузке ноды и защиту от потери данных.
 - **Миграции:** `012_native_balances.sql` — создание таблицы; `013_native_balances_backfill.sql` — перенос существующих балансов GND/GANI из `token_balances` в `native_balances` без полного сброса блокчейна (выполнять после 012 на уже работающей БД).
+
+### Таблица accounts (текущее состояние)
+
+- **Назначение:** текущее состояние аккаунтов (EOA и контрактов): nonce, balance_gnd (баланс GND в wei), при необходимости code_hash, storage_root, is_contract. Миграция **014** добавляет колонки `balance_gnd`, `code_hash`, `storage_root`, `is_contract`.
+- **Связь:** таблицы `wallets` и `signer_wallets` ссылаются на `accounts.id`; `token_balances` — на `accounts.address`.
+
+### Таблица account_states (снимки по блоку)
+
+- **Назначение:** снимок состояния аккаунта на конец блока (для исторических запросов «state at block N»). Заполняется при `State.SaveToDB(blockID)` при `blockID > 0` для всех адресов, затронутых в блоке.
+- **Структура:** `block_id` (BIGINT, FK → blocks.id), `address` (VARCHAR), `nonce`, `balance_wei`, `storage_root` (BYTEA). Первичный ключ — (block_id, address).
+- **Миграция:** `014_account_states_and_contract_storage.sql`.
+
+### Таблица contract_storage (слоты storage контрактов по блоку)
+
+- **Назначение:** слоты storage контрактов (32 байта ключ, 32 байта значение) на конец блока. Заполняется при записи состояний контрактов в `State.SaveToDB(blockID)` из накопленных в блоке изменений (ChangeTypeStorage).
+- **Структура:** `block_id`, `address`, `slot_key` (BYTEA), `slot_value` (BYTEA). Первичный ключ — (block_id, address, slot_key).
+- **Миграция:** `014_account_states_and_contract_storage.sql`.
 
 ### Валидация (консенсус)
 

@@ -282,6 +282,25 @@ curl -X PATCH "http://localhost:8182/api/v1/admin/wallets/GND..." \
 
 ---
 
+### 5.9. Запись слота storage контракта (состояния контрактов)
+
+**POST** `/api/v1/admin/state/contract/:address/storage`
+
+Записывает один слот storage контракта для указанного блока (импорт/админ, для GND_admin). Тело (JSON):
+
+| Поле        | Тип    | Описание |
+|-------------|--------|----------|
+| `block_id`  | number | ID блока (blocks.id). |
+| `slot_key`  | string | Ключ слота в hex (32 байта, с префиксом 0x или без). |
+| `slot_value`| string | Значение слота в hex (32 байта, с префиксом 0x или без). |
+
+Ответ **200**: `{ "success": true, "data": "Слот записан" }`  
+Ответ **400**: некорректный JSON или длина key/value не 32 байта.
+
+Чтение состояний аккаунтов и слотов storage — через публичные эндпоинты **GET /api/v1/state/account/:address**, **GET /api/v1/state/account/:address/block/:blockId**, **GET /api/v1/state/contract/:address/storage?block_id=** (см. [api.md](api.md)).
+
+---
+
 ## 6. Проверка обычных API-ключей
 
 При запросах к **неадминским** эндпоинтам (создание кошелька, деплой токена и т.д.) ключ передаётся в заголовке **X-API-Key**. Сервер проверяет его так:
@@ -355,6 +374,7 @@ $data = $response->json('data');
 | POST    | /api/v1/admin/wallets/:address/enable  | Разблокировка подписания. |
 | DELETE  | /api/v1/admin/wallets/:address      | Мягкое удаление (wallets.disabled). |
 | POST    | /api/v1/admin/wallets/:address/delete   | То же (мягкое удаление). |
+| POST    | /api/v1/admin/state/contract/:address/storage | Запись слота storage контракта (body: block_id, slot_key, slot_value). |
 
 Все маршруты требуют заголовок **X-Admin-Token** равный **GND_ADMIN_SECRET**.
 

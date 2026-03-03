@@ -654,6 +654,35 @@ func (s *Server) GetContract(c *gin.Context) {
 	})
 }
 
+// GetContractState возвращает состояние контракта (name, symbol, total_supply, balances по адресам). GET /api/v1/contract/:address/state?addresses=addr1,addr2
+func (s *Server) GetContractState(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	addressesParam := c.Query("addresses")
+	var accountAddresses []string
+	if addressesParam != "" {
+		for _, a := range strings.Split(addressesParam, ",") {
+			a = strings.TrimSpace(a)
+			if a != "" {
+				accountAddresses = append(accountAddresses, a)
+			}
+		}
+	}
+	state, err := core.GetContractState(c.Request.Context(), s.db, address, accountAddresses)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: state})
+}
+
 // CompileContract компилирует исходный код Solidity. POST /contract/compile
 func (s *Server) CompileContract(c *gin.Context) {
 	var req struct {
@@ -1061,6 +1090,8 @@ func (s *Server) setupRoutes() {
 	api.POST("/contract/compile", s.CompileContract)
 	api.POST("/contract/analyze", s.AnalyzeContract)
 	api.GET("/contract/:address", s.GetContract)
+	// Состояние контракта (функции/геттеры: name, symbol, total_supply, balances). Query: addresses=addr1,addr2
+	api.GET("/contract/:address/state", s.GetContractState)
 
 	// Токены (создание — по API-ключу; операции — без ключа в текущей реализации)
 	api.POST("/token/deploy", s.DeployToken)
