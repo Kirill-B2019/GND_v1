@@ -688,7 +688,7 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	// Create new contract
 	contract := NewContract(
 		contractAddress,
-		params.Owner,
+		params.From,
 		bytecode,
 		nil, // ABI will be added later
 		params.Standard,
@@ -696,6 +696,14 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 		0, // blockID will be set when block is created
 		0, // txID will be set when transaction is created
 	)
+	contract.Creator = params.From
+	contract.Name = params.Name
+	contract.Symbol = params.Standard
+	if params.Owner != "" {
+		contract.Owner = params.Owner
+	} else {
+		contract.Owner = params.From
+	}
 	contract.SourceCode = params.SourceCode
 	contract.Compiler = params.Compiler
 	if len(params.Metadata) > 0 {

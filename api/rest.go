@@ -627,8 +627,19 @@ func (s *Server) DeployContract(c *gin.Context) {
 		})
 		return
 	}
-	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
-		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "contract_deploy", params.From, address, address)
+	// Записываем транзакцию деплоя в БД (для отображения в админке и истории)
+	pool := s.core.Pool
+	if pool == nil {
+		pool = s.db
+	}
+	genesisID := int64(0)
+	if s.core != nil && s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	if pool != nil {
+		if errTx := core.RecordAdminTransaction(c.Request.Context(), pool, genesisID, "contract_deploy", params.From, address, address); errTx != nil {
+			fmt.Printf("[REST] не удалось записать транзакцию contract_deploy: %v\n", errTx)
+		}
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,

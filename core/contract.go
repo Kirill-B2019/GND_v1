@@ -17,6 +17,9 @@ type Contract struct {
 	ID         int       // ID контракта
 	Address    string    // Адрес контракта
 	Creator    string    // Адрес создателя
+	Name       string    // Название (для чтения в GND_admin / GetContractState)
+	Symbol     string    // Символ (стандарт или тикер)
+	Owner      string    // Владелец (для GetContractState и отображения)
 	Bytecode   []byte    // Байткод контракта
 	ABI        []byte    // ABI контракта
 	Type       string    // Тип контракта
@@ -79,19 +82,20 @@ func NewContract(address, creator string, bytecode, abi []byte, contractType, ve
 	}
 }
 
-// SaveToDB сохраняет контракт в БД
+// SaveToDB сохраняет контракт в БД (в т.ч. name, symbol, owner для чтения в GND_admin и GetContractState).
 func (c *Contract) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	err := pool.QueryRow(ctx, `
 		INSERT INTO contracts (
-			address, creator, bytecode, abi, type,
+			address, creator, name, symbol, owner, bytecode, abi, type,
 			version, status, block_id, tx_id, gas_limit,
 			gas_used, value, data, created_at, updated_at,
 			is_verified, source_code, compiler, optimized,
 			runs, license, metadata
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+			$15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING id`,
-		c.Address, c.Creator, c.Bytecode, c.ABI, c.Type,
+		c.Address, c.Creator, c.Name, c.Symbol, c.Owner,
+		c.Bytecode, c.ABI, c.Type,
 		c.Version, c.Status, c.BlockID, c.TxID, c.GasLimit,
 		c.GasUsed, c.Value, c.Data, c.CreatedAt, c.UpdatedAt,
 		c.IsVerified, c.SourceCode, c.Compiler, c.Optimized,
