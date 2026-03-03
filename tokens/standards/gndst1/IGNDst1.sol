@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.16;
+pragma solidity ^0.8.16;
 
 /// @title IGNDst1 — интерфейс стандарта GNDst-1
 /// @notice Совместим с ERC-20, TRC-20. Расширения: KYC, snapshot, дивиденды, crossChain, модули.
