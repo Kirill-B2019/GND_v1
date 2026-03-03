@@ -19,7 +19,10 @@
 | Метод | Путь | Назначение |
 |-------|------|------------|
 | GET | `/api/v1/contract/:address` | Информация о контракте (core.GetContract) |
+| GET | `/api/v1/contract/:address/view` | Просмотр контракта: ABI, список view/write функций, базовая инфо (name, symbol, decimals, total_supply, address) |
 | GET | `/api/v1/contract/:address/state?addresses=addr1,addr2` | Состояние контракта: name, symbol, owner, decimals, total_supply, balances (core.GetContractState) |
+| POST | `/api/v1/contract/:address/call` | Вызов view/constant метода без транзакции. Body: `data` (hex calldata), опционально `from` |
+| POST | `/api/v1/contract/:address/send` | Отправка транзакции вызова метода (transfer, approve и т.д.). Body: `from`, `data`, опционально `value`, `gas_limit` |
 | GET | `/api/v1/state/account/:address` | Текущее состояние аккаунта из `accounts`: nonce, balance_gnd (core.GetCurrentAccountState) |
 | GET | `/api/v1/state/account/:address/block/:blockId` | Снимок состояния на блок из `account_states` |
 | GET | `/api/v1/state/contract/:address/storage?block_id=N` | Слоты storage контракта на блок (core.GetContractStorageAtBlock) |
@@ -33,9 +36,13 @@
 
 ## GND_admin: страница контракта
 
-- **Прочитать контракт:** данные с ноды (contract state + account state + storage по block_id). Ошибки разделены: контракт не найден / аккаунт не найден / ошибка storage.
-- **Записать контракт:** форма записи слота storage (block_id, slot_key, slot_value); подтверждение через SweetAlert2.
-- Пустой `block_id` в URL приводит к редиректу на страницу без query. Форма «Прочитать storage» требует заполненный ID блока (required, min=1).
+Три вкладки (как в Tronscan):
+
+- **Просмотр контракта:** ABI (JSON), список функций (view и write), базовая инфо о токене: название, символ, decimals, totalSupply, адрес контракта.
+- **Чтение контракта:** вызовы только view/constant методов (без газа и изменения состояния): balanceOf, allowance, name, symbol, decimals, totalSupply, служебные флаги (isBlackListed, isKycPassed и т.п., если есть). Выбор метода → ввод аргументов → «Вызвать» → ответ (return_data).
+- **Запись в контракт:** формирование и отправка транзакций к методам, меняющим состояние: transfer, approve, transferFrom, админские (pause, unpause, setBlackList и т.п., если реализованы). Выбор метода → аргументы → выбор кошелька (from) → «Отправить транзакцию».
+
+Кодирование calldata (ABI) выполняется на клиенте (ethers.js); запросы к ноде идут через Laravel (POST /admin/contracts/:id/call и /admin/contracts/:id/send).
 
 ## Требования к БД ноды
 
