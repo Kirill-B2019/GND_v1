@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.16;
 
 /// @title IGNDst1 — интерфейс стандарта GNDst-1
 /// @notice Совместим с ERC-20, TRC-20. Расширения: KYC, snapshot, дивиденды, crossChain, модули.
 
 interface IGNDst1 {
-    // Базовые методы ERC-20
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function transfer(address to, uint256 amount) external returns (bool);
@@ -13,7 +12,6 @@ interface IGNDst1 {
     function allowance(address owner, address spender) external view returns (uint256);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 
-    // Расширения GNDst-1
     function crossChainTransfer(
         string calldata targetChain,
         address to,
@@ -30,9 +28,9 @@ interface IGNDst1 {
 
     function snapshot() external returns (uint256);
     function getSnapshotBalance(address user, uint256 snapshotId)
-        external
-        view
-        returns (uint256);
+    external
+    view
+    returns (uint256);
 
     function claimDividends(uint256 snapshotId) external;
 
@@ -42,7 +40,6 @@ interface IGNDst1 {
         string calldata name
     ) external;
 
-    // События
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event CrossChainTransfer(address indexed from, string targetChain, address indexed to, uint256 value);
