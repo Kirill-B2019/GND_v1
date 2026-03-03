@@ -110,16 +110,17 @@ func (b *Block) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// UpdateStatus обновляет статус блока
+// UpdateStatus обновляет статус блока и флаг is_finalized в БД.
 func (b *Block) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status string) error {
 	b.Status = status
 	b.UpdatedAt = time.Now()
+	b.IsFinalized = (status == "finalized")
 
 	_, err := pool.Exec(ctx, `
 		UPDATE blocks 
-		SET status = $1, updated_at = $2
-		WHERE id = $3`,
-		b.Status, b.UpdatedAt, b.ID,
+		SET status = $1, updated_at = $2, is_finalized = $3
+		WHERE id = $4`,
+		b.Status, b.UpdatedAt, b.IsFinalized, b.ID,
 	)
 
 	if err != nil {

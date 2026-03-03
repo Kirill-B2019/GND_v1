@@ -23,6 +23,7 @@
     <file url="file://$PROJECT_DIR$/db/migrations/015_rename_balance_wei_to_balance_gnd.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/016_contracts_name_symbol_owner.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/migrations/017_contracts_code_and_columns.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/db/migrations/018_blocks_state_root.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/db/old DB/transactions.csv" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main.go" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/main_test.go" dialect="PostgreSQL" />
