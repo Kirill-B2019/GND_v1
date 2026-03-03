@@ -3,10 +3,13 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -269,6 +272,41 @@ func (s *State) ClearTouched() {
 	defer s.mutex.Unlock()
 	s.touchedInBlock = make(map[types.Address]struct{})
 	s.storageChanges = nil
+}
+
+// RootHash возвращает детерминированный хеш текущего состояния (для state_root блока).
+// Учитываются адрес, nonce и баланс GND по каждому аккаунту (адреса в сортированном порядке).
+func (s *State) RootHash() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	addresses := make([]string, 0, len(s.nonces)+len(s.balances))
+	seen := make(map[types.Address]struct{})
+	for a := range s.nonces {
+		seen[a] = struct{}{}
+	}
+	for a := range s.balances {
+		seen[a] = struct{}{}
+	}
+	for a := range seen {
+		addresses = append(addresses, string(a))
+	}
+	sort.Strings(addresses)
+	h := sha256.New()
+	for _, addr := range addresses {
+		a := types.Address(addr)
+		nonce := s.nonces[a]
+		balanceGnd := "0"
+		if bm, ok := s.balances[a]; ok && bm != nil {
+			if b, ok := bm[GasSymbol]; ok && b != nil {
+				balanceGnd = b.String()
+			}
+		}
+		h.Write([]byte(addr))
+		h.Write([]byte(fmt.Sprintf("%d", nonce)))
+		h.Write([]byte(balanceGnd))
+	}
+	sum := h.Sum(nil)
+	return hex.EncodeToString(sum)
 }
 
 // getTokenIDForNativeContractLocked возвращает token_id по символу и адресу контракта (tokens JOIN contracts).

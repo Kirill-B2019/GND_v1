@@ -334,11 +334,11 @@ func (bc *Blockchain) storeBlock(block *Block) error {
 	// nonce в БД — varchar, передаём строку
 	nonceStr := strconv.FormatUint(block.Nonce, 10)
 	err := bc.Pool.QueryRow(ctx, `
-		INSERT INTO blocks (index, hash, prev_hash, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (index) DO UPDATE SET tx_count = EXCLUDED.tx_count, updated_at = EXCLUDED.updated_at
+		INSERT INTO blocks (index, hash, prev_hash, merkle_root, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (index) DO UPDATE SET tx_count = EXCLUDED.tx_count, merkle_root = EXCLUDED.merkle_root, updated_at = EXCLUDED.updated_at
 		RETURNING id`,
-		block.Index, block.Hash, block.PrevHash, block.Timestamp,
+		block.Index, block.Hash, block.PrevHash, block.MerkleRoot, block.Timestamp,
 		block.Miner, block.GasUsed, block.GasLimit, block.Consensus, nonceStr,
 		block.TxCount, block.CreatedAt, block.UpdatedAt,
 	).Scan(&block.ID)
@@ -414,6 +414,7 @@ func (bc *Blockchain) LatestBlock() (*Block, error) {
 }
 
 // ProduceNextBlock создаёт новый блок, включая до maxTxs транзакций из mempool, и добавляет его в цепь.
+// При открытии нового блока предыдущий (текущий tip) финализируется, даже если он пустой.
 // miner — адрес валидатора. Вызывается по таймеру (например из main с интервалом round_duration).
 func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs int) error {
 	if mempool == nil {
@@ -423,6 +424,15 @@ func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs in
 	if err != nil || last == nil {
 		return err
 	}
+	// Финализировать предыдущий блок при открытии нового (даже если он пустой)
+	if last.Status != "finalized" && bc.Pool != nil && last.ID != 0 {
+		ctx := context.Background()
+		if err := last.UpdateStatus(ctx, bc.Pool, "finalized"); err != nil {
+			return fmt.Errorf("финализация предыдущего блока %d: %w", last.Index, err)
+		}
+	}
+	last.Status = "finalized"
+
 	height := last.Index + 1
 	prevHash := last.Hash
 	if prevHash == "" {
@@ -439,6 +449,7 @@ func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs in
 	txs := mempool.TakePending(maxTxs)
 	block.Transactions = txs
 	block.TxCount = uint32(len(txs))
+	block.MerkleRoot = ComputeMerkleRoot(txs)
 
 	block.Hash = block.CalculateHash()
 
@@ -594,6 +605,11 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 			fmt.Printf("предупреждение: не удалось сохранить состояние после блока %d: %v\n", block.ID, err)
 		}
 		if st, ok := bc.State.(*State); ok {
+			// state_root — хеш состояния после применения блока
+			block.StateRoot = st.RootHash()
+			if block.ID != 0 {
+				_, _ = bc.Pool.Exec(context.Background(), `UPDATE blocks SET state_root = $1 WHERE id = $2`, block.StateRoot, block.ID)
+			}
 			st.ClearTouched()
 		}
 	}

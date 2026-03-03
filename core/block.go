@@ -19,7 +19,8 @@ type Block struct {
 	ID           int64          // ID блока
 	Hash         string         // Хеш блока
 	PrevHash     string         // Хеш предыдущего блока
-	MerkleRoot   string         // Корень дерева Меркла
+	MerkleRoot   string         // Корень дерева Меркла (от хешей транзакций)
+	StateRoot    string         // Корень состояния после применения блока (хеш состояния)
 	Timestamp    time.Time      // Временная метка создания блока
 	Height       uint64         // Высота блока
 	Version      uint32         // Версия блока
@@ -307,6 +308,21 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	block.Reward.SetString(rewardStr, 10)
 
 	return &block, nil
+}
+
+// ComputeMerkleRoot вычисляет корень Меркла по хешам транзакций (простая схема: хеш от конкатенации хешей).
+// Для пустого списка возвращает хеш пустой строки.
+func ComputeMerkleRoot(txs []*Transaction) string {
+	if len(txs) == 0 {
+		h := sha256.Sum256(nil)
+		return hex.EncodeToString(h[:])
+	}
+	var sb strings.Builder
+	for _, tx := range txs {
+		sb.WriteString(tx.Hash)
+	}
+	h := sha256.Sum256([]byte(sb.String()))
+	return hex.EncodeToString(h[:])
 }
 
 // CalculateHash вычисляет хеш блока
