@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -409,6 +410,41 @@ func (bc *Blockchain) LatestBlock() (*Block, error) {
 	return bc.Blocks[len(bc.Blocks)-1], nil
 }
 
+// ProduceNextBlock создаёт новый блок, включая до maxTxs транзакций из mempool, и добавляет его в цепь.
+// miner — адрес валидатора. Вызывается по таймеру (например из main с интервалом round_duration).
+func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs int) error {
+	if mempool == nil {
+		return nil
+	}
+	last, err := bc.LatestBlock()
+	if err != nil || last == nil {
+		return err
+	}
+	height := last.Index + 1
+	prevHash := last.Hash
+	if prevHash == "" {
+		prevHash = "0"
+	}
+	block := NewBlock(prevHash, height, miner)
+	block.Index = height
+	block.Reward = big.NewInt(0)
+	block.GasLimit = 10_000_000
+	block.GasUsed = 0
+	block.Consensus = "poa"
+	block.Status = "finalized"
+
+	txs := mempool.TakePending(maxTxs)
+	block.Transactions = txs
+	block.TxCount = uint32(len(txs))
+
+	block.Hash = block.CalculateHash()
+
+	if err := bc.AddBlock(block); err != nil {
+		return fmt.Errorf("ProduceNextBlock AddBlock: %w", err)
+	}
+	return nil
+}
+
 // LoadTransactionsForBlock загружает транзакции блока по block_id (blocks.id). Для ответа API (block/latest, block/:number).
 func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID int64) ([]*Transaction, error) {
 	if pool == nil {
@@ -720,6 +756,9 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	contract.Creator = params.From
 	contract.Name = params.Name
 	contract.Symbol = params.Standard
+	contract.Standard = params.Standard
+	contract.Description = params.Description
+	contract.MetadataCID = params.MetadataCID
 	if params.Owner != "" {
 		contract.Owner = params.Owner
 	} else {
@@ -730,6 +769,11 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	if len(params.Metadata) > 0 {
 		contract.Metadata = params.Metadata
 	}
+	if len(params.Params) > 0 {
+		contract.Params, _ = json.Marshal(params.Params)
+	}
+	// code записывается в БД: при деплое подставляем bytecode
+	contract.Code = bytecode
 
 	// Save contract to database
 	if err := contract.SaveToDB(context.Background(), bc.Pool); err != nil {

@@ -200,12 +200,32 @@ func main() {
 	// 14. Обработка транзакций
 	go processTransactions(mempool, cfg.MaxWorkers)
 
+	// 14a. Производство блоков: по таймеру создаём новый блок и включаем транзакции из мемпула
+	blockInterval, err := time.ParseDuration(poaConfig.RoundDuration)
+	if err != nil || blockInterval <= 0 {
+		blockInterval = 17 * time.Second
+	}
+	go runBlockProducer(blockchain, mempool, string(minerWallet.Address), blockInterval, 100)
+
 	// 15. Грейсфул-шатдаун
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	fmt.Printf("Нода %s ГАНИМЕД запущена.\nДля остановки нажмите Ctrl+C.\n", cfg.NodeName)
 	<-sigs
 	fmt.Println("Нода ГАНИМЕД остановлена.")
+}
+
+// runBlockProducer по таймеру создаёт новый блок и включает в него транзакции из мемпула.
+func runBlockProducer(blockchain *core.Blockchain, mempool *core.Mempool, miner string, interval time.Duration, maxTxsPerBlock int) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	logger := log.New(os.Stdout, "[BlockProducer] ", log.LstdFlags)
+	logger.Printf("Запущен: интервал %v, до %d транзакций в блок", interval, maxTxsPerBlock)
+	for range ticker.C {
+		if err := blockchain.ProduceNextBlock(mempool, miner, maxTxsPerBlock); err != nil {
+			logger.Printf("Ошибка создания блока: %v", err)
+		}
+	}
 }
 
 // Горутины обработки транзакций

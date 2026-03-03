@@ -105,3 +105,50 @@ func (m *Mempool) GetPendingTransactions() []*Transaction {
 	}
 	return txs
 }
+
+// TakePending забирает до max транзакций из мемпула и удаляет их из очереди (для включения в блок).
+// Возвращённые транзакции больше не будут в мемпуле и не попадут в Pop().
+func (m *Mempool) TakePending(max int) []*Transaction {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if max <= 0 || len(m.txMap) == 0 {
+		return nil
+	}
+	taken := make([]*Transaction, 0, max)
+	takenSet := make(map[string]bool)
+	for hash, tx := range m.txMap {
+		if len(taken) >= max {
+			break
+		}
+		taken = append(taken, tx)
+		takenSet[hash] = true
+	}
+	for h := range takenSet {
+		delete(m.txMap, h)
+	}
+	// Очищаем канал от взятых: вычитываем всё, обратно кладём только те, что не взяты
+	var toKeep []*Transaction
+	for {
+		select {
+		case tx := <-m.txChan:
+			if !takenSet[tx.Hash] {
+				toKeep = append(toKeep, tx)
+			}
+		default:
+			goto done
+		}
+	}
+done:
+	for _, tx := range toKeep {
+		select {
+		case m.txChan <- tx:
+		default:
+			m.txMap[tx.Hash] = tx
+		}
+	}
+	if len(taken) > 0 {
+		m.logger.Printf("TakePending: взято %d транзакций в блок", len(taken))
+	}
+	return taken
+}
