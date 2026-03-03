@@ -164,7 +164,7 @@ GET /api/v1/token/:address/balance/:owner
 
 ### Состояния аккаунтов и контрактов (для GND_admin и клиентов)
 
-Состояния хранятся в памяти ноды и кэшируются; при применении блока записываются в БД (таблицы `accounts`, `account_states`, `contract_storage`). Эндпоинты чтения доступны без API-ключа; запись слота storage — только через админское API.
+Состояния хранятся в памяти ноды и кэшируются; при применении блока записываются в БД (таблицы `accounts`, `account_states`, `contract_storage`). Эндпоинты чтения доступны без API-ключа; запись слота storage — только через админское API. **Все действия с контрактами** (деплой через POST /contract, запись storage через POST /api/v1/admin/state/contract/:address/storage) **формируют транзакции в блокчейне** (таблица `transactions`: типы `contract_deploy`, `contract_storage_write`).
 
 #### Текущее состояние аккаунта
 ```http
@@ -184,7 +184,7 @@ GET /api/v1/state/contract/:address/storage?block_id=123
 ```
 Возвращает все слоты storage контракта на конец указанного блока из таблицы `contract_storage`. Ответ: `{ "success": true, "data": { "address": "...", "block_id": 123, "slots": [ { "slot_key": "0x...", "slot_value": "0x..." } ] } }`. Обязательный query-параметр: `block_id`.
 
-Запись слота storage контракта (импорт/админ) — см. [admin-api.md](admin-api.md) (POST /api/v1/admin/state/contract/:address/storage).
+Запись слота storage контракта (импорт/админ) — см. [admin-api.md](admin-api.md) (POST /api/v1/admin/state/contract/:address/storage). При успешной записи в блокчейн добавляется транзакция типа `contract_storage_write`.
 
 ### Транзакции
 

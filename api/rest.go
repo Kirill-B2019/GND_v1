@@ -1402,6 +1402,16 @@ func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: err.Error(), Code: http.StatusBadRequest})
 		return
 	}
+	// Все действия с контрактами формируют транзакции в блокчейне
+	genesisID := int64(0)
+	if s.core != nil && s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	payload := req.SlotKey
+	if payload == "" {
+		payload = "storage_slot"
+	}
+	_ = core.RecordAdminTransaction(c.Request.Context(), s.db, genesisID, "contract_storage_write", "GND_ADMIN", address, payload)
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: "Слот записан"})
 }
 
