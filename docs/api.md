@@ -225,20 +225,22 @@ Response:
 
 ### Блоки
 
-Эндпоинты **GET /api/v1/block/latest** и **GET /api/v1/block/:number** возвращают блок в `data`. В блоке присутствуют поля `TxCount`, `Hash`, `Height`, `Timestamp`, `Miner` и массив **Transactions** (транзакции блока загружаются из БД; при отсутствии — `[]`).
+Эндпоинты **GET /api/v1/block/latest** и **GET /api/v1/block/:number** возвращают блок в `data`. В блоке присутствуют поля: `id`, `hash`, `prev_hash`, `merkle_root` (корень Меркла от хешей транзакций; может быть пустой для старых блоков), `state_root` (корень состояния после блока; может быть пустым), `height`/`index`, `timestamp`, `tx_count`, `miner`, `consensus`, `status`, `is_finalized`, массив **transactions** (транзакции блока загружаются из БД; при отсутствии — `[]`). Поля `merkle_root` и `state_root` в БД допускают NULL — в ответе приходят как строка (в т.ч. пустая).
 
 #### Получение последнего блока
 ```http
 GET /api/v1/block/latest
 
-Response: { "success": true, "data": { "id", "hash", "prev_hash", "height", "timestamp", "tx_count", "transactions": [...], ... } }
+Response 200:
+{ "success": true, "data": { "id", "hash", "prev_hash", "merkle_root", "state_root", "height", "index", "timestamp", "tx_count", "miner", "consensus", "status", "is_finalized", "transactions": [...] } }
 ```
 
 #### Получение блока по номеру
 ```http
 GET /api/v1/block/:number
 
-Response: { "success": true, "data": { "id", "hash", "prev_hash", "height", "timestamp", "tx_count", "transactions": [...], ... } }
+Response 200:
+{ "success": true, "data": { "id", "hash", "prev_hash", "merkle_root", "state_root", "height", "index", "timestamp", "tx_count", "miner", "consensus", "status", "is_finalized", "transactions": [...] } }
 ```
 
 ## RPC API

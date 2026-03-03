@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -142,13 +143,14 @@ func parseBlockNonce(s string) (uint64, error) {
 func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	var merkleRoot sql.NullString
 	err := pool.QueryRow(context.Background(), `
 		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE hash = $1`, hash).Scan(
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
-		&block.MerkleRoot,
+		&merkleRoot,
 		&block.Timestamp,
 		&block.Height,
 		&block.Version,
@@ -173,6 +175,7 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
+	block.MerkleRoot = merkleRoot.String
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
@@ -185,13 +188,14 @@ func LoadBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	var merkleRoot sql.NullString
 	err := pool.QueryRow(context.Background(), `
 		SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus
 		FROM blocks WHERE index = $1`, height).Scan(
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
-		&block.MerkleRoot,
+		&merkleRoot,
 		&block.Timestamp,
 		&block.Height,
 		&block.Version,
@@ -216,6 +220,7 @@ func LoadBlock(pool *pgxpool.Pool, height uint64) (*Block, error) {
 	if err != nil {
 		return nil, err
 	}
+	block.MerkleRoot = merkleRoot.String
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
@@ -272,13 +277,14 @@ func GetBlockByHeight(pool *pgxpool.Pool, height uint64) (*Block, error) {
 func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	var merkleRoot sql.NullString
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks ORDER BY index DESC LIMIT 1",
 	).Scan(
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
-		&block.MerkleRoot,
+		&merkleRoot,
 		&block.Timestamp,
 		&block.Height,
 		&block.Version,
@@ -303,6 +309,7 @@ func GetLatestBlock(pool *pgxpool.Pool) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest block: %v", err)
 	}
+	block.MerkleRoot = merkleRoot.String
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
@@ -371,6 +378,7 @@ func (b *Block) CalculateHashWithoutNonce() string {
 func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	var merkleRoot sql.NullString
 	// nonce в БД — varchar; явно приводим к text, чтобы сканировать в nonceStr (не в *uint64).
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
@@ -379,7 +387,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
-		&block.MerkleRoot,
+		&merkleRoot,
 		&block.Timestamp,
 		&block.Height,
 		&block.Version,
@@ -404,6 +412,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by number: %v", err)
 	}
+	block.MerkleRoot = merkleRoot.String
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
@@ -416,6 +425,7 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
+	var merkleRoot sql.NullString
 	err := pool.QueryRow(context.Background(),
 		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE hash = $1",
 		hash,
@@ -423,7 +433,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
-		&block.MerkleRoot,
+		&merkleRoot,
 		&block.Timestamp,
 		&block.Height,
 		&block.Version,
@@ -448,6 +458,7 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %v", err)
 	}
+	block.MerkleRoot = merkleRoot.String
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)
@@ -471,11 +482,12 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 	for rows.Next() {
 		var block Block
 		var rewardStr, nonceStr string
+		var merkleRoot sql.NullString
 		err := rows.Scan(
 			&block.ID,
 			&block.Hash,
 			&block.PrevHash,
-			&block.MerkleRoot,
+			&merkleRoot,
 			&block.Timestamp,
 			&block.Height,
 			&block.Version,
@@ -500,6 +512,7 @@ func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan block: %v", err)
 		}
+		block.MerkleRoot = merkleRoot.String
 		block.Nonce, _ = parseBlockNonce(nonceStr)
 
 		block.Reward = new(big.Int)
