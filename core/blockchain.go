@@ -600,10 +600,31 @@ func (bc *Blockchain) processTransfer(tx *Transaction) error {
 	return nil
 }
 
-// processContract обрабатывает вызов контракта
+// processContract обрабатывает вызов контракта: добавляет транзакцию в мемпул и записывает в БД (таблица transactions),
+// чтобы все вызовы (transfer, approve и т.д.) включались в транзакции блокчейна.
 func (bc *Blockchain) processContract(tx *Transaction) error {
-	// TODO: Реализовать обработку вызова контракта
-	return errors.New("contract calls not implemented")
+	if tx.Type == "" {
+		tx.Type = "contract_call"
+	}
+	if tx.Status == "" {
+		tx.Status = "pending"
+	}
+	tx.BlockID = 0
+	if len(tx.Data) > 0 && len(tx.Payload) == 0 {
+		tx.Payload = tx.Data
+	}
+	if tx.Hash == "" {
+		tx.Hash = tx.CalculateHash()
+	}
+	if bc.Mempool != nil {
+		bc.Mempool.Add(tx)
+	}
+	if bc.Pool != nil {
+		if err := tx.SaveToDB(context.Background(), bc.Pool); err != nil {
+			return fmt.Errorf("сохранение транзакции вызова контракта: %w", err)
+		}
+	}
+	return nil
 }
 
 // ValidateTransaction проверяет транзакцию

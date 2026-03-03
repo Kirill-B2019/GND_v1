@@ -4,9 +4,11 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -363,6 +365,7 @@ func (s *Server) AdminDisableWallet(c *gin.Context) {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден или без signer_wallet", Code: http.StatusNotFound})
 		return
 	}
+	recordWalletTransaction(s, c.Request.Context(), "wallet_disable", address)
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"disabled": true}})
 }
 
@@ -390,6 +393,7 @@ func (s *Server) AdminEnableWallet(c *gin.Context) {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден или без signer_wallet", Code: http.StatusNotFound})
 		return
 	}
+	recordWalletTransaction(s, c.Request.Context(), "wallet_enable", address)
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"enabled": true}})
 }
 
@@ -414,5 +418,80 @@ func (s *Server) AdminDeleteWallet(c *gin.Context) {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: "Кошелёк не найден", Code: http.StatusNotFound})
 		return
 	}
+	recordWalletTransaction(s, c.Request.Context(), "wallet_delete", address)
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"deleted": true}})
+}
+
+// recordWalletTransaction записывает в БД транзакцию операции с кошельком (disable, enable, delete).
+func recordWalletTransaction(s *Server, ctx context.Context, txType, address string) {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	genesisID := int64(0)
+	if s.core != nil && s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	if pool != nil {
+		if err := core.RecordAdminTransaction(ctx, pool, genesisID, txType, "GND_ADMIN", address, ""); err != nil {
+			// логируем в stdout, т.к. в admin нет доступа к log
+			fmt.Printf("[REST] запись транзакции %s в gnd_db.transactions: %v\n", txType, err)
+		}
+	}
+}
+
+// AdminContractDisable записывает транзакцию блокировки контракта. POST /api/v1/admin/contracts/:address/disable
+func (s *Server) AdminContractDisable(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := c.Param("address")
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	recordWalletTransaction(s, c.Request.Context(), "contract_disable", address)
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": "contract_disable"}})
+}
+
+// AdminContractDelete записывает транзакцию удаления контракта. POST /api/v1/admin/contracts/:address/delete
+func (s *Server) AdminContractDelete(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := c.Param("address")
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	recordWalletTransaction(s, c.Request.Context(), "contract_delete", address)
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": "contract_delete"}})
+}
+
+// AdminTokenDisable записывает транзакцию блокировки токена. POST /api/v1/admin/tokens/:id/disable
+func (s *Server) AdminTokenDisable(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите id токена", Code: http.StatusBadRequest})
+		return
+	}
+	recordWalletTransaction(s, c.Request.Context(), "token_disable", id)
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": "token_disable"}})
+}
+
+// AdminTokenDelete записывает транзакцию удаления токена. POST /api/v1/admin/tokens/:id/delete
+func (s *Server) AdminTokenDelete(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите id токена", Code: http.StatusBadRequest})
+		return
+	}
+	recordWalletTransaction(s, c.Request.Context(), "token_delete", id)
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": "token_delete"}})
 }

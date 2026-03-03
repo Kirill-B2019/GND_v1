@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -218,6 +219,7 @@ func (tx *Transaction) Verify() bool {
 }
 
 // SaveToDB сохраняет транзакцию в БД (id берётся из nextval(transactions_id_seq), contract_id — NULL если не задан).
+// Колонка payload в БД — jsonb; передаём nil или JSON-совместимое значение.
 func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	var contractID *int64
 	if tx.ContractID.Valid {
@@ -227,6 +229,16 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	if tx.Fee != nil {
 		feeStr = tx.Fee.String()
 	}
+	var payloadArg interface{}
+	if len(tx.Payload) == 0 {
+		payloadArg = nil
+	} else {
+		if json.Valid(tx.Payload) {
+			payloadArg = json.RawMessage(tx.Payload)
+		} else {
+			payloadArg = map[string]string{"v": string(tx.Payload)}
+		}
+	}
 	var dbID int64
 	err := pool.QueryRow(ctx, `
 		INSERT INTO transactions (
@@ -235,7 +247,7 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		) VALUES (nextval('transactions_id_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id`,
 		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
-		feeStr, tx.Nonce, tx.Type, contractID, tx.Payload,
+		feeStr, tx.Nonce, tx.Type, contractID, payloadArg,
 		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
 	).Scan(&dbID)
 	if err == nil {

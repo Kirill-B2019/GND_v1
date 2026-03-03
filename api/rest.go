@@ -276,8 +276,18 @@ func (s *Server) CreateWallet(c *gin.Context) {
 	if wallet.SignerWalletID != nil {
 		data["signer_wallet_id"] = wallet.SignerWalletID.String()
 	}
-	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
-		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "wallet_create", "GND_SYSTEM", string(wallet.Address), "")
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	genesisID := int64(0)
+	if s.core != nil && s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	if pool != nil {
+		if errTx := core.RecordAdminTransaction(c.Request.Context(), pool, genesisID, "wallet_create", "GND_SYSTEM", string(wallet.Address), ""); errTx != nil {
+			log.Printf("[REST] запись транзакции wallet_create в gnd_db.transactions: %v", errTx)
+		}
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
@@ -640,7 +650,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 	}
 	if pool != nil {
 		if errTx := core.RecordAdminTransaction(c.Request.Context(), pool, genesisID, "contract_deploy", params.From, address, address); errTx != nil {
-			fmt.Printf("[REST] не удалось записать транзакцию contract_deploy: %v\n", errTx)
+			log.Printf("[REST] запись транзакции contract_deploy в gnd_db.transactions: %v", errTx)
 		}
 	}
 	c.JSON(http.StatusOK, APIResponse{
@@ -700,7 +710,8 @@ func (s *Server) GetContractState(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: state})
 }
 
-// GetContractView возвращает данные для вкладки «Просмотр контракта»: ABI, список view/write функций, базовая инфо (name, symbol, decimals, totalSupply, address).
+// GetContractView возвращает данные для вкладки «Просмотр контракта»: исходный код контракта (Solidity), ABI,
+// список методов/функций самого контракта (view и write из ABI). Просмотр/чтение/запись относятся к методам контракта.
 // GET /api/v1/contract/:address/view
 func (s *Server) GetContractView(c *gin.Context) {
 	address := strings.TrimSpace(c.Param("address"))
@@ -722,10 +733,6 @@ func (s *Server) GetContractView(c *gin.Context) {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
 		return
 	}
-	state, err := core.GetContractState(ctx, pool, address, nil)
-	if err != nil {
-		state = &core.ContractState{Address: address}
-	}
 	var abiJSON json.RawMessage
 	if len(contract.ABI) > 0 {
 		abiJSON = contract.ABI
@@ -735,16 +742,11 @@ func (s *Server) GetContractView(c *gin.Context) {
 	viewFuncs, writeFuncs, _ := ParseABIFunctions(contract.ABI)
 	out := gin.H{
 		"address":         address,
-		"name":            state.Name,
-		"symbol":          state.Symbol,
-		"owner":           state.Owner,
-		"decimals":        state.Decimals,
-		"total_supply":    state.TotalSupply,
-		"standard":        state.Standard,
-		"is_token":        state.IsToken,
+		"source_code":     contract.SourceCode,
 		"abi":             abiJSON,
 		"view_functions":  viewFuncs,
 		"write_functions": writeFuncs,
+		"compiler":        contract.Compiler,
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: out})
 }
@@ -838,14 +840,21 @@ func (s *Server) ContractSend(c *gin.Context) {
 	if gasLimit == 0 {
 		gasLimit = 200000
 	}
+	fromAddr := strings.TrimSpace(req.From)
 	tx := &core.Transaction{
-		Sender:    types.Address(strings.TrimSpace(req.From)),
+		Sender:    types.Address(fromAddr),
 		Recipient: types.Address(address),
 		Data:      data,
 		GasLimit:  gasLimit,
-		GasPrice:  big.NewInt(0),
+		GasPrice:  big.NewInt(1),
 		Value:     val,
 		Timestamp: core.BlockchainNow(),
+		Type:      "contract_call",
+		Status:    "pending",
+		Symbol:    "GND",
+	}
+	if s.core != nil && s.core.State != nil {
+		tx.Nonce = s.core.State.GetNonce(types.Address(fromAddr))
 	}
 	hash, err := s.core.SendTransaction(tx)
 	if err != nil {
@@ -1055,12 +1064,22 @@ func (s *Server) DeployToken(c *gin.Context) {
 		})
 		return
 	}
-	if s.core != nil && s.core.Pool != nil && s.core.Genesis != nil {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	genesisID := int64(0)
+	if s.core != nil && s.core.Genesis != nil {
+		genesisID = s.core.Genesis.ID
+	}
+	if pool != nil {
 		payload := req.Symbol
 		if req.Name != "" {
 			payload = req.Name + "|" + req.Symbol
 		}
-		_ = core.RecordAdminTransaction(c.Request.Context(), s.core.Pool, s.core.Genesis.ID, "token_deploy", deployFrom, token.GetAddress(), payload)
+		if errTx := core.RecordAdminTransaction(c.Request.Context(), pool, genesisID, "token_deploy", deployFrom, token.GetAddress(), payload); errTx != nil {
+			log.Printf("[REST] запись транзакции token_deploy в gnd_db.transactions: %v", errTx)
+		}
 	}
 	data := gin.H{
 		"address":              token.GetAddress(),
@@ -1482,6 +1501,12 @@ func (s *Server) setupRoutes() {
 		admin.DELETE("/wallets/:address", s.AdminDeleteWallet)
 		admin.POST("/wallets/:address/delete", s.AdminDeleteWallet)
 		admin.POST("/record-transaction", s.AdminRecordTransaction)
+		// Контракты: запись транзакций блокировки/удаления (для GND_admin)
+		admin.POST("/contracts/:address/disable", s.AdminContractDisable)
+		admin.POST("/contracts/:address/delete", s.AdminContractDelete)
+		// Токены: запись транзакций блокировки/удаления (для GND_admin)
+		admin.POST("/tokens/:id/disable", s.AdminTokenDisable)
+		admin.POST("/tokens/:id/delete", s.AdminTokenDelete)
 		// Состояния контрактов: запись слота storage (для GND_admin)
 		admin.POST("/state/contract/:address/storage", s.AdminWriteContractStorageSlot)
 	}
@@ -1594,11 +1619,19 @@ func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
 	if s.core != nil && s.core.Genesis != nil {
 		genesisID = s.core.Genesis.ID
 	}
+	pool := s.core.Pool
+	if pool == nil {
+		pool = s.db
+	}
 	payload := req.SlotKey
 	if payload == "" {
 		payload = "storage_slot"
 	}
-	_ = core.RecordAdminTransaction(c.Request.Context(), s.db, genesisID, "contract_storage_write", "GND_ADMIN", address, payload)
+	if pool != nil {
+		if errTx := core.RecordAdminTransaction(c.Request.Context(), pool, genesisID, "contract_storage_write", "GND_ADMIN", address, payload); errTx != nil {
+			log.Printf("[REST] запись транзакции contract_storage_write в gnd_db.transactions: %v", errTx)
+		}
+	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: "Слот записан"})
 }
 
