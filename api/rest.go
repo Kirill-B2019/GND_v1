@@ -1280,7 +1280,8 @@ func (s *Server) setupRoutes() {
 	api.GET("/transaction/", s.GetTransactionHelp) // то же при запросе с завершающим слэшем
 	api.POST("/transaction", s.SendTransaction)
 	api.GET("/transaction/:hash", s.GetTransaction)
-	api.GET("/transactions", s.GetTransactionsList) // список ожидающих (как /mempool)
+	api.GET("/transactions", s.GetTransactionsList)        // список ожидающих (как /mempool)
+	api.GET("/transactions/list", s.GetTransactionsFromDB) // список из gnd_db.transactions (для админки)
 	api.GET("/mempool", s.GetMempool)
 
 	// Блоки
@@ -1647,6 +1648,67 @@ func (s *Server) GetTransactionHelp(c *gin.Context) {
 // GetTransactionsList возвращает список ожидающих транзакций (то же, что /mempool)
 func (s *Server) GetTransactionsList(c *gin.Context) {
 	s.GetMempool(c)
+}
+
+// GetTransactionsFromDB возвращает список транзакций из gnd_db.transactions (для админки). GET /api/v1/transactions/list?limit=50&offset=0
+func (s *Server) GetTransactionsFromDB(c *gin.Context) {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
+		c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"list": []interface{}{}, "total": 0}})
+		return
+	}
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	offset := 0
+	if o := c.Query("offset"); o != "" {
+		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	ctx := c.Request.Context()
+	var total int
+	_ = pool.QueryRow(ctx, `SELECT COUNT(*) FROM transactions`).Scan(&total)
+	rows, err := pool.Query(ctx, `
+		SELECT id, block_id, hash, sender, recipient, value, fee, nonce, type, status, timestamp
+		FROM transactions
+		ORDER BY timestamp DESC
+		LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	defer rows.Close()
+	var list []gin.H
+	for rows.Next() {
+		var id, blockID int
+		var hash, sender, recipient, valueStr, feeStr, txType, status string
+		var nonce int64
+		var ts time.Time
+		if err := rows.Scan(&id, &blockID, &hash, &sender, &recipient, &valueStr, &feeStr, &nonce, &txType, &status, &ts); err != nil {
+			continue
+		}
+		list = append(list, gin.H{
+			"id":        id,
+			"block_id":  blockID,
+			"hash":      hash,
+			"sender":    sender,
+			"recipient": recipient,
+			"value":     valueStr,
+			"fee":       feeStr,
+			"nonce":     nonce,
+			"type":      txType,
+			"status":    status,
+			"timestamp": ts.Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"list": list, "total": total}})
 }
 
 // GetMempool возвращает размер мемпула и список хешей ожидающих транзакций (для проверки работы mempool)
