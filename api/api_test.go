@@ -84,7 +84,7 @@ func (s *MockState) Credit(address types.Address, symbol string, amount *big.Int
 	s.balances[address][symbol].Add(s.balances[address][symbol], amount)
 }
 
-func (s *MockState) SaveToDB() error {
+func (s *MockState) SaveToDB(blockID int64) error {
 	return nil // No-op for mock
 }
 

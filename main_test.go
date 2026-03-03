@@ -88,7 +88,7 @@ func TestNewBlockchain(t *testing.T) {
 		if err := st.Credit(addr, "GND", balance); err != nil {
 			t.Fatalf("Credit failed: %v", err)
 		}
-		if err := st.SaveToDB(); err != nil {
+		if err := st.SaveToDB(0); err != nil {
 			t.Skipf("State.SaveToDB skipped (схема token_balances): %v", err)
 		}
 	}

@@ -22,5 +22,5 @@ type StateIface interface {
 	CallStatic(tx *Transaction) (*types.ExecutionResult, error)
 	ApplyTransaction(tx *Transaction) error
 	GetNonce(address types.Address) int64
-	SaveToDB() error
+	SaveToDB(blockID int64) error
 }

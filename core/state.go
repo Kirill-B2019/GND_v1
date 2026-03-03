@@ -198,7 +198,15 @@ func GetStateNonce(ctx context.Context, pool *pgxpool.Pool, address string, bloc
 	return nonce, nil
 }
 
-// State представляет состояние блокчейна
+// ContractStorageChange — изменение слота storage контракта (для записи в contract_storage).
+type ContractStorageChange struct {
+	Address string
+	Key     []byte
+	Value   []byte
+}
+
+// State представляет состояние блокчейна. Состояния хранятся в памяти и кэшируются,
+// при сохранении пишутся в accounts, account_states и contract_storage.
 type State struct {
 	balances         map[types.Address]map[string]*big.Int
 	nonces           map[types.Address]uint64
@@ -206,13 +214,19 @@ type State struct {
 	mutex            sync.RWMutex
 	gndContractAddr  string // если задан — GND берётся из token_balances по token_id
 	ganiContractAddr string
+	gndselfAddress   string // системный владелец; при owner == gndself комиссии не взимаются
+	// Для записи снимков по блоку и слотов контрактов
+	touchedInBlock map[types.Address]struct{}
+	storageChanges []ContractStorageChange
 }
 
 // NewState создает новое состояние
 func NewState() *State {
 	return &State{
-		balances: make(map[types.Address]map[string]*big.Int),
-		nonces:   make(map[types.Address]uint64),
+		balances:       make(map[types.Address]map[string]*big.Int),
+		nonces:         make(map[types.Address]uint64),
+		touchedInBlock: make(map[types.Address]struct{}),
+		storageChanges: nil,
 	}
 }
 
@@ -230,6 +244,31 @@ func (s *State) SetNativeContractAddresses(gndAddr, ganiAddr string) {
 	defer s.mutex.Unlock()
 	s.gndContractAddr = strings.TrimSpace(gndAddr)
 	s.ganiContractAddr = strings.TrimSpace(ganiAddr)
+}
+
+// SetGndselfAddress задаёт адрес системного владельца (gndself). При owner == gndself комиссии не взимаются.
+func (s *State) SetGndselfAddress(addr string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.gndselfAddress = strings.TrimSpace(addr)
+}
+
+// MarkTouched помечает адрес как затронутый в текущем блоке (для записи в account_states).
+func (s *State) MarkTouched(address types.Address) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.touchedInBlock == nil {
+		s.touchedInBlock = make(map[types.Address]struct{})
+	}
+	s.touchedInBlock[address] = struct{}{}
+}
+
+// ClearTouched сбрасывает множество затронутых адресов и накопленные изменения storage (вызывать перед новым блоком).
+func (s *State) ClearTouched() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.touchedInBlock = make(map[types.Address]struct{})
+	s.storageChanges = nil
 }
 
 // getTokenIDForNativeContractLocked возвращает token_id по символу и адресу контракта (tokens JOIN contracts).
@@ -484,27 +523,35 @@ func (s *State) ApplyTransaction(tx *Transaction) error {
 	}
 
 	s.IncrementNonce(types.Address(tx.Sender))
+	s.MarkTouched(types.Address(tx.Sender))
+	s.MarkTouched(types.Address(tx.Recipient))
 	return nil
 }
 
-// SaveToDB сохраняет состояние в БД. Нативные балансы (GND, GANI) — в native_balances; nonces — в accounts.
-func (s *State) SaveToDB() error {
+// SaveToDB сохраняет состояние в БД. Нативные балансы — в native_balances; текущее состояние (nonce, balance_gnd) — в accounts.
+// При blockID > 0 дополнительно пишет снимки в account_states и слоты в contract_storage.
+func (s *State) SaveToDB(blockID int64) error {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	// Сохраняем нативные балансы (GND, GANI) в native_balances только если не включён режим контрактов
+	if s.pool == nil {
+		return nil
+	}
+	ctx := context.Background()
+
+	// 1. Нативные балансы (GND, GANI) в native_balances, если не режим контрактов
 	for address, balances := range s.balances {
 		for symbol, balance := range balances {
 			if !IsNativeSymbol(symbol) {
 				continue
 			}
 			if symbol == GasSymbol && s.gndContractAddr != "" {
-				continue // GND в token_balances
+				continue
 			}
 			if symbol == "GANI" && s.ganiContractAddr != "" {
-				continue // GANI в token_balances
+				continue
 			}
-			_, err := s.pool.Exec(context.Background(), `
+			_, err := s.pool.Exec(ctx, `
 				INSERT INTO native_balances (address, symbol, balance, updated_at)
 				VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
 				ON CONFLICT (address, symbol) DO UPDATE
@@ -515,15 +562,66 @@ func (s *State) SaveToDB() error {
 		}
 	}
 
-	// Сохраняем nonce
-	for address, nonce := range s.nonces {
-		_, err := s.pool.Exec(context.Background(), `
-			INSERT INTO accounts (address, nonce)
-			VALUES ($1, $2)
-			ON CONFLICT (address) DO UPDATE
-			SET nonce = $2`, address, nonce)
+	// 2. Текущее состояние в accounts (nonce, balance_gnd) для всех затронутых адресов
+	seen := make(map[types.Address]struct{})
+	for address := range s.nonces {
+		seen[address] = struct{}{}
+	}
+	for address := range s.balances {
+		seen[address] = struct{}{}
+	}
+	for address := range seen {
+		nonce := s.nonces[address]
+		balanceGnd := "0"
+		if bm, ok := s.balances[address]; ok && bm != nil {
+			if b, ok := bm[GasSymbol]; ok && b != nil {
+				balanceGnd = b.String()
+			}
+		}
+		_, err := s.pool.Exec(ctx, `
+			INSERT INTO accounts (address, nonce, balance_gnd, is_contract)
+			VALUES ($1, $2, $3, FALSE)
+			ON CONFLICT (address) DO UPDATE SET
+				nonce = EXCLUDED.nonce,
+				balance_gnd = EXCLUDED.balance_gnd`,
+			string(address), nonce, balanceGnd)
 		if err != nil {
 			return err
+		}
+	}
+
+	// 3. Снимки по блоку и слоты storage (только при blockID > 0)
+	if blockID > 0 {
+		for addr := range s.touchedInBlock {
+			balanceWei := "0"
+			if bm, ok := s.balances[addr]; ok && bm != nil {
+				if b, ok := bm[GasSymbol]; ok && b != nil {
+					balanceWei = b.String()
+				}
+			}
+			nonce := s.nonces[addr]
+			_, err := s.pool.Exec(ctx, `
+				INSERT INTO account_states (block_id, address, nonce, balance_wei, storage_root)
+				VALUES ($1, $2, $3, $4, NULL)
+				ON CONFLICT (block_id, address) DO UPDATE SET
+					nonce = $3, balance_wei = $4`,
+				blockID, string(addr), nonce, balanceWei)
+			if err != nil {
+				return err
+			}
+		}
+		for _, sc := range s.storageChanges {
+			if len(sc.Key) == 0 || len(sc.Value) == 0 {
+				continue
+			}
+			_, err := s.pool.Exec(ctx, `
+				INSERT INTO contract_storage (block_id, address, slot_key, slot_value)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (block_id, address, slot_key) DO UPDATE SET slot_value = $4`,
+				blockID, sc.Address, sc.Key, sc.Value)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -617,26 +715,55 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 	return nil
 }
 
-// ApplyExecutionResult применяет результат выполнения контракта. Газ списывается в GND.
+// ApplyExecutionResult применяет результат выполнения контракта. Газ списывается в GND, кроме случая системного владельца контракта.
 func (s *State) ApplyExecutionResult(tx *Transaction, result *types.ExecutionResult) error {
+	var skipGas bool
+	s.mutex.RLock()
+	gndself, pool := s.gndselfAddress, s.pool
+	s.mutex.RUnlock()
+	if gndself != "" && pool != nil && tx.Recipient != "" {
+		var owner string
+		if err := pool.QueryRow(context.Background(), `SELECT owner FROM contracts WHERE address = $1`, tx.Recipient).Scan(&owner); err == nil {
+			skipGas = strings.TrimSpace(owner) == gndself
+		}
+	}
+
 	gasUsed := new(big.Int).SetUint64(result.GasUsed)
-	if err := s.SubBalance(types.Address(tx.Sender), GasSymbol, gasUsed); err != nil {
-		return err
+	if !skipGas && gasUsed.Sign() > 0 {
+		if err := s.SubBalance(types.Address(tx.Sender), GasSymbol, gasUsed); err != nil {
+			return err
+		}
 	}
 
 	for _, change := range result.StateChanges {
 		switch change.Type {
 		case types.ChangeTypeBalance:
 			if err := s.AddBalance(types.Address(change.Address), change.Symbol, change.Amount); err != nil {
-				s.AddBalance(types.Address(tx.Sender), GasSymbol, gasUsed)
+				if !skipGas && gasUsed.Sign() > 0 {
+					s.AddBalance(types.Address(tx.Sender), GasSymbol, gasUsed)
+				}
 				return err
 			}
+		case types.ChangeTypeStorage:
+			s.mutex.Lock()
+			if s.storageChanges == nil {
+				s.storageChanges = make([]ContractStorageChange, 0, 8)
+			}
+			s.storageChanges = append(s.storageChanges, ContractStorageChange{
+				Address: change.Address,
+				Key:     change.Key,
+				Value:   change.Value,
+			})
+			s.mutex.Unlock()
+			s.MarkTouched(types.Address(change.Address))
 		}
 	}
 
-	// Увеличиваем nonce отправителя
 	s.IncrementNonce(types.Address(tx.Sender))
-
+	s.MarkTouched(types.Address(tx.Sender))
+	if tx.Recipient != "" {
+		s.MarkTouched(types.Address(tx.Recipient))
+	}
 	return nil
 }
 

@@ -54,6 +54,9 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool, configOptional ...*Config) (*Block
 	if len(configOptional) > 0 && configOptional[0] != nil && configOptional[0].NativeContracts != nil {
 		nc := configOptional[0].NativeContracts
 		state.SetNativeContractAddresses(nc.GndContractAddress, nc.GaniContractAddress)
+		if nc.GndselfAddress != "" {
+			state.SetGndselfAddress(nc.GndselfAddress)
+		}
 	}
 	if err := state.LoadFromDB(ctx); err != nil {
 		return nil, fmt.Errorf("failed to load state from DB: %w", err)
@@ -353,6 +356,9 @@ func (bc *Blockchain) validateBlock(block *Block) bool {
 
 // applyBlock применяет все транзакции из блока к состоянию
 func (bc *Blockchain) applyBlock(block *Block) {
+	if st, ok := bc.State.(*State); ok {
+		st.ClearTouched()
+	}
 	for _, tx := range block.Transactions {
 		if err := bc.State.ApplyTransaction(tx); err != nil {
 			fmt.Printf("Транзакция %s не прошла, пропущена: %v\n", tx.Hash, err)
@@ -539,10 +545,17 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 	// Применяем транзакции к состоянию
 	bc.applyBlock(block)
 
-	// Сохраняем состояние (нативные балансы в native_balances, nonces в accounts) для сохранности при перезагрузке
+	// Сохраняем состояние (accounts, account_states, contract_storage при blockID > 0)
 	if bc.Pool != nil && bc.State != nil {
-		if err := bc.State.SaveToDB(); err != nil {
+		blockID := int64(0)
+		if block != nil && block.ID != 0 {
+			blockID = int64(block.ID)
+		}
+		if err := bc.State.SaveToDB(blockID); err != nil {
 			fmt.Printf("предупреждение: не удалось сохранить состояние после блока %d: %v\n", block.ID, err)
+		}
+		if st, ok := bc.State.(*State); ok {
+			st.ClearTouched()
 		}
 	}
 

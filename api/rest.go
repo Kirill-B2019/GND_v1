@@ -1116,7 +1116,7 @@ func (s *Server) setupRoutes() {
 				})
 				return
 			}
-			if err := st.SaveToDB(); err != nil {
+			if err := st.SaveToDB(0); err != nil {
 				c.JSON(http.StatusInternalServerError, APIResponse{
 					Success: false,
 					Error:   "Ошибка сохранения состояния",
@@ -1264,7 +1264,114 @@ func (s *Server) setupRoutes() {
 		admin.DELETE("/wallets/:address", s.AdminDeleteWallet)
 		admin.POST("/wallets/:address/delete", s.AdminDeleteWallet)
 		admin.POST("/record-transaction", s.AdminRecordTransaction)
+		// Состояния контрактов: запись слота storage (для GND_admin)
+		admin.POST("/state/contract/:address/storage", s.AdminWriteContractStorageSlot)
 	}
+
+	// Состояния аккаунтов и контрактов (чтение) — для GND_admin и клиентов
+	api.GET("/state/account/:address", s.GetAccountStateCurrent)
+	api.GET("/state/account/:address/block/:blockId", s.GetAccountStateAtBlock)
+	api.GET("/state/contract/:address/storage", s.GetContractStorage)
+}
+
+// GetAccountStateCurrent возвращает текущее состояние аккаунта из accounts. GET /api/v1/state/account/:address
+func (s *Server) GetAccountStateCurrent(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address", Code: http.StatusBadRequest})
+		return
+	}
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	st, err := core.GetCurrentAccountState(c.Request.Context(), s.db, address)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: st})
+}
+
+// GetAccountStateAtBlock возвращает снимок состояния аккаунта на блок. GET /api/v1/state/account/:address/block/:blockId
+func (s *Server) GetAccountStateAtBlock(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	blockIDStr := c.Param("blockId")
+	if address == "" || blockIDStr == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address и blockId", Code: http.StatusBadRequest})
+		return
+	}
+	blockID, err := strconv.ParseInt(blockIDStr, 10, 64)
+	if err != nil || blockID < 0 {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Некорректный blockId", Code: http.StatusBadRequest})
+		return
+	}
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	st, err := core.GetAccountStateAtBlock(c.Request.Context(), s.db, address, blockID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: st})
+}
+
+// GetContractStorage возвращает слоты storage контракта на блок. GET /api/v1/state/contract/:address/storage?block_id=123
+func (s *Server) GetContractStorage(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	blockIDStr := c.Query("block_id")
+	if blockIDStr == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите block_id в query", Code: http.StatusBadRequest})
+		return
+	}
+	blockID, err := strconv.ParseInt(blockIDStr, 10, 64)
+	if err != nil || blockID < 0 {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Некорректный block_id", Code: http.StatusBadRequest})
+		return
+	}
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	slots, err := core.GetContractStorageAtBlock(c.Request.Context(), s.db, address, blockID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, APIResponse{Success: false, Error: err.Error(), Code: http.StatusInternalServerError})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"address": address, "block_id": blockID, "slots": slots}})
+}
+
+// AdminWriteContractStorageSlot записывает слот storage контракта. POST /api/v1/admin/state/contract/:address/storage. Body: {"block_id": 1, "slot_key": "0x...", "slot_value": "0x..."}
+func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	var req struct {
+		BlockID   int64  `json:"block_id"`
+		SlotKey   string `json:"slot_key"`
+		SlotValue string `json:"slot_value"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Ожидается JSON: block_id, slot_key, slot_value", Code: http.StatusBadRequest})
+		return
+	}
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	if err := core.WriteContractStorageSlot(c.Request.Context(), s.db, req.BlockID, address, req.SlotKey, req.SlotValue); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: "Слот записан"})
 }
 
 // GetTransactionHelp возвращает подсказку при GET /transaction без хеша (избегаем 404)
