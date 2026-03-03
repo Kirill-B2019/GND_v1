@@ -310,6 +310,7 @@ type ContractState struct {
 
 // GetContractState возвращает состояние контракта по адресу: данные из contracts + tokens и балансы по указанным адресам.
 // accountAddresses — список адресов, для которых нужны balanceOf (для токена из token_balances).
+// Если в contracts нет колонок name, symbol, owner (миграция 016 не применена), используется только id и creator.
 func GetContractState(ctx context.Context, pool *pgxpool.Pool, contractAddress string, accountAddresses []string) (*ContractState, error) {
 	contractAddress = strings.TrimSpace(contractAddress)
 	if contractAddress == "" {
@@ -325,7 +326,16 @@ func GetContractState(ctx context.Context, pool *pgxpool.Pool, contractAddress s
 		return nil, fmt.Errorf("контракт не найден: %s", contractAddress)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ошибка загрузки контракта: %w", err)
+		// Колонки name, symbol, owner могут отсутствовать до миграции 016 — пробуем только id и creator
+		var creator string
+		errMin := pool.QueryRow(ctx, `SELECT COALESCE(creator, '') FROM contracts WHERE address = $1`, contractAddress).Scan(&creator)
+		if errMin == sql.ErrNoRows {
+			return nil, fmt.Errorf("контракт не найден: %s", contractAddress)
+		}
+		if errMin != nil {
+			return nil, fmt.Errorf("ошибка загрузки контракта: %w", err)
+		}
+		owner = creator
 	}
 	out := &ContractState{
 		Address:  contractAddress,

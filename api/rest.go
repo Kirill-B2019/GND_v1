@@ -672,7 +672,11 @@ func (s *Server) GetContractState(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
 		return
 	}
-	if s.db == nil {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
 		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
 		return
 	}
@@ -686,7 +690,7 @@ func (s *Server) GetContractState(c *gin.Context) {
 			}
 		}
 	}
-	state, err := core.GetContractState(c.Request.Context(), s.db, address, accountAddresses)
+	state, err := core.GetContractState(c.Request.Context(), pool, address, accountAddresses)
 	if err != nil {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
 		return
