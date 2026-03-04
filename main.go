@@ -263,6 +263,13 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 				return
 			}
 
+			// Вызовы контрактов (contract_call) не обрабатываем здесь — их забирает блок-продюсер (TakePending)
+			// и включает в блок; иначе они исчезают из мемпула и никогда не попадают в блок.
+			if tx.IsContractCall() {
+				_ = mempool.Add(tx)
+				return
+			}
+
 			consType := consensus.SelectConsensusForTx(string(tx.Recipient))
 			logger.Printf("Processing transaction %s through %s consensus", tx.ID, consType)
 
