@@ -2,10 +2,11 @@
 
 ## Обзор
 
-Блокчейн ГАНИМЕД использует несколько типов баз данных для хранения различных данных:
-- LevelDB для блоков и транзакций
-- Redis для кэширования
-- PostgreSQL для индексов и метаданных
+**Основное хранилище:** PostgreSQL (gnd_db). В нём хранятся блоки, транзакции (в т.ч. партиционированная таблица по времени), аккаунты, состояния по блокам, слоты storage контрактов, нативные балансы, контракты, токены, кошельки, API-ключи.
+
+Состояние ноды (балансы, nonce) ведётся в памяти и при применении блоков записывается в PostgreSQL (accounts, native_balances, account_states, contract_storage). Исторические снимки — по block_id.
+
+*(Упоминания LevelDB и Redis ниже могут относиться к планам или устаревшим описаниям; актуальная реализация опирается на PostgreSQL.)*
 
 ## LevelDB
 
@@ -218,8 +219,9 @@ type PostgreSQL struct {
 
 ### Таблица contract_storage (слоты storage контрактов по блоку)
 
-- **Назначение:** слоты storage контрактов (32 байта ключ, 32 байта значение) на конец блока. Заполняется при записи состояний контрактов в `State.SaveToDB(blockID)` из накопленных в блоке изменений (ChangeTypeStorage).
-- **Структура:** `block_id`, `address`, `slot_key` (BYTEA), `slot_value` (BYTEA). Первичный ключ — (block_id, address, slot_key).
+- **Назначение:** слоты storage контрактов (32 байта ключ, 32 байта значение) на конец блока. Заполняется при записи состояний контрактов в `State.SaveToDB(blockID)` из накопленных в блоке изменений (ChangeTypeStorage), формируемых при applyBlock через `buildContractCallExecutionResult` и `ApplyExecutionResult` (см. [many-states.md](many-states.md)).
+- **Структура:** `block_id`, `address`, `slot_key` (BYTEA), `slot_value` (BYTEA). Первичный ключ — (block_id, address, slot_key). Индексы: (address, slot_key), (block_id).
+- **Чтение:** `core.GetContractStorageAtBlock(ctx, pool, address, blockID)` — все слоты контракта на блок; `core.GetContractStorageLatest(ctx, pool, address)` — актуальное состояние на последний блок цепи (для каждого slot_key берётся запись с макс. block_id). Используется в State.CallStatic для view-вызовов.
 - **Миграция:** `014_account_states_and_contract_storage.sql`.
 
 ### Валидация (консенсус)

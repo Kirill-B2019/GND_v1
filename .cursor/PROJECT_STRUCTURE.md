@@ -45,9 +45,11 @@ GND_v1/
 │   ├── block.go
 │   ├── blockchain.go
 │   ├── config.go
+│   ├── contract_call_result.go  # buildContractCallExecutionResult, таблица селекторов записи storage (setGaniToken, setOwner)
 │   ├── native.go        # нативные монеты GND/GANI: NativeSymbols, IsNativeSymbol, GasSymbol
 │   ├── pool.go          # InitDBPool, pgxpool
-│   ├── state.go
+│   ├── state.go         # State, CallStatic (чтение слотов по индексу/селектору), SaveToDB, storageChanges
+│   ├── state_api.go     # GetContractStorageAtBlock, GetContractStorageLatest, WriteContractStorageSlot, AccountStateAtBlock
 │   ├── transaction.go
 │   ├── mempool.go
 │   ├── wallet.go
@@ -114,16 +116,13 @@ GND_v1/
 │   │   │   ├── gndst1.go
 │   │   │   ├── gndst1_test.go
 │   │   │   ├── gndst1.abi.json
-│   │   │   ├── IGNDst1.sol       # интерфейс GNDst-1 (ERC-20 + расширения)
-│   │   │   └── gndst1Base.sol   # референсная реализация
-│   │   └── native/
-│   │       ├── INativeCoin.sol
-│   │       ├── IGND.sol
-│   │       ├── IGANI.sol
-│   │       ├── GNDCoinBase.sol
-│   │       ├── GANICoinBase.sol
-│   │       ├── GNDToken.sol      # деплоируемый контракт GND
-│   │       └── GANIToken.sol    # деплоируемый контракт GANI
+│   │   │   ├── IGNDst1.sol
+│   │   │   └── gndst1Base.sol
+│   │   ├── native/
+│   │   │   ├── INativeCoin.sol, IGND.sol, IGANI.sol
+│   │   │   ├── GNDToken.sol, GANIToken.sol
+│   │   │   └── ...
+│   │   └── deploy_order/        # порядок деплоя: 01_NativeTokensController, 02_GNDToken, 03_GANIToken, README, native_contracts.json.example
 │   └── utils/
 │       ├── helpers.go
 │       └── events.go
@@ -165,29 +164,24 @@ GND_v1/
 │   └── handlers_test.go
 │
 ├── db/
-│   ├── db.sql
-│   ├── console_21.sql
-│   ├── dump0906.sql
+│   ├── db.sql, console_21.sql, dump0906.sql, dump.sql
+│   ├── create_transactions_partitions.sql
+│   ├── cleanup_gnd_gani.sql
 │   └── migrations/
-│       └── 001_create_events_table.sql
+│       ├── 001_create_events_table.sql
+│       ├── 002_schema_additions.sql … 018_blocks_state_root.sql
+│       └── 012_native_balances.sql, 014_account_states_and_contract_storage.sql, …
 │
 └── docs/
     ├── README.md
-    ├── FileStructure.md   # расширенное описание + взаимодействие модулей
-    ├── architecture.md
-    ├── api.md
-    ├── consensus.md
-    ├── contracts.md
-    ├── database.md
-    ├── events.md
-    ├── integration.md
-    ├── tokens.md
-    ├── websocket_api.md
-    ├── GNDst-1.md
-    ├── wallwt.md
-    ├── arhitech_gnd_step1.md
-    ├── diagramDB.drawio
-    └── diagram.png
+    ├── FileStructure.md
+    ├── architecture.md, api.md, api-requests.md, api-token-deploy.md
+    ├── consensus.md, contracts.md, database.md, events.md
+    ├── integration.md, tokens.md, websocket_api.md
+    ├── many-states.md      # поддержка много слотов: чтение по индексу/селектору, запись по селекторам
+    ├── admin-api.md, deployment-server.md, security.md, testing.md
+    ├── GNDst-1.md, wallwt.md, arhitech_gnd_step1.md
+    └── diagramDB.drawio, diagram.png
 ```
 
 ---
@@ -198,7 +192,7 @@ GND_v1/
 |--------|------------|
 | **main.go** | Точка входа: конфиг, пул БД, кошелёк, блокчейн, консенсус, API, graceful shutdown. |
 | **config/** | Конфигурация ноды, БД, консенсуса, EVM, монет, серверов. |
-| **core/** | Блоки, цепь, состояние, транзакции, mempool, кошелёк, аккаунты, контракты, события, комиссии, пул БД, интерфейсы. |
+| **core/** | Блоки, цепь, состояние (state.go, state_api.go), транзакции, mempool, кошелёк, аккаунты, контракты, события, комиссии, пул БД, интерфейсы; contract_call_result — запись storage по селекторам при applyBlock; CallStatic — чтение слотов из contract_storage. |
 | **types/** | Общие типы: адреса, состояние, токены, EVM, события. |
 | **consensus/** | PoA, PoS, менеджер консенсуса. |
 | **api/** | REST, RPC, WebSocket, middleware (Gin), типы запросов/ответов. |

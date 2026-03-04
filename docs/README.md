@@ -6,11 +6,11 @@
 
 ### Кратко по разделам
 
-**1. Ядро (Core)** — блокчейн, блоки, состояние (State), транзакции, мемпул, кошельки, токены, контракты, метрики, пул БД, криптография.  
-**2. API** — REST (8182), RPC (8181), WebSocket (8183). Подключение к ноде: **main-node.gnd-net.com**. Документация по API: **api.gnd-net.com**. Создание кошелька: **POST /api/v1/wallet** (обязателен **X-API-Key**). Балансы кошелька: **GET /api/v1/wallet/:address/balance** — возвращает все токены из `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified); API-ключ не требуется. Создание токена: **POST /api/v1/token/deploy** (обязателен **X-API-Key**); полная логика — [api-token-deploy.md](api-token-deploy.md).  
+**1. Ядро (Core)** — блокчейн, блоки, состояние (State, state_api), транзакции, мемпул, кошельки, токены, контракты, метрики, пул БД, криптография. Состояния контрактов: слоты storage в БД (contract_storage), чтение при view (CallStatic по индексу слота или селектору), запись при applyBlock по селекторам (см. [many-states.md](many-states.md)).  
+**2. API** — REST (8182), RPC (8181), WebSocket (8183). Подключение к ноде: **main-node.gnd-net.com**. Документация по API: **api.gnd-net.com**. Создание кошелька: **POST /api/v1/wallet** (обязателен **X-API-Key**). Балансы кошелька: **GET /api/v1/wallet/:address/balance** — возвращает все токены из `token_balances` с полями из `tokens` (standard, symbol, name, decimals, is_verified); API-ключ не требуется. Контракты: **GET /api/v1/contract/:address/view**, **POST /api/v1/contract/:address/call** (view), **POST /api/v1/contract/:address/send** (запись). Создание токена: **POST /api/v1/token/deploy** (обязателен **X-API-Key**); полная логика — [api-token-deploy.md](api-token-deploy.md).  
 **3. VM** — EVM, деплой и вызов контрактов, стандарт GND-st1.  
 **4. Консенсус** — PoA/PoS, выбор по транзакции.  
-**5. Токены** — GND-st1, registry, handlers, deployer.  
+**5. Токены** — GND-st1, registry, handlers, deployer; нативные GND/GANI (tokens/standards/native, deploy_order).  
 **6. Мониторинг** — метрики (MetricsRegistry), алерты (AlertManager), события (EventLogger).  
 **7. Аудит** — монитор подозрительных транзакций, отчёты, правила, проверки безопасности контрактов.  
 **8. Интеграция** — мосты, оракулы, адреса, IPFS.
@@ -108,6 +108,8 @@
 ### 1. Документация
 - API: [api.md](api.md), [api-requests.md](api-requests.md), создание токена по X-API-Key: [api-token-deploy.md](api-token-deploy.md)
 - Админское API (X-Admin-Token, ключи, кошельки): [admin-api.md](admin-api.md)
+- Состояния контрактов (много слотов): чтение view по индексу/селектору, запись по селекторам — [many-states.md](many-states.md)
+- БД (contract_storage, account_states): [database.md](database.md)
 - Руководства, примеры, часто задаваемые вопросы
 
 ### 2. Обучение

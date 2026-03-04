@@ -10,9 +10,11 @@
 
 | Компонент | Описание |
 |-----------|----------|
-| **Blockchain** | Цепочка блоков, генезис, загрузка/сохранение из БД, FirstLaunch (деплой монет, начисление балансов), системные транзакции. |
+| **Blockchain** | Цепочка блоков, генезис, загрузка/сохранение из БД, FirstLaunch (деплой монет, начисление балансов), системные транзакции. **applyBlock** — для транзакций типа contract_call вызывает buildContractCallExecutionResult и State.ApplyExecutionResult (запись изменений storage в contract_storage при SaveToDB). |
 | **Block** | Структура блока (Hash, PrevHash, Timestamp, Miner, Consensus, Index, Transactions), сохранение/загрузка из PostgreSQL. |
-| **State** | Балансы по адресам и токенам (GND, GANI и др.), nonce, token_balances; состояние в памяти и кэш; синхронизация с БД (LoadFromDB, SaveToDB(blockID)) — запись в accounts, native_balances, при blockID > 0 также в account_states и contract_storage; ApplyTransaction, ApplyExecutionResult (при системном владельце контракта комиссия не взимается). |
+| **State** | Балансы по адресам и токенам (GND, GANI и др.), nonce, token_balances; состояние в памяти и кэш; синхронизация с БД (LoadFromDB, SaveToDB(blockID)) — запись в accounts, native_balances, при blockID > 0 также в account_states и contract_storage; ApplyTransaction, ApplyExecutionResult (при системном владельце контракта комиссия не взимается). **CallStatic** — чтение слотов из contract_storage: по индексу слота в calldata (4+32 байта) или по таблице селектор→слот при 4 байтах (см. [many-states.md](many-states.md)). |
+| **state_api** | GetContractStorageAtBlock, GetContractStorageLatest (актуальное состояние storage на последний блок), WriteContractStorageSlot; типы ContractStorageSlot, AccountStateAtBlock. |
+| **contract_call_result** | buildContractCallExecutionResult: таблица селекторов записи storage (setGaniToken — слот 0, setOwner — слот 1); при applyBlock для contract_call формирует StateChanges для записи в contract_storage. |
 | **Transaction** | Транзакция (Sender, Recipient, Value, Fee, Nonce, Hash, Type, Status), валидация, подпись, сохранение в БД (в т.ч. партиционированная таблица). |
 | **Mempool** | Очередь ожидающих транзакций (Add, Pop, GetPendingTransactions, Exists, GetTransaction). |
 | **Wallet** | Создание кошелька (NewWallet), загрузка из БД (LoadWallet), адрес и ключи. |
