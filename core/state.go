@@ -547,6 +547,9 @@ func (s *State) IncrementNonce(address types.Address) {
 
 // ApplyTransaction применяет транзакцию к состоянию. Используется tx.Symbol (GND или GANI); при пустом — GND.
 func (s *State) ApplyTransaction(tx *Transaction) error {
+	if tx.Value == nil {
+		tx.Value = big.NewInt(0)
+	}
 	// Проверяем nonce
 	if int64(tx.Nonce) != s.GetNonce(types.Address(tx.Sender)) {
 		return errors.New("invalid nonce")

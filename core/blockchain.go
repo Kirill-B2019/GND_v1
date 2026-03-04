@@ -590,7 +590,13 @@ func LoadPendingTransactionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]*
 		}
 		tx.ContractID = contractIDNull
 		tx.Value, _ = new(big.Int).SetString(valueStr, 10)
+		if tx.Value == nil {
+			tx.Value = big.NewInt(0)
+		}
 		tx.Fee, _ = new(big.Int).SetString(feeStr, 10)
+		if tx.Fee == nil {
+			tx.Fee = big.NewInt(0)
+		}
 		list = append(list, &tx)
 	}
 	return list, rows.Err()

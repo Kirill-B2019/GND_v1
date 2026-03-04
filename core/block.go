@@ -374,7 +374,9 @@ func ComputeMerkleRoot(txs []*Transaction) string {
 	}
 	var sb strings.Builder
 	for _, tx := range txs {
-		sb.WriteString(tx.Hash)
+		if tx != nil {
+			sb.WriteString(tx.Hash)
+		}
 	}
 	h := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(h[:])
