@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-/// @title GANIToken — governance-токен GANI (Ganimed Governance) на контракте
-/// @notice GNDst-1/ERC-20. Фиксированное предложение 100000000000000 (100M при 6 decimals). Минтинг отключён (только отдельным контрактом). Управляется только внешним контрактом (controller).
-/// @dev Вся эмиссия в конструкторе на контроллер; дальнейшее распределение — через контроллер/отдельные контракты.
+/// @title GNDToken — утилитарная монета GND (Ganimed) на контракте
+/// @notice GNDst-1/ERC-20. Эмиссия только в конструкторе; минтинг отключён. Управляется только внешним контрактом (controller).
+/// @dev Макс. предложение 1e27 (1 млрд GND, 18 decimals).
+/// Деплой: шаг 2. Параметры конструктора: initialSupply = 1000000000000000000000000000 (1e27), controllerAddress = адрес контракта из шага 1.
 
-contract GANIToken {
-    string public constant name = "Ganimed Governance";
-    string public constant symbol = "GANI";
-    uint8 public constant decimals = 6;
+contract GNDToken {
+    string public constant name = "Ganimed";
+    string public constant symbol = "GND";
+    uint8 public constant decimals = 18;
 
-    /// @notice Фиксированное предложение: 100000000000000 (100M * 10^6)
-    uint256 public constant TOTAL_SUPPLY = 100000000000000;
+    /// @notice Максимальное предложение: 1000000000000000000000000000 (1e27)
+    uint256 public constant TOTAL_SUPPLY = 1000000000000000000000000000;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -25,17 +26,18 @@ contract GANIToken {
     error MintingDisabled();
     error ZeroController();
     error ControllerMustBeContract();
-    error ZeroAddress();
-    error ExceedsTotalSupply();
+    error InvalidInitialSupply();
 
-    /// @param controllerContract Адрес контракта-контроллера (только он управляет; должен быть контрактом). Вся эмиссия минтуется на него.
-    constructor(address controllerContract) {
+    /// @param initialSupply Начальная эмиссия (не более TOTAL_SUPPLY). Для полной эмиссии: 1000000000000000000000000000
+    /// @param controllerContract Адрес контракта из шага 1 (01_NativeTokensController)
+    constructor(uint256 initialSupply, address controllerContract) {
         if (controllerContract == address(0)) revert ZeroController();
         if (_isContract(controllerContract) == false) revert ControllerMustBeContract();
+        if (initialSupply == 0 || initialSupply > TOTAL_SUPPLY) revert InvalidInitialSupply();
         controller = controllerContract;
-        _totalSupply = TOTAL_SUPPLY;
-        _balances[controllerContract] = TOTAL_SUPPLY;
-        emit Transfer(address(0), controllerContract, TOTAL_SUPPLY);
+        _totalSupply = initialSupply;
+        _balances[controllerContract] = initialSupply;
+        emit Transfer(address(0), controllerContract, initialSupply);
     }
 
     function _isContract(address account) private view returns (bool) {
@@ -79,16 +81,8 @@ contract GANIToken {
         return true;
     }
 
-    /// @notice Минт только с адреса контроллера. Лимит — TOTAL_SUPPLY.
-    function mint(address to, uint256 amount) external {
-        if (msg.sender != controller) revert MintingDisabled();
-        if (to == address(0)) revert ZeroAddress();
-        if (_totalSupply + amount > TOTAL_SUPPLY) revert ExceedsTotalSupply();
-        unchecked {
-            _totalSupply += amount;
-            _balances[to] += amount;
-        }
-        emit Transfer(address(0), to, amount);
+    function mint(address, uint256) external pure {
+        revert MintingDisabled();
     }
 
     function _transfer(address from, address to, uint256 amount) internal {

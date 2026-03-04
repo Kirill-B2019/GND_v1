@@ -140,6 +140,14 @@ func nullIfEmpty(s string) interface{} {
 	return s
 }
 
+// nullStringVal возвращает строку из sql.NullString или "" при NULL.
+func nullStringVal(n sql.NullString) string {
+	if n.Valid {
+		return n.String
+	}
+	return ""
+}
+
 // UpdateStatus обновляет статус контракта
 func (c *Contract) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status string) error {
 	c.Status = status
@@ -162,7 +170,8 @@ func (c *Contract) UpdateStatus(ctx context.Context, pool *pgxpool.Pool, status 
 // LoadContract загружает контракт из БД по адресу (включая name, symbol, owner, code, standard, description, params, metadata_cid).
 func LoadContract(ctx context.Context, pool *pgxpool.Pool, address string) (*Contract, error) {
 	var id, blockID, txID int
-	var creator, name, symbol, owner, contractType, standard, description, version, status, value, sourceCode, compiler, license, metadataCID string
+	var creator, name, symbol, owner, contractType, standard, description, version, status, value, sourceCode, compiler, license string
+	var metadataCID sql.NullString
 	var code, bytecode, abi, data, metadata, params []byte
 	var gasLimit, gasUsed int64
 	var createdAt, updatedAt time.Time
@@ -223,7 +232,7 @@ func LoadContract(ctx context.Context, pool *pgxpool.Pool, address string) (*Con
 		License:     license,
 		Metadata:    metadata,
 		Params:      params,
-		MetadataCID: metadataCID,
+		MetadataCID: nullStringVal(metadataCID),
 	}, nil
 }
 

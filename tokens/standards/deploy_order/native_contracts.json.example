@@ -1,0 +1,7 @@
+{
+  "comment": "Скопируйте в GND_v1/config/native_contracts.json и подставьте адреса после деплоя.",
+  "gnd_contract_address": "СЮДА_АДРЕС_ИЗ_ШАГА_2",
+  "gani_contract_address": "СЮДА_АДРЕС_ИЗ_ШАГА_3",
+  "fee_collector_address": "",
+  "gndself_address": ""
+}

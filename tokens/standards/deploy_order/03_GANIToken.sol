@@ -2,8 +2,8 @@
 pragma solidity ^0.8.16;
 
 /// @title GANIToken — governance-токен GANI (Ganimed Governance) на контракте
-/// @notice GNDst-1/ERC-20. Фиксированное предложение 100000000000000 (100M при 6 decimals). Минтинг отключён (только отдельным контрактом). Управляется только внешним контрактом (controller).
-/// @dev Вся эмиссия в конструкторе на контроллер; дальнейшее распределение — через контроллер/отдельные контракты.
+/// @notice GNDst-1/ERC-20. Фиксированное предложение 100000000000000 (100M при 6 decimals). Минтинг отключён. Управляется только внешним контрактом (controller).
+/// @dev Деплой: шаг 3. Параметр конструктора: controllerAddress = адрес контракта из шага 1 (тот же, что и для GND).
 
 contract GANIToken {
     string public constant name = "Ganimed Governance";
@@ -28,7 +28,7 @@ contract GANIToken {
     error ZeroAddress();
     error ExceedsTotalSupply();
 
-    /// @param controllerContract Адрес контракта-контроллера (только он управляет; должен быть контрактом). Вся эмиссия минтуется на него.
+    /// @param controllerContract Адрес контракта из шага 1 (01_NativeTokensController) — тот же, что использовали для GND
     constructor(address controllerContract) {
         if (controllerContract == address(0)) revert ZeroController();
         if (_isContract(controllerContract) == false) revert ControllerMustBeContract();
