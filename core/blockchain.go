@@ -639,6 +639,7 @@ func LoadPendingTransactionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]*
 
 // LoadTransactionByHash загружает транзакцию из gnd_db.transactions по хешу.
 // При нескольких записях (pending и confirmed) возвращаем подтверждённую (с block_id).
+// Загружает signature и is_verified, чтобы API возвращал корректные значения.
 func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string) (*Transaction, error) {
 	if pool == nil || hash == "" {
 		return nil, errors.New("pool or hash empty")
@@ -648,8 +649,10 @@ func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string)
 	var payload []byte
 	var blockIDNull sql.NullInt64
 	var contractIDNull sql.NullInt64
+	var sigStr sql.NullString
+	var isVerifiedNull sql.NullBool
 	err := pool.QueryRow(ctx, `
-		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp, contract_id
+		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp, contract_id, signature, is_verified
 		FROM transactions
 		WHERE hash = $1
 		ORDER BY block_id DESC NULLS LAST
@@ -666,6 +669,8 @@ func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string)
 		&tx.Status,
 		&tx.Timestamp,
 		&contractIDNull,
+		&sigStr,
+		&isVerifiedNull,
 	)
 	if err != nil {
 		return nil, err
@@ -677,6 +682,10 @@ func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string)
 	tx.ContractID = contractIDNull
 	tx.Value, _ = new(big.Int).SetString(valueStr, 10)
 	tx.Fee, _ = new(big.Int).SetString(feeStr, 10)
+	tx.IsVerified = isVerifiedNull.Valid && isVerifiedNull.Bool
+	if sigStr.Valid && sigStr.String != "" {
+		tx.Signature, _ = hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(sigStr.String, "0x"), "0X"))
+	}
 	return &tx, nil
 }
 
