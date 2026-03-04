@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"GND/core"
@@ -466,6 +467,46 @@ func (s *Server) AdminContractDelete(c *gin.Context) {
 	}
 	recordWalletTransaction(s, c.Request.Context(), "contract_delete", address)
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"recorded": true, "type": "contract_delete"}})
+}
+
+// AdminUpdateContractABI обновляет только ABI контракта по адресу. PATCH /api/v1/admin/contracts/:address/abi. Body: {"abi": [...]}.
+func (s *Server) AdminUpdateContractABI(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
+	address := strings.TrimSpace(c.Param("address"))
+	if address == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address контракта", Code: http.StatusBadRequest})
+		return
+	}
+	var req struct {
+		ABI json.RawMessage `json:"abi"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Неверный формат тела. Ожидается {\"abi\": [...]}", Code: http.StatusBadRequest})
+		return
+	}
+	if len(req.ABI) == 0 {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите abi (JSON-массив ABI)", Code: http.StatusBadRequest})
+		return
+	}
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
+		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
+		return
+	}
+	if err := core.UpdateContractABI(c.Request.Context(), pool, address, []byte(req.ABI)); err != nil {
+		if strings.Contains(err.Error(), "не найден") {
+			c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+			return
+		}
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"address": address, "message": "ABI обновлён"}})
 }
 
 // AdminTokenDisable записывает транзакцию блокировки токена. POST /api/v1/admin/tokens/:id/disable

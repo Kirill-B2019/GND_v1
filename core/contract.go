@@ -51,6 +51,7 @@ type Contract struct {
 type ContractParams struct {
 	From        string                 `json:"from"`
 	Bytecode    string                 `json:"bytecode"`
+	ABI         json.RawMessage       `json:"abi"` // ABI контракта (JSON-массив) — сохраняется в contracts.abi для GetContractView
 	Name        string                 `json:"name"`
 	Standard    string                 `json:"standard"`
 	Owner       string                 `json:"owner"`
@@ -239,6 +240,18 @@ func LoadContract(ctx context.Context, pool *pgxpool.Pool, address string) (*Con
 // GetContractByAddress возвращает контракт по адресу
 func GetContractByAddress(ctx context.Context, pool *pgxpool.Pool, address string) (*Contract, error) {
 	return LoadContract(ctx, pool, address)
+}
+
+// UpdateContractABI обновляет только поле abi у контракта по адресу (для админки: исправление контрактов с abi = NULL).
+func UpdateContractABI(ctx context.Context, pool *pgxpool.Pool, address string, abi []byte) error {
+	cmd, err := pool.Exec(ctx, `UPDATE contracts SET abi = $1 WHERE address = $2`, abi, address)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления ABI: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return fmt.Errorf("контракт не найден: %s", address)
+	}
+	return nil
 }
 
 // GetContractAddressByID возвращает адрес контракта по его id (для админки: call/send по id).

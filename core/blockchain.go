@@ -802,12 +802,18 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	}
 	contractAddress := generateContractAddress(bytecode, params.From, nonce)
 
+	// ABI для сохранения в БД (нужен для GetContractView — список методов чтения/записи)
+	abiBytes := []byte(params.ABI)
+	if len(abiBytes) == 0 {
+		abiBytes = nil
+	}
+
 	// Create new contract
 	contract := NewContract(
 		contractAddress,
 		params.From,
 		bytecode,
-		nil, // ABI will be added later
+		abiBytes,
 		params.Standard,
 		params.Version,
 		0, // blockID will be set when block is created

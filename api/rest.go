@@ -605,6 +605,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 	var paramsData struct {
 		From        string                 `json:"from"`
 		Bytecode    string                 `json:"bytecode"`
+		ABI         json.RawMessage        `json:"abi"`
 		Name        string                 `json:"name"`
 		Standard    string                 `json:"standard"`
 		Owner       string                 `json:"owner"`
@@ -632,6 +633,7 @@ func (s *Server) DeployContract(c *gin.Context) {
 	params := core.ContractParams{
 		From:        paramsData.From,
 		Bytecode:    paramsData.Bytecode,
+		ABI:         paramsData.ABI,
 		Name:        paramsData.Name,
 		Standard:    paramsData.Standard,
 		Owner:       paramsData.Owner,
@@ -1572,6 +1574,7 @@ func (s *Server) setupRoutes() {
 		// Контракты: запись транзакций блокировки/удаления (для GND_admin)
 		admin.POST("/contracts/:address/disable", s.AdminContractDisable)
 		admin.POST("/contracts/:address/delete", s.AdminContractDelete)
+		admin.PATCH("/contracts/:address/abi", s.AdminUpdateContractABI)
 		// Чтение/запись методов контракта по id (страница /admin/contracts/:id). Путь by-id избегает конфликта с :address.
 		admin.POST("/contracts/by-id/:id/call", s.AdminContractCall)
 		admin.POST("/contracts/by-id/:id/send", s.AdminContractSend)
