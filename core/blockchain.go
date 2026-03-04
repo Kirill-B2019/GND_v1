@@ -386,12 +386,47 @@ func (bc *Blockchain) validateBlock(block *Block) bool {
 	return true
 }
 
-// applyBlock применяет все транзакции из блока к состоянию
+// applyBlock применяет все транзакции из блока к состоянию.
+// Для contract_call строит результат из calldata (storage) и вызывает ApplyExecutionResult,
+// чтобы изменения контракта попали в contract_storage при SaveToDB.
 func (bc *Blockchain) applyBlock(block *Block) {
 	if st, ok := bc.State.(*State); ok {
 		st.ClearTouched()
 	}
 	for _, tx := range block.Transactions {
+		if tx == nil {
+			continue
+		}
+		if tx.IsContractCall() {
+			result := buildContractCallExecutionResult(tx)
+			if result != nil {
+				if st, ok := bc.State.(*State); ok {
+					if int64(tx.Nonce) != bc.State.GetNonce(types.Address(tx.Sender)) {
+						fmt.Printf("Транзакция %s: неверный nonce, пропущена\n", tx.Hash)
+						continue
+					}
+					symbol := "GND"
+					if tx.Symbol != "" {
+						symbol = tx.Symbol
+					}
+					if tx.Value != nil && tx.Value.Sign() > 0 {
+						if err := st.SubBalance(tx.Sender, symbol, tx.Value); err != nil {
+							fmt.Printf("Транзакция %s не прошла (value): %v\n", tx.Hash, err)
+							continue
+						}
+						if err := st.AddBalance(tx.Recipient, symbol, tx.Value); err != nil {
+							st.AddBalance(tx.Sender, symbol, tx.Value)
+							fmt.Printf("Транзакция %s не прошла (value): %v\n", tx.Hash, err)
+							continue
+						}
+					}
+					if err := st.ApplyExecutionResult(tx, result); err != nil {
+						fmt.Printf("Транзакция %s не прошла (ApplyExecutionResult): %v\n", tx.Hash, err)
+					}
+					continue
+				}
+			}
+		}
 		if err := bc.State.ApplyTransaction(tx); err != nil {
 			fmt.Printf("Транзакция %s не прошла, пропущена: %v\n", tx.Hash, err)
 		}

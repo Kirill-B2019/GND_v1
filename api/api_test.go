@@ -143,6 +143,10 @@ func (s *MockState) CallStatic(_ *core.Transaction) (*types.ExecutionResult, err
 	return nil, nil // No-op for mock
 }
 
+func (s *MockState) WillSkipGasForTx(_ *core.Transaction) bool {
+	return false
+}
+
 func (s *MockState) Close() {}
 
 // setupTestServer создает тестовый http.Handler с необходимыми зависимостями для тестов
