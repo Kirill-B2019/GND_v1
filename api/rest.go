@@ -892,6 +892,48 @@ func (s *Server) ContractSend(c *gin.Context) {
 	})
 }
 
+// AdminContractCall вызывает view/constant метод контракта по id (для страницы /admin/contracts/:id). POST /api/v1/admin/contracts/:id/call
+func (s *Server) AdminContractCall(c *gin.Context) {
+	address, err := s.resolveContractAddressByID(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	c.Params = append(c.Params, gin.Param{Key: "address", Value: address})
+	s.ContractCall(c)
+}
+
+// AdminContractSend отправляет транзакцию вызова метода контракта по id (для страницы /admin/contracts/:id). POST /api/v1/admin/contracts/:id/send
+func (s *Server) AdminContractSend(c *gin.Context) {
+	address, err := s.resolveContractAddressByID(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
+		return
+	}
+	c.Params = append(c.Params, gin.Param{Key: "address", Value: address})
+	s.ContractSend(c)
+}
+
+// resolveContractAddressByID возвращает адрес контракта по id из c.Param("id"); pool берётся из s.db или s.core.Pool.
+func (s *Server) resolveContractAddressByID(c *gin.Context) (string, error) {
+	idStr := strings.TrimSpace(c.Param("id"))
+	if idStr == "" {
+		return "", fmt.Errorf("укажите id контракта")
+	}
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		return "", fmt.Errorf("неверный id контракта: %s", idStr)
+	}
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
+		return "", fmt.Errorf("БД недоступна")
+	}
+	return core.GetContractAddressByID(c.Request.Context(), pool, id)
+}
+
 func decodeHex(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
@@ -1530,6 +1572,9 @@ func (s *Server) setupRoutes() {
 		// Контракты: запись транзакций блокировки/удаления (для GND_admin)
 		admin.POST("/contracts/:address/disable", s.AdminContractDisable)
 		admin.POST("/contracts/:address/delete", s.AdminContractDelete)
+		// Чтение/запись методов контракта по id (страница /admin/contracts/:id)
+		admin.POST("/contracts/:id/call", s.AdminContractCall)
+		admin.POST("/contracts/:id/send", s.AdminContractSend)
 		// Токены: запись транзакций блокировки/удаления (для GND_admin)
 		admin.POST("/tokens/:id/disable", s.AdminTokenDisable)
 		admin.POST("/tokens/:id/delete", s.AdminTokenDelete)

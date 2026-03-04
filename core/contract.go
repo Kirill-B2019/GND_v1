@@ -241,6 +241,19 @@ func GetContractByAddress(ctx context.Context, pool *pgxpool.Pool, address strin
 	return LoadContract(ctx, pool, address)
 }
 
+// GetContractAddressByID возвращает адрес контракта по его id (для админки: call/send по id).
+func GetContractAddressByID(ctx context.Context, pool *pgxpool.Pool, id int) (string, error) {
+	var address string
+	err := pool.QueryRow(ctx, `SELECT address FROM contracts WHERE id = $1`, id).Scan(&address)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("контракт с id %d не найден", id)
+	}
+	if err != nil {
+		return "", fmt.Errorf("ошибка получения контракта по id: %w", err)
+	}
+	return address, nil
+}
+
 // GetContractsByCreator возвращает все контракты, созданные указанным адресом
 func GetContractsByCreator(ctx context.Context, pool *pgxpool.Pool, creator string) ([]*Contract, error) {
 	rows, err := pool.Query(ctx, `
