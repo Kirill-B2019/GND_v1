@@ -91,7 +91,21 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 		return nil, errors.New("failed to parse contract data")
 	}
 
-	abi, _ := contractData["abi"].(string)
+	// solc --combined-json abi,bin отдаёт abi как массив [], а не строку; приводим к JSON-строке
+	var abiStr string
+	switch v := contractData["abi"].(type) {
+	case string:
+		abiStr = v
+	case []interface{}:
+		abiBytes, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("abi marshal: %w", err)
+		}
+		abiStr = string(abiBytes)
+	default:
+		abiStr = "[]"
+	}
+
 	bin, _ := contractData["bin"].(string)
 
 	if bin == "" {
@@ -100,7 +114,7 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 
 	compileResult := &CompileResult{
 		Bytecode: bin,
-		ABI:      abi,
+		ABI:      abiStr,
 		Metadata: metadata,
 	}
 
