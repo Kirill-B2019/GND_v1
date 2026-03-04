@@ -311,10 +311,25 @@ func RecordAdminTransaction(ctx context.Context, pool *pgxpool.Pool, genesisBloc
 }
 
 // saveSystemTransaction сохраняет системную транзакцию в БД с заданным id (для PK id+timestamp). contract_id в SQL = NULL.
+// signature и payload передаём в безопасном виде (hex/JSON), чтобы избежать ошибки 22P05 (unsupported Unicode escape).
 func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *Transaction) error {
 	feeStr := "0"
 	if tx.Fee != nil {
 		feeStr = tx.Fee.String()
+	}
+	var signatureArg interface{}
+	if len(tx.Signature) == 0 {
+		signatureArg = nil
+	} else {
+		signatureArg = hex.EncodeToString(tx.Signature)
+	}
+	var payloadArg interface{}
+	if len(tx.Payload) == 0 {
+		payloadArg = nil
+	} else if json.Valid(tx.Payload) {
+		payloadArg = json.RawMessage(tx.Payload)
+	} else {
+		payloadArg = map[string]string{"hex": hex.EncodeToString(tx.Payload)}
 	}
 	_, err := pool.Exec(ctx, `
 		INSERT INTO transactions (
@@ -324,8 +339,8 @@ func saveSystemTransaction(ctx context.Context, pool *pgxpool.Pool, id int, tx *
 		ON CONFLICT (id, timestamp) DO NOTHING`,
 		id, tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(),
 		tx.Value.String(), feeStr, tx.Nonce,
-		tx.Type, tx.Payload,
-		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
+		tx.Type, payloadArg,
+		tx.Status, tx.Timestamp, signatureArg, tx.IsVerified,
 	)
 	return err
 }

@@ -260,8 +260,16 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		if json.Valid(tx.Payload) {
 			payloadArg = json.RawMessage(tx.Payload)
 		} else {
-			payloadArg = map[string]string{"v": string(tx.Payload)}
+			// Бинарные данные в jsonb храним как hex, чтобы избежать ошибки "unsupported Unicode escape sequence"
+			payloadArg = map[string]string{"hex": hex.EncodeToString(tx.Payload)}
 		}
+	}
+	// Подпись в VARCHAR храним в hex — сырые байты (DER/secp256k1) вызывают ошибку 22P05 при вставке
+	var signatureArg interface{}
+	if len(tx.Signature) == 0 {
+		signatureArg = nil
+	} else {
+		signatureArg = hex.EncodeToString(tx.Signature)
 	}
 	var dbID int64
 	err := pool.QueryRow(ctx, `
@@ -272,7 +280,7 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 		RETURNING id`,
 		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
 		feeStr, tx.Nonce, tx.Type, contractID, payloadArg,
-		tx.Status, tx.Timestamp, tx.Signature, tx.IsVerified,
+		tx.Status, tx.Timestamp, signatureArg, tx.IsVerified,
 	).Scan(&dbID)
 	if err == nil {
 		tx.ID = strconv.FormatInt(dbID, 10)
