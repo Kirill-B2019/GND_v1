@@ -168,8 +168,18 @@ func main() {
 		fmt.Printf("%s: %s  %s. Знаков: %d\n", coin.Name, balance.String(), coin.Symbol, coin.Decimals)
 	}
 
-	// 10. Мемпул
+	// 10. Мемпул и привязка к блокчейну (API добавляет в bc.Mempool, блок-продюсер забирает из того же мемпула)
 	mempool := core.NewMempool()
+	blockchain.Mempool = mempool
+	// Загружаем ожидающие транзакции из БД в мемпул, чтобы после перезапуска они попали в следующий блок
+	if pool != nil {
+		if pending, err := core.LoadPendingTransactionsFromDB(ctx, pool); err == nil && len(pending) > 0 {
+			for _, tx := range pending {
+				_ = mempool.Add(tx)
+			}
+			fmt.Printf("Загружено %d ожидающих транзакций из БД в мемпул\n", len(pending))
+		}
+	}
 
 	// 11a. Signing service (если задан GND_MASTER_KEY — новые кошельки создаются через signer_wallets)
 	var signerCreator core.SignerWalletCreator

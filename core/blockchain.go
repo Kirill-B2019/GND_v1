@@ -543,6 +543,59 @@ func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID i
 	return txs, nil
 }
 
+// LoadPendingTransactionsFromDB загружает все транзакции с block_id IS NULL (ожидающие включения в блок).
+// Используется при старте ноды, чтобы после перезапуска они попали в мемпул и в следующий блок.
+func LoadPendingTransactionsFromDB(ctx context.Context, pool *pgxpool.Pool) ([]*Transaction, error) {
+	if pool == nil {
+		return nil, nil
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp, contract_id
+		FROM transactions
+		WHERE block_id IS NULL
+		ORDER BY timestamp ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*Transaction
+	for rows.Next() {
+		var tx Transaction
+		var valueStr, feeStr string
+		var payload []byte
+		var blockIDNull sql.NullInt64
+		var contractIDNull sql.NullInt64
+		if err := rows.Scan(
+			&blockIDNull,
+			&tx.Hash,
+			&tx.Sender,
+			&tx.Recipient,
+			&valueStr,
+			&feeStr,
+			&tx.Nonce,
+			&tx.Type,
+			&payload,
+			&tx.Status,
+			&tx.Timestamp,
+			&contractIDNull,
+		); err != nil {
+			continue
+		}
+		tx.Data = payload
+		if len(tx.Payload) == 0 {
+			tx.Payload = payload
+		}
+		if blockIDNull.Valid {
+			tx.BlockID = int(blockIDNull.Int64)
+		}
+		tx.ContractID = contractIDNull
+		tx.Value, _ = new(big.Int).SetString(valueStr, 10)
+		tx.Fee, _ = new(big.Int).SetString(feeStr, 10)
+		list = append(list, &tx)
+	}
+	return list, rows.Err()
+}
+
 // LoadTransactionByHash загружает транзакцию из gnd_db.transactions по хешу.
 // При нескольких записях (pending и confirmed) возвращаем подтверждённую (с block_id).
 func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string) (*Transaction, error) {
