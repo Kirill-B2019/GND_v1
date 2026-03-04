@@ -14,6 +14,7 @@ import (
 	"GND/vm"
 	"GND/vm/compiler"
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1800,12 +1801,17 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 	defer rows.Close()
 	var list []gin.H
 	for rows.Next() {
-		var id, blockID int
+		var id int
+		var blockIDNull sql.NullInt64
 		var hash, sender, recipient, valueStr, feeStr, txType, status string
 		var nonce int64
 		var ts time.Time
-		if err := rows.Scan(&id, &blockID, &hash, &sender, &recipient, &valueStr, &feeStr, &nonce, &txType, &status, &ts); err != nil {
+		if err := rows.Scan(&id, &blockIDNull, &hash, &sender, &recipient, &valueStr, &feeStr, &nonce, &txType, &status, &ts); err != nil {
 			continue
+		}
+		blockID := 0
+		if blockIDNull.Valid {
+			blockID = int(blockIDNull.Int64)
 		}
 		list = append(list, gin.H{
 			"id":        id,

@@ -271,6 +271,13 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 	} else {
 		signatureArg = hex.EncodeToString(tx.Signature)
 	}
+	// Ожидающие транзакции (block_id == 0) сохраняем с block_id = NULL, чтобы не нарушать FK на blocks
+	var blockIDArg interface{}
+	if tx.BlockID == 0 {
+		blockIDArg = nil
+	} else {
+		blockIDArg = tx.BlockID
+	}
 	var dbID int64
 	err := pool.QueryRow(ctx, `
 		INSERT INTO transactions (
@@ -278,7 +285,7 @@ func (tx *Transaction) SaveToDB(ctx context.Context, pool *pgxpool.Pool) error {
 			type, contract_id, payload, status, timestamp, signature, is_verified
 		) VALUES (nextval('transactions_id_seq'), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id`,
-		tx.BlockID, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
+		blockIDArg, tx.Hash, tx.Sender.String(), tx.Recipient.String(), tx.Value.String(),
 		feeStr, tx.Nonce, tx.Type, contractID, payloadArg,
 		tx.Status, tx.Timestamp, signatureArg, tx.IsVerified,
 	).Scan(&dbID)
