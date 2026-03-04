@@ -926,11 +926,97 @@ func (s *State) ValidateAddress(address types.Address) bool {
 	return exists
 }
 
-// CallStatic выполняет статический вызов транзакции (без изменения состояния)
+// slotZeroKey — 32 нулевых байта (ключ слота 0 в EVM storage).
+var slotZeroKey = make([]byte, 32)
+
+// viewSelectorToSlot — маппинг селектор (4 байта) → номер слота для view без аргументов.
+// При len(calldata)==4 неизвестный селектор даёт слот 0 (обратная совместимость ganiToken() и т.п.).
+var viewSelectorToSlot = map[string]uint64{
+	// owner() = 0x8da5cb5b — слот 1 (если контракт хранит owner в storage)
+	"\x8d\xa5\xcb\x5b": 1,
+}
+
+// slotKeyFromIndex формирует 32-байтный ключ слота по индексу (Solidity: слот N = right-aligned big-endian).
+func slotKeyFromIndex(slotIndex uint64) []byte {
+	key := make([]byte, 32)
+	for i := 31; i >= 0 && slotIndex > 0; i-- {
+		key[i] = byte(slotIndex & 0xff)
+		slotIndex >>= 8
+	}
+	return key
+}
+
+// findSlotValue возвращает value (32 байта) слота с ключом targetKey из списка slots, или nil.
+func findSlotValue(slots []ContractStorageSlot, targetKey []byte) []byte {
+	for _, slot := range slots {
+		keyHex := slot.SlotKey
+		if len(keyHex) >= 2 && keyHex[:2] == "0x" {
+			keyHex = keyHex[2:]
+		}
+		keyBytes, err := hex.DecodeString(keyHex)
+		if err != nil || len(keyBytes) != 32 {
+			continue
+		}
+		if len(targetKey) != 32 {
+			continue
+		}
+		equal := true
+		for i := 0; i < 32; i++ {
+			if keyBytes[i] != targetKey[i] {
+				equal = false
+				break
+			}
+		}
+		if !equal {
+			continue
+		}
+		valHex := slot.SlotValue
+		if len(valHex) >= 2 && valHex[:2] == "0x" {
+			valHex = valHex[2:]
+		}
+		valueBytes, err := hex.DecodeString(valHex)
+		if err != nil || len(valueBytes) != 32 {
+			continue
+		}
+		return valueBytes
+	}
+	return nil
+}
+
+// CallStatic выполняет статический вызов транзакции (без изменения состояния).
+// Читает storage из contract_storage: при 4 байтах (селектор) — слот 0 или по таблице viewSelectorToSlot;
+// при 4+32 байтах — слот по индексу из calldata (ABI uint256).
 func (s *State) CallStatic(tx *Transaction) (*types.ExecutionResult, error) {
 	if tx == nil || tx.Recipient == "" {
 		return nil, errors.New("invalid contract call")
 	}
+	if s.pool != nil && len(tx.Data) >= 4 {
+		ctx := context.Background()
+		slots, err := GetContractStorageLatest(ctx, s.pool, tx.Recipient.String())
+		if err == nil {
+			var targetKey []byte
+			if len(tx.Data) >= 4+32 {
+				// Calldata: селектор + uint256 (индекс слота, big-endian)
+				slotIndex := new(big.Int).SetBytes(tx.Data[4:36]).Uint64()
+				targetKey = slotKeyFromIndex(slotIndex)
+			} else {
+				// Только селектор (4 байта): слот по таблице или 0
+				slotNum := uint64(0)
+				if sel, ok := viewSelectorToSlot[string(tx.Data[:4])]; ok {
+					slotNum = sel
+				}
+				targetKey = slotKeyFromIndex(slotNum)
+			}
+			if valueBytes := findSlotValue(slots, targetKey); valueBytes != nil {
+				return &types.ExecutionResult{
+					GasUsed:    0,
+					ReturnData: valueBytes,
+					Error:      nil,
+				}, nil
+			}
+		}
+	}
+	// Заглушка: нет БД или слот не найден
 	balance := s.GetBalance(tx.Recipient, "GND")
 	return &types.ExecutionResult{
 		GasUsed:    0,

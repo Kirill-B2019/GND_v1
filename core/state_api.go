@@ -83,6 +83,37 @@ func GetContractStorageAtBlock(ctx context.Context, pool *pgxpool.Pool, address 
 	return slots, rows.Err()
 }
 
+// GetContractStorageLatest возвращает актуальное состояние storage контракта на момент последнего блока цепи.
+// Для каждого slot_key берётся значение из строки с максимальным block_id (не больше текущей высоты).
+func GetContractStorageLatest(ctx context.Context, pool *pgxpool.Pool, address string) ([]ContractStorageSlot, error) {
+	if pool == nil {
+		return nil, fmt.Errorf("pool is nil")
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT DISTINCT ON (slot_key) slot_key, slot_value
+		FROM contract_storage
+		WHERE address = $1 AND block_id <= (SELECT COALESCE(MAX(id), 0) FROM blocks)
+		ORDER BY slot_key, block_id DESC`,
+		address,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var slots []ContractStorageSlot
+	for rows.Next() {
+		var key, value []byte
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, err
+		}
+		slots = append(slots, ContractStorageSlot{
+			SlotKey:   "0x" + hex.EncodeToString(key),
+			SlotValue: "0x" + hex.EncodeToString(value),
+		})
+	}
+	return slots, rows.Err()
+}
+
 // GetCurrentAccountState возвращает текущее состояние аккаунта из таблицы accounts.
 func GetCurrentAccountState(ctx context.Context, pool *pgxpool.Pool, address string) (*AccountStateAtBlock, error) {
 	if pool == nil {
