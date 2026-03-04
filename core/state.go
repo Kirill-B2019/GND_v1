@@ -256,6 +256,22 @@ func (s *State) SetGndselfAddress(addr string) {
 	s.gndselfAddress = strings.TrimSpace(addr)
 }
 
+// WillSkipGasForTx возвращает true, если для данной транзакции газ не будет списан (вызов контракта, владелец которого = gndself).
+// Используется при валидации: отправителю не требуется баланс GND на газ.
+func (s *State) WillSkipGasForTx(tx *Transaction) bool {
+	s.mutex.RLock()
+	gndself, pool := s.gndselfAddress, s.pool
+	s.mutex.RUnlock()
+	if gndself == "" || pool == nil || strings.TrimSpace(tx.Recipient.String()) == "" {
+		return false
+	}
+	var owner string
+	if err := pool.QueryRow(context.Background(), `SELECT owner FROM contracts WHERE address = $1`, tx.Recipient).Scan(&owner); err != nil {
+		return false
+	}
+	return strings.TrimSpace(owner) == gndself
+}
+
 // MarkTouched помечает адрес как затронутый в текущем блоке (для записи в account_states).
 func (s *State) MarkTouched(address types.Address) {
 	s.mutex.Lock()

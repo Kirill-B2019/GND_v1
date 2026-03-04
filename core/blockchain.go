@@ -764,8 +764,19 @@ func (bc *Blockchain) ValidateTransaction(tx *Transaction) error {
 		}
 	}
 
-	// Проверяем баланс отправителя
-	if !tx.HasSufficientBalance() {
+	// Проверяем баланс отправителя. Для вызова контракта с владельцем gndself газ не списывается — не требуем баланс на газ.
+	if bc.State != nil && bc.State.WillSkipGasForTx(tx) {
+		if tx.Value != nil && tx.Value.Sign() > 0 {
+			symbol := tx.Symbol
+			if symbol == "" {
+				symbol = "GND"
+			}
+			balance := bc.State.GetBalance(types.Address(tx.Sender), symbol)
+			if balance.Cmp(tx.Value) < 0 {
+				return errors.New("insufficient balance")
+			}
+		}
+	} else if !tx.HasSufficientBalance() {
 		return errors.New("insufficient balance")
 	}
 

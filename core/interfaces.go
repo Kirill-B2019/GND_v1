@@ -23,4 +23,5 @@ type StateIface interface {
 	ApplyTransaction(tx *Transaction) error
 	GetNonce(address types.Address) int64
 	SaveToDB(blockID int64) error
+	WillSkipGasForTx(tx *Transaction) bool
 }
