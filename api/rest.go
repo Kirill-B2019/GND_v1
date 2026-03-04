@@ -514,6 +514,51 @@ func (s *Server) SendTransaction(c *gin.Context) {
 	})
 }
 
+// transactionResponse формирует объект для JSON-ответа: contract_id как null или число (не sql.NullInt64).
+func transactionResponse(tx *core.Transaction) gin.H {
+	var contractID interface{}
+	if tx.ContractID.Valid {
+		contractID = tx.ContractID.Int64
+	} else {
+		contractID = nil
+	}
+	dataHex := ""
+	if len(tx.Data) > 0 {
+		dataHex = "x" + hex.EncodeToString(tx.Data)
+	}
+	payloadHex := ""
+	if len(tx.Payload) > 0 {
+		payloadHex = "x" + hex.EncodeToString(tx.Payload)
+	} else if len(tx.Data) > 0 {
+		payloadHex = "x" + hex.EncodeToString(tx.Data)
+	}
+	sigHex := ""
+	if len(tx.Signature) > 0 {
+		sigHex = hex.EncodeToString(tx.Signature)
+	}
+	value := "0"
+	if tx.Value != nil {
+		value = tx.Value.String()
+	}
+	fee := interface{}(nil)
+	if tx.Fee != nil {
+		fee = tx.Fee.String()
+	}
+	gasPrice := int64(1)
+	if tx.GasPrice != nil {
+		gasPrice = tx.GasPrice.Int64()
+	}
+	return gin.H{
+		"id": tx.ID, "sender": tx.Sender.String(), "recipient": tx.Recipient.String(),
+		"value": value, "data": dataHex, "nonce": tx.Nonce,
+		"gas_limit": tx.GasLimit, "gas_price": gasPrice,
+		"signature": sigHex, "hash": tx.Hash, "fee": fee,
+		"type": tx.Type, "status": tx.Status, "timestamp": tx.Timestamp,
+		"block_id": tx.BlockID, "contract_id": contractID, "payload": payloadHex,
+		"symbol": tx.Symbol, "is_verified": tx.IsVerified,
+	}
+}
+
 // GetTransaction возвращает информацию о транзакции (сначала в памяти/мемпуле, затем в gnd_db.transactions).
 func (s *Server) GetTransaction(c *gin.Context) {
 	hash := strings.TrimSpace(c.Param("hash"))
@@ -531,7 +576,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		if pool != nil {
 			tx, err = core.LoadTransactionByHash(c.Request.Context(), pool, hash)
 			if err == nil && tx != nil {
-				c.JSON(http.StatusOK, APIResponse{Success: true, Data: tx})
+				c.JSON(http.StatusOK, APIResponse{Success: true, Data: transactionResponse(tx)})
 				return
 			}
 		}
@@ -548,7 +593,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    tx,
+		Data:    transactionResponse(tx),
 	})
 }
 

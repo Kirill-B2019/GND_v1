@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -542,7 +543,8 @@ func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID i
 	return txs, nil
 }
 
-// LoadTransactionByHash загружает транзакцию из gnd_db.transactions по хешу (для GET /api/v1/transaction/:hash, когда транзакция уже в БД, но не в памяти).
+// LoadTransactionByHash загружает транзакцию из gnd_db.transactions по хешу.
+// При нескольких записях (pending и confirmed) возвращаем подтверждённую (с block_id).
 func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string) (*Transaction, error) {
 	if pool == nil || hash == "" {
 		return nil, errors.New("pool or hash empty")
@@ -550,12 +552,15 @@ func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string)
 	var tx Transaction
 	var valueStr, feeStr string
 	var payload []byte
-	var blockID int64
+	var blockIDNull sql.NullInt64
+	var contractIDNull sql.NullInt64
 	err := pool.QueryRow(ctx, `
-		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp
+		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp, contract_id
 		FROM transactions
-		WHERE hash = $1`, hash).Scan(
-		&blockID,
+		WHERE hash = $1
+		ORDER BY block_id DESC NULLS LAST
+		LIMIT 1`, hash).Scan(
+		&blockIDNull,
 		&tx.Hash,
 		&tx.Sender,
 		&tx.Recipient,
@@ -566,12 +571,16 @@ func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string)
 		&payload,
 		&tx.Status,
 		&tx.Timestamp,
+		&contractIDNull,
 	)
 	if err != nil {
 		return nil, err
 	}
 	tx.Data = payload
-	tx.BlockID = int(blockID)
+	if blockIDNull.Valid {
+		tx.BlockID = int(blockIDNull.Int64)
+	}
+	tx.ContractID = contractIDNull
 	tx.Value, _ = new(big.Int).SetString(valueStr, 10)
 	tx.Fee, _ = new(big.Int).SetString(feeStr, 10)
 	return &tx, nil
@@ -641,7 +650,7 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 		return fmt.Errorf("failed to store block: %v", err)
 	}
 
-	// Привязка транзакций к блоку: timestamp = время включения в блок, block_id и contract_id сохраняем в БД
+	// Обновляем существующую запись транзакции (pending): выставляем block_id, status и contract_id по recipient
 	if bc.Pool != nil && block.ID != 0 {
 		ctx := context.Background()
 		for _, tx := range block.Transactions {
@@ -649,9 +658,12 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 				tx.Timestamp = block.Timestamp
 			}
 			tx.BlockID = int(block.ID)
-			if err := tx.SaveToDB(ctx, bc.Pool); err != nil {
-				// Дубликат или ошибка — логируем, не прерываем добавление блока
-				fmt.Printf("предупреждение: не удалось сохранить транзакцию %s в блок %d: %v\n", tx.Hash, block.ID, err)
+			if _, err := bc.Pool.Exec(ctx, `
+				UPDATE transactions SET block_id = $1, status = 'confirmed',
+					contract_id = (SELECT id FROM contracts WHERE address = $2 LIMIT 1)
+				WHERE hash = $3 AND block_id IS NULL`,
+				block.ID, tx.Recipient.String(), tx.Hash); err != nil {
+				fmt.Printf("предупреждение: не удалось обновить транзакцию %s для блока %d: %v\n", tx.Hash, block.ID, err)
 			}
 		}
 	}
