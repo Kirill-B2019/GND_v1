@@ -1572,9 +1572,9 @@ func (s *Server) setupRoutes() {
 		// Контракты: запись транзакций блокировки/удаления (для GND_admin)
 		admin.POST("/contracts/:address/disable", s.AdminContractDisable)
 		admin.POST("/contracts/:address/delete", s.AdminContractDelete)
-		// Чтение/запись методов контракта по id (страница /admin/contracts/:id)
-		admin.POST("/contracts/:id/call", s.AdminContractCall)
-		admin.POST("/contracts/:id/send", s.AdminContractSend)
+		// Чтение/запись методов контракта по id (страница /admin/contracts/:id). Путь by-id избегает конфликта с :address.
+		admin.POST("/contracts/by-id/:id/call", s.AdminContractCall)
+		admin.POST("/contracts/by-id/:id/send", s.AdminContractSend)
 		// Токены: запись транзакций блокировки/удаления (для GND_admin)
 		admin.POST("/tokens/:id/disable", s.AdminTokenDisable)
 		admin.POST("/tokens/:id/delete", s.AdminTokenDelete)
