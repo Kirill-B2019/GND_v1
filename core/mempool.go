@@ -38,13 +38,44 @@ func (m *Mempool) Add(tx *Transaction) error {
 		m.logger.Printf("Transaction %s added to mempool", tx.Hash)
 		return nil
 	default:
-		return errors.New("mempool is full")
+		// Канал полон — всё равно кладём в txMap, чтобы TakePending (блок-продюсер) мог забрать транзакцию
+		m.txMap[tx.Hash] = tx
+		m.logger.Printf("Transaction %s added to mempool (map only, channel full)", tx.Hash)
+		return nil
+	}
+}
+
+// ErrSkip возвращается из Pop(), когда транзакция оставлена в мемпуле (contract_call забирает блок-продюсер).
+var ErrSkip = errors.New("skip")
+
+// PutBack возвращает транзакцию в мемпул после Pop() (например, для повторной постановки).
+func (m *Mempool) PutBack(tx *Transaction) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.txMap[tx.Hash] = tx
+	select {
+	case m.txChan <- tx:
+	default:
+		// канал полон — транзакция только в txMap
 	}
 }
 
 func (m *Mempool) Pop() (*Transaction, error) {
 	select {
 	case tx := <-m.txChan:
+		// contract_call не забираем — оставляем в мемпуле для блок-продюсера
+		if tx.IsContractCall() {
+			m.mu.Lock()
+			_, stillInMap := m.txMap[tx.Hash]
+			if stillInMap {
+				select {
+				case m.txChan <- tx:
+				default:
+				}
+			}
+			m.mu.Unlock()
+			return nil, ErrSkip
+		}
 		m.mu.Lock()
 		delete(m.txMap, tx.Hash)
 		m.mu.Unlock()

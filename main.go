@@ -12,6 +12,7 @@ import (
 	"GND/vm"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -256,17 +257,13 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 			tx, err := mempool.Pop()
 			if err != nil {
 				if err.Error() == "timeout" {
-					// Это нормальная ситуация, когда нет транзакций
+					return
+				}
+				if errors.Is(err, core.ErrSkip) {
+					// contract_call оставлен в мемпуле для блок-продюсера
 					return
 				}
 				logger.Printf("Error popping transaction from mempool: %v", err)
-				return
-			}
-
-			// Вызовы контрактов (contract_call) не обрабатываем здесь — их забирает блок-продюсер (TakePending)
-			// и включает в блок; иначе они исчезают из мемпула и никогда не попадают в блок.
-			if tx.IsContractCall() {
-				_ = mempool.Add(tx)
 				return
 			}
 
