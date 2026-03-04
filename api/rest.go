@@ -80,15 +80,21 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 
 // AuthMiddleware — заглушка для проверки API-ключа (в будущем реализовать полноценную проверку)
 
+// AdminSigner — интерфейс подписи digest по кошельку (signer_wallet_id). Используется для подписи транзакций из админки.
+type AdminSigner interface {
+	SignDigest(ctx context.Context, walletID uuid.UUID, digest []byte) ([]byte, error)
+}
+
 // Server представляет HTTP сервер
 type Server struct {
-	router   *gin.Engine
-	db       *pgxpool.Pool
-	core     *core.Blockchain
-	mempool  *core.Mempool
-	deployer *deployer.Deployer
-	cfg      *core.Config
-	evm      *vm.EVM // для вызова контрактов (view) и отправки транзакций (write)
+	router      *gin.Engine
+	db          *pgxpool.Pool
+	core        *core.Blockchain
+	mempool     *core.Mempool
+	deployer    *deployer.Deployer
+	cfg         *core.Config
+	evm         *vm.EVM     // для вызова контрактов (view) и отправки транзакций (write)
+	adminSigner AdminSigner // опционально: для подписи транзакций от имени кошелька при запросе из админки
 }
 
 // NewServer создает новый экземпляр сервера. deployer может быть nil — тогда POST /token/deploy недоступен. cfg опционально — для health (chain_id, subnet_id).
@@ -903,6 +909,17 @@ func (s *Server) ContractSend(c *gin.Context) {
 		tx.Nonce = s.core.State.GetNonce(types.Address(fromAddr))
 	}
 	tx.Hash = tx.CalculateHash()
+	// Подпись из админки: если подпись не передана, но передан X-Admin-Token и кошелёк from управляется нодой (signer_wallet_id), подписываем транзакцию нодой.
+	if len(tx.Signature) == 0 && tx.SenderPublicKeyHex == "" && s.adminSigner != nil && s.db != nil && ValidateAdminToken(c.GetHeader("X-Admin-Token")) {
+		walletID, errSigner := core.GetSignerWalletIDByAddress(c.Request.Context(), s.db, fromAddr)
+		if errSigner == nil {
+			sig, errSig := s.adminSigner.SignDigest(c.Request.Context(), walletID, []byte(tx.Hash))
+			if errSig == nil {
+				tx.Signature = sig
+				tx.IsVerified = true
+			}
+		}
+	}
 	hash, err := s.core.SendTransaction(tx)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Отправка транзакции: " + err.Error(), Code: http.StatusBadRequest})
@@ -927,6 +944,9 @@ func (s *Server) AdminContractCall(c *gin.Context) {
 
 // AdminContractSend отправляет транзакцию вызова метода контракта по id (для страницы /admin/contracts/:id). POST /api/v1/admin/contracts/:id/send
 func (s *Server) AdminContractSend(c *gin.Context) {
+	if !s.RequireAdmin(c) {
+		return
+	}
 	address, err := s.resolveContractAddressByID(c)
 	if err != nil {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
@@ -1824,9 +1844,16 @@ func (s *Server) GetMempool(c *gin.Context) {
 
 // StartRESTServer запускает REST API сервер. evmInstance используется для деплоя токенов (POST /token/deploy); если nil — эндпоинт возвращает 503.
 // signerCreator — опционально: при наличии новые кошельки создаются через signing_service (ключ в signer_wallets).
+// Если signerCreator реализует AdminSigner, запросы из админки с пустой подписью подписываются нодой для кошельков с signer_wallet_id.
 func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, pool *pgxpool.Pool, evmInstance *vm.EVM, signerCreator core.SignerWalletCreator) {
 	if signerCreator != nil {
 		bc.SignerCreator = signerCreator
+	}
+	var adminSigner AdminSigner
+	if signerCreator != nil {
+		if s, ok := signerCreator.(AdminSigner); ok {
+			adminSigner = s
+		}
 	}
 	// Инициализируем метрики блоков из текущей цепи (LastBlockTime, TotalBlocks и т.д.)
 	if latest, err := bc.GetLatestBlock(); err == nil {
@@ -1844,6 +1871,9 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 	}
 	server := NewServer(pool, bc, mp, tokenDeployer, cfg)
 	server.evm = evmInstance
+	if adminSigner != nil {
+		server.adminSigner = adminSigner
+	}
 	addr := fmt.Sprintf(":%d", cfg.Server.REST.Port)
 	log.Printf("=== REST API Server запущен на %s ===\nДоступен по /api/v1/* (health, wallet, transaction, block, contract, token/deploy, token/transfer и др.)", addr)
 	if err := server.Start(addr); err != nil {

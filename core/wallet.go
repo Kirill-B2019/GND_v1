@@ -362,6 +362,19 @@ func (w *Wallet) PublicKeyHex() string {
 	return ""
 }
 
+// GetSignerWalletIDByAddress возвращает signer_wallet_id кошелька по адресу (для подписи транзакции нодой из админки).
+func GetSignerWalletIDByAddress(ctx context.Context, pool *pgxpool.Pool, address string) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := pool.QueryRow(ctx,
+		`SELECT signer_wallet_id FROM wallets WHERE address = $1 AND signer_wallet_id IS NOT NULL LIMIT 1`,
+		strings.TrimSpace(address),
+	).Scan(&id)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
 // LoadWallet загружает последний активный кошелёк с приватным ключом (для валидатора/майнера).
 // Кошельки только с signer_wallet_id (private_key IS NULL) не выбираются.
 func LoadWallet(pool *pgxpool.Pool) (*Wallet, error) {
