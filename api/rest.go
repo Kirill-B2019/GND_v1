@@ -507,14 +507,34 @@ func (s *Server) SendTransaction(c *gin.Context) {
 	})
 }
 
-// GetTransaction возвращает информацию о транзакции
+// GetTransaction возвращает информацию о транзакции (сначала в памяти/мемпуле, затем в gnd_db.transactions).
 func (s *Server) GetTransaction(c *gin.Context) {
-	hash := c.Param("hash")
+	hash := strings.TrimSpace(c.Param("hash"))
+	if hash == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите хеш транзакции", Code: http.StatusBadRequest})
+		return
+	}
 	tx, err := s.core.GetTransaction(hash)
-	if err != nil {
+	if err != nil || tx == nil {
+		// Транзакция может быть в БД (подтверждённая), но не в памяти — ищем в gnd_db.transactions
+		pool := s.db
+		if s.core != nil && s.core.Pool != nil {
+			pool = s.core.Pool
+		}
+		if pool != nil {
+			tx, err = core.LoadTransactionByHash(c.Request.Context(), pool, hash)
+			if err == nil && tx != nil {
+				c.JSON(http.StatusOK, APIResponse{Success: true, Data: tx})
+				return
+			}
+		}
+		msg := "Транзакция не найдена"
+		if err != nil {
+			msg = "Транзакция не найдена: " + err.Error()
+		}
 		c.JSON(http.StatusNotFound, APIResponse{
 			Success: false,
-			Error:   "Транзакция не найдена: " + err.Error(),
+			Error:   msg,
 			Code:    http.StatusNotFound,
 		})
 		return

@@ -527,6 +527,41 @@ func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID i
 	return txs, nil
 }
 
+// LoadTransactionByHash загружает транзакцию из gnd_db.transactions по хешу (для GET /api/v1/transaction/:hash, когда транзакция уже в БД, но не в памяти).
+func LoadTransactionByHash(ctx context.Context, pool *pgxpool.Pool, hash string) (*Transaction, error) {
+	if pool == nil || hash == "" {
+		return nil, errors.New("pool or hash empty")
+	}
+	var tx Transaction
+	var valueStr, feeStr string
+	var payload []byte
+	var blockID int64
+	err := pool.QueryRow(ctx, `
+		SELECT block_id, hash, sender, recipient, value, fee, nonce, type, payload, status, timestamp
+		FROM transactions
+		WHERE hash = $1`, hash).Scan(
+		&blockID,
+		&tx.Hash,
+		&tx.Sender,
+		&tx.Recipient,
+		&valueStr,
+		&feeStr,
+		&tx.Nonce,
+		&tx.Type,
+		&payload,
+		&tx.Status,
+		&tx.Timestamp,
+	)
+	if err != nil {
+		return nil, err
+	}
+	tx.Data = payload
+	tx.BlockID = int(blockID)
+	tx.Value, _ = new(big.Int).SetString(valueStr, 10)
+	tx.Fee, _ = new(big.Int).SetString(feeStr, 10)
+	return &tx, nil
+}
+
 // loadTransactionsForBlock загружает транзакции для конкретного блока (по block_id = blocks.id)
 func loadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID int64) ([]*Transaction, error) {
 	rows, err := pool.Query(ctx, `
