@@ -1,7 +1,7 @@
 {
-  "comment": "Адреса задеплоенных контрактов GND и GANI. Пустые до деплоя; после деплоя — единственный источник истины по балансам.",
+  "comment": "Адреса задеплоенных контрактов GND и GANI; системный кошелёк (gndself). Подробнее: GND_admin/docs/ADMIN_INSTRUCTION.md — раздел «Сводная настройка».",
   "gnd_contract_address": "GNDct27a7694c5b1e2e4b12f75c07cdc6b1ac",
   "gani_contract_address": "GNDct0aae549065d0f0b67c101cf0651ffd81",
   "fee_collector_address": "GNDKmzR2WCWrAzX4jQGMKaFEiNJDbowbVzaU",
-  "gndself_address": "GN_FRTb5xeLYuFsb5qCYsKaqQu6FJzE8GftW"
+  "gndself_address": "GN_BSP32eTfEeRq4V9ZXVVsCmHEW2ZFNo8Ab"
 }
