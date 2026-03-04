@@ -28,7 +28,8 @@ contract NativeTokensController {
     /// @notice Выпустить GANI на адрес to (только владелец). Лимиты проверяются в GANIToken.
     function mintGANI(address to, uint256 amount) external onlyOwner {
         if (ganiToken == address(0)) revert GaniTokenNotSet();
-        (bool ok, ) = ganiToken.call(abi.encodeWithSignature("mint(address,uint256)", to, amount));
+        // selector("mint(address,uint256)") = 0x40c10f19 — без строки сигнатуры, чтобы избежать ошибок компиляции из-за кавычек
+        (bool ok, ) = ganiToken.call(abi.encodeWithSelector(0x40c10f19, to, amount));
         require(ok, "GANI mint failed");
     }
 }
