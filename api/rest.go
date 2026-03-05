@@ -1914,7 +1914,7 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 			chainHeight = latest.Index
 		}
 		if pool != nil && chainHeight >= 1 {
-			prev, _ = core.GetBlockByHeight(pool, chainHeight-1)
+			prev, _ = core.GetBlockByNumber(pool, chainHeight-1)
 		}
 		core.InitBlockMetricsFromBlock(latest, prev)
 	}

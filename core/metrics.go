@@ -174,9 +174,10 @@ func (m *Metrics) UpdateBlockMetrics(block *Block) {
 
 	m.BlockMetrics.LastBlockTime = now
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed >= 1.0 {
-		m.BlockMetrics.BlocksPerMinute = float64(m.BlockMetrics.TotalBlocks) / elapsed
+	if elapsed < 1.0 {
+		elapsed = 1.0
 	}
+	m.BlockMetrics.BlocksPerMinute = float64(m.BlockMetrics.TotalBlocks) / elapsed
 }
 
 // UpdateTransactionMetrics обновляет метрики транзакций
@@ -186,10 +187,11 @@ func (m *Metrics) UpdateTransactionMetrics(tx *Transaction, status string) {
 
 	m.TransactionMetrics.TotalTransactions++
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed >= 1.0 {
-		m.TransactionMetrics.TransactionsPerMinute = float64(m.TransactionMetrics.TotalTransactions) / elapsed
-		m.TransactionMetrics.TransactionsPerSecond = m.TransactionMetrics.TransactionsPerMinute / 60
+	if elapsed < 1.0 {
+		elapsed = 1.0
 	}
+	m.TransactionMetrics.TransactionsPerMinute = float64(m.TransactionMetrics.TotalTransactions) / elapsed
+	m.TransactionMetrics.TransactionsPerSecond = m.TransactionMetrics.TransactionsPerMinute / 60
 
 	// Обновляем метрики по статусу
 	m.TransactionMetrics.StatusMetrics[status]++
@@ -330,10 +332,11 @@ func InitTransactionMetricsFromDB(ctx context.Context, pool *pgxpool.Pool, pendi
 	}
 	metrics.TransactionMetrics.TotalTransactions = total
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed >= 1.0 {
-		metrics.TransactionMetrics.TransactionsPerMinute = float64(total) / elapsed
-		metrics.TransactionMetrics.TransactionsPerSecond = metrics.TransactionMetrics.TransactionsPerMinute / 60
+	if elapsed < 1.0 {
+		elapsed = 1.0
 	}
+	metrics.TransactionMetrics.TransactionsPerMinute = float64(total) / elapsed
+	metrics.TransactionMetrics.TransactionsPerSecond = metrics.TransactionMetrics.TransactionsPerMinute / 60
 
 	rows, err := pool.Query(ctx, `SELECT type, COUNT(*) FROM transactions GROUP BY type`)
 	if err == nil {
@@ -431,13 +434,17 @@ func InitBlockMetricsFromBlock(latest *Block, prev *Block) {
 	// Среднее время между блоками: по разнице времени последнего и предпоследнего блока
 	if prev != nil && !latest.Timestamp.IsZero() && !prev.Timestamp.IsZero() && latest.Timestamp.After(prev.Timestamp) {
 		metrics.BlockMetrics.AverageBlockTime = latest.Timestamp.Sub(prev.Timestamp)
+	} else if metrics.BlockMetrics.TotalBlocks > 1 && metrics.BlockMetrics.AverageBlockTime == 0 {
+		// Запасной вариант: типичный интервал 30 с (PoA/PoS), чтобы не отдавать 0
+		metrics.BlockMetrics.AverageBlockTime = 30 * time.Second
 	}
 
-	// BlocksPerMinute — только при достаточном времени работы ноды (≥1 мин), иначе получаются неверные значения
+	// BlocksPerMinute — считаем всегда; при elapsed < 1 мин используем 1 мин как знаменатель
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed >= 1.0 {
-		metrics.BlockMetrics.BlocksPerMinute = float64(metrics.BlockMetrics.TotalBlocks) / elapsed
+	if elapsed < 1.0 {
+		elapsed = 1.0
 	}
+	metrics.BlockMetrics.BlocksPerMinute = float64(metrics.BlockMetrics.TotalBlocks) / elapsed
 }
 
 // SetAlertThresholds устанавливает пороговые значения для алертов
