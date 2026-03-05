@@ -42,6 +42,7 @@ type Metrics struct {
 	TransactionMetrics struct {
 		TotalTransactions     uint64
 		TransactionsPerMinute float64
+		TransactionsPerSecond float64 // TPS — транзакций в секунду (для метрик и дашборда)
 		PendingTransactions   uint64
 		FailedTransactions    uint64
 		AverageFee            float64
@@ -133,6 +134,7 @@ func ResetMetrics() {
 		TransactionMetrics: struct {
 			TotalTransactions     uint64
 			TransactionsPerMinute float64
+			TransactionsPerSecond float64
 			PendingTransactions   uint64
 			FailedTransactions    uint64
 			AverageFee            float64
@@ -163,11 +165,18 @@ func (m *Metrics) UpdateBlockMetrics(block *Block) {
 
 	if !m.BlockMetrics.LastBlockTime.IsZero() {
 		blockTime := now.Sub(m.BlockMetrics.LastBlockTime)
-		m.BlockMetrics.AverageBlockTime = (m.BlockMetrics.AverageBlockTime + blockTime) / 2
+		if m.BlockMetrics.AverageBlockTime == 0 {
+			m.BlockMetrics.AverageBlockTime = blockTime
+		} else {
+			m.BlockMetrics.AverageBlockTime = (m.BlockMetrics.AverageBlockTime + blockTime) / 2
+		}
 	}
 
 	m.BlockMetrics.LastBlockTime = now
-	m.BlockMetrics.BlocksPerMinute = float64(m.BlockMetrics.TotalBlocks) / time.Since(startTime).Minutes()
+	elapsed := time.Since(startTime).Minutes()
+	if elapsed >= 1.0 {
+		m.BlockMetrics.BlocksPerMinute = float64(m.BlockMetrics.TotalBlocks) / elapsed
+	}
 }
 
 // UpdateTransactionMetrics обновляет метрики транзакций
@@ -176,7 +185,11 @@ func (m *Metrics) UpdateTransactionMetrics(tx *Transaction, status string) {
 	defer m.mu.Unlock()
 
 	m.TransactionMetrics.TotalTransactions++
-	m.TransactionMetrics.TransactionsPerMinute = float64(m.TransactionMetrics.TotalTransactions) / time.Since(startTime).Minutes()
+	elapsed := time.Since(startTime).Minutes()
+	if elapsed >= 1.0 {
+		m.TransactionMetrics.TransactionsPerMinute = float64(m.TransactionMetrics.TotalTransactions) / elapsed
+		m.TransactionMetrics.TransactionsPerSecond = m.TransactionMetrics.TransactionsPerMinute / 60
+	}
 
 	// Обновляем метрики по статусу
 	m.TransactionMetrics.StatusMetrics[status]++
@@ -317,8 +330,9 @@ func InitTransactionMetricsFromDB(ctx context.Context, pool *pgxpool.Pool, pendi
 	}
 	metrics.TransactionMetrics.TotalTransactions = total
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed > 0 {
+	if elapsed >= 1.0 {
 		metrics.TransactionMetrics.TransactionsPerMinute = float64(total) / elapsed
+		metrics.TransactionMetrics.TransactionsPerSecond = metrics.TransactionMetrics.TransactionsPerMinute / 60
 	}
 
 	rows, err := pool.Query(ctx, `SELECT type, COUNT(*) FROM transactions GROUP BY type`)
@@ -395,8 +409,8 @@ func InitTransactionMetricsFromDB(ctx context.Context, pool *pgxpool.Pool, pendi
 }
 
 // InitBlockMetricsFromBlock заполняет метрики блоков из текущего состояния цепи (при старте ноды).
-// Если latest == nil, метрики не меняются.
-func InitBlockMetricsFromBlock(latest *Block) {
+// latest — последний блок; prev — предыдущий блок (для расчёта AverageBlockTime). Если latest == nil, метрики не меняются.
+func InitBlockMetricsFromBlock(latest *Block, prev *Block) {
 	if latest == nil {
 		return
 	}
@@ -413,8 +427,15 @@ func InitBlockMetricsFromBlock(latest *Block) {
 	metrics.BlockMetrics.BlockSize = latest.Size
 	metrics.BlockMetrics.GasUsed = latest.GasUsed
 	metrics.BlockMetrics.GasLimit = latest.GasLimit
+
+	// Среднее время между блоками: по разнице времени последнего и предпоследнего блока
+	if prev != nil && !latest.Timestamp.IsZero() && !prev.Timestamp.IsZero() && latest.Timestamp.After(prev.Timestamp) {
+		metrics.BlockMetrics.AverageBlockTime = latest.Timestamp.Sub(prev.Timestamp)
+	}
+
+	// BlocksPerMinute — только при достаточном времени работы ноды (≥1 мин), иначе получаются неверные значения
 	elapsed := time.Since(startTime).Minutes()
-	if elapsed > 0 {
+	if elapsed >= 1.0 {
 		metrics.BlockMetrics.BlocksPerMinute = float64(metrics.BlockMetrics.TotalBlocks) / elapsed
 	}
 }

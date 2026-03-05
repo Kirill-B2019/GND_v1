@@ -1906,9 +1906,17 @@ func StartRESTServer(bc *core.Blockchain, mp *core.Mempool, cfg *core.Config, po
 			adminSigner = s
 		}
 	}
-	// Инициализируем метрики блоков из текущей цепи (LastBlockTime, TotalBlocks и т.д.)
+	// Инициализируем метрики блоков из текущей цепи (LastBlockTime, TotalBlocks, AverageBlockTime и т.д.)
 	if latest, err := bc.GetLatestBlock(); err == nil {
-		core.InitBlockMetricsFromBlock(latest)
+		var prev *core.Block
+		chainHeight := latest.Height
+		if chainHeight == 0 && latest.Index > 0 {
+			chainHeight = latest.Index
+		}
+		if pool != nil && chainHeight >= 1 {
+			prev, _ = core.GetBlockByHeight(pool, chainHeight-1)
+		}
+		core.InitBlockMetricsFromBlock(latest, prev)
 	}
 	// Инициализируем метрики транзакций из БД (TotalTransactions, TypeMetrics, StatusMetrics, комиссии)
 	pendingCount := 0
