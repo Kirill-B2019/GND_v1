@@ -180,25 +180,30 @@ func (m *Metrics) UpdateTransactionMetrics(tx *Transaction, status string) {
 
 	// Обновляем метрики по статусу
 	m.TransactionMetrics.StatusMetrics[status]++
-	if status == "failed" {
+	if status == "failed" || status == "reverted" {
 		m.TransactionMetrics.FailedTransactions++
 	}
 
 	// Обновляем метрики по типу транзакции
 	if tx != nil {
+		if tx.Type == "" {
+			tx.Type = "unknown"
+		}
 		// Инициализируем метрики для типа транзакции, если их еще нет
 		if _, exists := m.TransactionMetrics.TypeMetrics[tx.Type]; !exists {
-			m.TransactionMetrics.TypeMetrics[tx.Type] = &TransactionTypeMetrics{
-				MinFee: new(big.Int).Set(tx.Fee),
-				MaxFee: new(big.Int).Set(tx.Fee),
+			typeMetrics := &TransactionTypeMetrics{}
+			if tx.Fee != nil {
+				typeMetrics.MinFee = new(big.Int).Set(tx.Fee)
+				typeMetrics.MaxFee = new(big.Int).Set(tx.Fee)
 			}
+			m.TransactionMetrics.TypeMetrics[tx.Type] = typeMetrics
 		}
 
 		typeMetrics := m.TransactionMetrics.TypeMetrics[tx.Type]
 		typeMetrics.Count++
-		if status == "success" {
+		if status == "success" || status == "confirmed" {
 			typeMetrics.SuccessCount++
-		} else {
+		} else if status == "failed" || status == "reverted" {
 			typeMetrics.FailedCount++
 		}
 
@@ -398,7 +403,12 @@ func InitBlockMetricsFromBlock(latest *Block) {
 	metricsMu.Lock()
 	defer metricsMu.Unlock()
 
-	metrics.BlockMetrics.TotalBlocks = latest.Height + 1
+	// Количество блоков = высота цепи (0-based: genesis=0, следующий=1,…); используем Index если Height не задан
+	chainHeight := latest.Height
+	if chainHeight == 0 && latest.Index > 0 {
+		chainHeight = latest.Index
+	}
+	metrics.BlockMetrics.TotalBlocks = chainHeight + 1
 	metrics.BlockMetrics.LastBlockTime = latest.Timestamp
 	metrics.BlockMetrics.BlockSize = latest.Size
 	metrics.BlockMetrics.GasUsed = latest.GasUsed

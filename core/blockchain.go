@@ -796,6 +796,14 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 	// Добавляем блок в цепочку
 	bc.Blocks = append(bc.Blocks, block)
 
+	// Обновляем метрики блоков и транзакций для актуальных значений в API
+	if m := GetMetrics(); m != nil {
+		m.UpdateBlockMetrics(block)
+		for _, tx := range block.Transactions {
+			m.UpdateTransactionMetrics(tx, "confirmed")
+		}
+	}
+
 	return nil
 }
 
