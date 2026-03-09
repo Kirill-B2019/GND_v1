@@ -426,26 +426,6 @@ func (b *Block) CalculateHashWithoutNonce() string {
 	return hex.EncodeToString(hash[:])
 }
 
-// GetBlockNumberByID возвращает номер блока в цепи (height или index) по внутреннему id записи в blocks.
-// Нужно для API транзакций: сканер показывает block_number, а не block_id.
-func GetBlockNumberByID(pool *pgxpool.Pool, blockID int) (uint64, error) {
-	if pool == nil || blockID <= 0 {
-		return 0, fmt.Errorf("invalid block id")
-	}
-	var heightNull sql.NullInt64
-	var index uint64
-	err := pool.QueryRow(context.Background(),
-		"SELECT height, index FROM blocks WHERE id = $1", blockID,
-	).Scan(&heightNull, &index)
-	if err != nil {
-		return 0, err
-	}
-	if heightNull.Valid {
-		return uint64(heightNull.Int64), nil
-	}
-	return index, nil
-}
-
 // GetBlockByNumber returns a block by its number (chain height). API/explorer use "block number" as height.
 func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block

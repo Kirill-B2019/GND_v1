@@ -1,7 +1,7 @@
 {
   "comment": "Адреса задеплоенных контрактов GND и GANI; системный кошелёк (gndself). Подробнее: GND_admin/docs/ADMIN_INSTRUCTION.md — раздел «Сводная настройка».",
-  "gnd_contract_address": "GNDctde216b843de56f1faf943bb7cfe174f9",
-  "gani_contract_address": "GNDctecb286be2a58c3e53baca1031dce8b18",
+  "gnd_contract_address": "",
+  "gani_contract_address": "",
   "fee_collector_address": "GNDKmzR2WCWrAzX4jQGMKaFEiNJDbowbVzaU",
   "gndself_address": "GN_BSP32eTfEeRq4V9ZXVVsCmHEW2ZFNo8Ab"
 }

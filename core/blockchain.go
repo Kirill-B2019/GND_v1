@@ -525,39 +525,6 @@ func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs in
 	return nil
 }
 
-// LoadTransactionsForBlockByNumber загружает транзакции блока по номеру в цепи (height или index).
-// Используется для GET /block/:number, чтобы всегда получать транзакции именно того блока, который найден по номеру (избегаем расхождения block_id и id строки при разных пулах или данных).
-func LoadTransactionsForBlockByNumber(ctx context.Context, pool *pgxpool.Pool, number uint64) ([]*Transaction, error) {
-	if pool == nil {
-		return nil, nil
-	}
-	rows, err := pool.Query(ctx, `
-		SELECT t.hash, t.sender, t.recipient, t.value, t.fee, t.nonce, t.type, t.payload, t.status, t.timestamp, t.block_id
-		FROM transactions t
-		INNER JOIN blocks b ON t.block_id = b.id
-		WHERE b.height = $1 OR (b.height IS NULL AND b.index = $2)
-		ORDER BY t.id`, number, number)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var txs []*Transaction
-	for rows.Next() {
-		var tx Transaction
-		var valueStr string
-		var payload []byte
-		var blockID int64
-		if err := rows.Scan(&tx.Hash, &tx.Sender, &tx.Recipient, &valueStr, &tx.Fee, &tx.Nonce, &tx.Type, &payload, &tx.Status, &tx.Timestamp, &blockID); err != nil {
-			continue
-		}
-		tx.Data = payload
-		tx.Value, _ = new(big.Int).SetString(valueStr, 10)
-		tx.BlockID = int(blockID)
-		txs = append(txs, &tx)
-	}
-	return txs, nil
-}
-
 // LoadTransactionsForBlock загружает транзакции блока по block_id (blocks.id). Для ответа API (block/latest, block/:number).
 func LoadTransactionsForBlock(ctx context.Context, pool *pgxpool.Pool, blockID int64) ([]*Transaction, error) {
 	if pool == nil {

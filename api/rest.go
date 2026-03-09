@@ -587,13 +587,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		if pool != nil {
 			tx, err = core.LoadTransactionByHash(c.Request.Context(), pool, hash)
 			if err == nil && tx != nil {
-				data := transactionResponse(tx)
-				if tx.BlockID > 0 {
-					if n, errBlock := core.GetBlockNumberByID(pool, tx.BlockID); errBlock == nil {
-						data["block_number"] = n
-					}
-				}
-				c.JSON(http.StatusOK, APIResponse{Success: true, Data: data})
+				c.JSON(http.StatusOK, APIResponse{Success: true, Data: transactionResponse(tx)})
 				return
 			}
 		}
@@ -608,21 +602,9 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		})
 		return
 	}
-	data := transactionResponse(tx)
-	if tx.BlockID > 0 {
-		pool := s.db
-		if s.core != nil && s.core.Pool != nil {
-			pool = s.core.Pool
-		}
-		if pool != nil {
-			if n, errBlock := core.GetBlockNumberByID(pool, tx.BlockID); errBlock == nil {
-				data["block_number"] = n
-			}
-		}
-	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    data,
+		Data:    transactionResponse(tx),
 	})
 }
 
@@ -684,13 +666,8 @@ func (s *Server) GetBlockByNumber(c *gin.Context) {
 		})
 		return
 	}
-	// Загружаем транзакции по номеру блока (height/index), а не по block.ID — чтобы всегда отдавать транзакции именно этого блока в цепи
-	pool := s.db
-	if s.core != nil && s.core.Pool != nil {
-		pool = s.core.Pool
-	}
-	if pool != nil {
-		txs, _ := core.LoadTransactionsForBlockByNumber(c.Request.Context(), pool, number)
+	if s.db != nil {
+		txs, _ := core.LoadTransactionsForBlock(c.Request.Context(), s.db, block.ID)
 		if txs != nil {
 			block.Transactions = txs
 		} else {
@@ -1892,7 +1869,7 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 		if blockIDNull.Valid {
 			blockID = int(blockIDNull.Int64)
 		}
-		item := gin.H{
+		list = append(list, gin.H{
 			"id":        id,
 			"block_id":  blockID,
 			"hash":      hash,
@@ -1904,13 +1881,7 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 			"type":      txType,
 			"status":    status,
 			"timestamp": ts.Format(time.RFC3339),
-		}
-		if blockID > 0 {
-			if n, errBlock := core.GetBlockNumberByID(pool, blockID); errBlock == nil {
-				item["block_number"] = n
-			}
-		}
-		list = append(list, item)
+		})
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"list": list, "total": total}})
 }
