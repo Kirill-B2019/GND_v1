@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"GND/types"
+
 	"github.com/btcsuite/btcutil/base58"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/google/uuid"
@@ -306,8 +308,8 @@ func ValidateAddress(address string) bool {
 	// Проверяем префикс
 	var prefixLen int
 	switch {
-	case strings.HasPrefix(address, "GNDct"):
-		prefixLen = 5
+	case strings.HasPrefix(address, types.ContractAddressPrefix):
+		prefixLen = len(types.ContractAddressPrefix)
 	case strings.HasPrefix(address, "GND"):
 		prefixLen = 3
 	case strings.HasPrefix(address, "GN_"):

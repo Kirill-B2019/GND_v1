@@ -70,7 +70,7 @@ func NewToken(address, symbol, name string, decimals int, totalSupply, circulati
 
 	// Если адрес не указан, генерируем новый
 	if address == "" {
-		address = fmt.Sprintf("GNDct%s", GenerateContractAddress())
+		address = fmt.Sprintf("%s%s", types.ContractAddressPrefix, GenerateContractAddress())
 		fmt.Printf("[DEBUG] NewToken: сгенерирован новый адрес контракта: %s\n", address)
 	}
 

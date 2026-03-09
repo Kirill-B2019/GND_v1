@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
-	"strings"
+
+	"GND/types"
 )
 
 type TokenInfo struct {
@@ -46,8 +47,8 @@ func (t *TokenInfo) Validate() error {
 	if t.Address == "" {
 		return errors.New("адрес токена не может быть пустым")
 	}
-	if !strings.HasPrefix(t.Address, "GNDct") {
-		return errors.New("некорректный формат адреса токена")
+	if !types.IsContractAddress(t.Address) {
+		return errors.New("адрес токена должен быть адресом контракта (формат: " + types.ContractAddressPrefix + " + 32 hex-символа)")
 	}
 	return nil
 }

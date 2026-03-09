@@ -3,6 +3,8 @@ package audit
 
 import (
 	"strings"
+
+	"GND/types"
 )
 
 // RuleType — тип правила
@@ -70,8 +72,8 @@ var DefaultRules = []Rule{
 	{
 		Name:        "Pattern: contract prefix",
 		Type:        RulePattern,
-		Pattern:     "GNDct",
-		Description: "Адреса контрактов должны начинаться с GNDct",
+		Pattern:     types.ContractAddressPrefix,
+		Description: "Адреса контрактов должны начинаться с " + types.ContractAddressPrefix + " (формат: префикс + 32 hex)",
 		Enabled:     true,
 	},
 }

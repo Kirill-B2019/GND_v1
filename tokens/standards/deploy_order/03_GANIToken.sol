@@ -1,38 +1,60 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-/// @title GANIToken — governance-токен GANI (Ganimed Governance) на контракте
-/// @notice GNDst-1/ERC-20. Фиксированное предложение 100000000000000 (100M при 6 decimals). Минтинг отключён. Управляется только внешним контрактом (controller).
-/// @dev Деплой: шаг 3. Параметр конструктора: controllerAddress = адрес контракта из шага 1 (тот же, что и для GND).
+import "../gndst1/IGNDst1.sol";
 
-contract GANIToken {
-    string public constant name = "Ganimed Governance";
-    string public constant symbol = "GANI";
-    uint8 public constant decimals = 6;
+/// @title GANIToken — governance-токен GANI (Ganimed Governance) по стандарту GND-st1
+/// @notice Деплой: шаг 3. Конструктор: controllerContract (адрес из шага 1). Минт только с контроллера (mintGANI).
+/// @dev Реализует IGNDst1; mint(address,uint256) вызывается только контроллером, лимит TOTAL_SUPPLY.
+contract GANIToken is IGNDst1 {
+    /// @notice Фиксированное предложение: 100M при 6 decimals
+    uint256 public constant TOTAL_SUPPLY = 100_000_000 * 10**6;
 
-    /// @notice Фиксированное предложение: 100000000000000 (100M * 10^6)
-    uint256 public constant TOTAL_SUPPLY = 100000000000000;
+    string public name = "Ganimed Governance";
+    string public symbol = "GANI";
+    uint8 public decimals = 6;
 
     uint256 private _totalSupply;
+    address public immutable controller;
+    address public bridge;
+
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => bool) private _kycPassed;
 
-    address public immutable controller;
+    uint256 public currentSnapshotId;
+    mapping(uint256 => mapping(address => uint256)) private _snapshotBalances;
+    mapping(uint256 => uint256) public dividendsPerShare;
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+    struct ModuleInfo {
+        address moduleAddress;
+        string name;
+    }
+    mapping(bytes32 => ModuleInfo) public registeredModules;
 
-    error MintingDisabled();
-    error ZeroController();
-    error ControllerMustBeContract();
-    error ZeroAddress();
+    event ModuleCall(bytes32 indexed moduleId, address indexed caller);
+
+    error OnlyController();
     error ExceedsTotalSupply();
+    error ZeroAddress();
 
-    /// @param controllerContract Адрес контракта из шага 1 (01_NativeTokensController) — тот же, что использовали для GND
+    modifier onlyController() {
+        require(msg.sender == controller, "Only controller");
+        require(_isContract(msg.sender), "Controller must be a contract");
+        _;
+    }
+
+    modifier onlyKyc() {
+        require(_kycPassed[msg.sender], "KYC required");
+        _;
+    }
+
+    /// @param controllerContract Адрес контракта из шага 1 (NativeTokensController)
     constructor(address controllerContract) {
-        if (controllerContract == address(0)) revert ZeroController();
-        if (_isContract(controllerContract) == false) revert ControllerMustBeContract();
+        require(controllerContract != address(0), "Zero controller");
+        require(_isContract(controllerContract), "Controller must be a contract");
         controller = controllerContract;
+        bridge = address(0);
         _totalSupply = TOTAL_SUPPLY;
         _balances[controllerContract] = TOTAL_SUPPLY;
         emit Transfer(address(0), controllerContract, TOTAL_SUPPLY);
@@ -46,59 +68,108 @@ contract GANIToken {
         return size > 0;
     }
 
-    function totalSupply() external view returns (uint256) {
+    function totalSupply() public view override returns (uint256) {
         return _totalSupply;
     }
 
-    function balanceOf(address account) external view returns (uint256) {
+    function balanceOf(address account) public view override returns (uint256) {
         return _balances[account];
     }
 
-    function allowance(address owner, address spender) external view returns (uint256) {
-        return _allowances[owner][spender];
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
+    function transfer(address to, uint256 amount) public override onlyKyc returns (bool) {
         _transfer(msg.sender, to, amount);
         return true;
     }
 
-    function approve(address spender, uint256 amount) external returns (bool) {
+    function allowance(address owner_, address spender) public view override returns (uint256) {
+        return _allowances[owner_][spender];
+    }
+
+    function approve(address spender, uint256 amount) public override returns (bool) {
         _allowances[msg.sender][spender] = amount;
         emit Approval(msg.sender, spender, amount);
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        uint256 currentAllowance = _allowances[from][msg.sender];
-        if (currentAllowance != type(uint256).max) {
-            require(currentAllowance >= amount, "insufficient allowance");
-            unchecked { _allowances[from][msg.sender] = currentAllowance - amount; }
-        }
+    function transferFrom(address from, address to, uint256 amount) public override onlyKyc returns (bool) {
+        require(_allowances[from][msg.sender] >= amount, "Allowance exceeded");
+        _allowances[from][msg.sender] -= amount;
         _transfer(from, to, amount);
         return true;
     }
 
-    /// @notice Минт только с адреса контроллера. Лимит — TOTAL_SUPPLY.
-    function mint(address to, uint256 amount) external {
-        if (msg.sender != controller) revert MintingDisabled();
+    function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external override onlyKyc returns (bool) {
+        _transfer(msg.sender, bridge, amount);
+        emit CrossChainTransfer(msg.sender, targetChain, to, amount);
+        return true;
+    }
+
+    function setKycStatus(address user, bool status) external override onlyController {
+        _kycPassed[user] = status;
+        emit KycStatusChanged(user, status);
+    }
+
+    function isKycPassed(address user) external view override returns (bool) {
+        return _kycPassed[user];
+    }
+
+    function snapshot() external override onlyController returns (uint256) {
+        currentSnapshotId += 1;
+        uint256 id = currentSnapshotId;
+        dividendsPerShare[id] = 0;
+        emit SnapshotCreated(id, block.timestamp);
+        return id;
+    }
+
+    function getSnapshotBalance(address user, uint256 snapshotId) external view override returns (uint256) {
+        return _snapshotBalances[snapshotId][user];
+    }
+
+    function setSnapshotBalance(uint256 snapshotId, address user, uint256 amount) external onlyController {
+        _snapshotBalances[snapshotId][user] = amount;
+    }
+
+    function setDividendsPerShare(uint256 snapshotId, uint256 amount) external onlyController {
+        dividendsPerShare[snapshotId] = amount;
+    }
+
+    function claimDividends(uint256 snapshotId) external override {
+        uint256 balance = _snapshotBalances[snapshotId][msg.sender];
+        uint256 dividendAmount = balance * dividendsPerShare[snapshotId];
+        require(dividendAmount > 0, "No dividends");
+        _transfer(controller, msg.sender, dividendAmount);
+        emit DividendClaimed(msg.sender, dividendAmount, snapshotId);
+    }
+
+    function moduleCall(bytes32 moduleId, bytes calldata data) external override returns (bytes memory) {
+        require(registeredModules[moduleId].moduleAddress != address(0), "Module not registered");
+        emit ModuleCall(moduleId, msg.sender);
+        return bytes("module call placeholder");
+    }
+
+    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name_) external override onlyController {
+        require(moduleAddress != address(0), "Invalid address");
+        require(registeredModules[moduleId].moduleAddress == address(0), "Module already exists");
+        registeredModules[moduleId] = ModuleInfo({
+            moduleAddress: moduleAddress,
+            name: name_
+        });
+        emit ModuleRegistered(moduleId, moduleAddress, name_);
+    }
+
+    /// @notice Минт только с адреса контроллера (вызов из NativeTokensController.mintGANI).
+    function mint(address to, uint256 amount) external onlyController {
         if (to == address(0)) revert ZeroAddress();
         if (_totalSupply + amount > TOTAL_SUPPLY) revert ExceedsTotalSupply();
-        unchecked {
-            _totalSupply += amount;
-            _balances[to] += amount;
-        }
+        _totalSupply += amount;
+        _balances[to] += amount;
         emit Transfer(address(0), to, amount);
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
-        require(from != address(0), "transfer from zero");
-        require(to != address(0), "transfer to zero");
-        require(_balances[from] >= amount, "insufficient balance");
-        unchecked {
-            _balances[from] -= amount;
-            _balances[to] += amount;
-        }
+        require(_balances[from] >= amount, "Insufficient balance");
+        _balances[from] -= amount;
+        _balances[to] += amount;
         emit Transfer(from, to, amount);
     }
 }

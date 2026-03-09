@@ -104,7 +104,10 @@ ws://31.128.41.155:8183/ws
 }
 ```
 
-### События контракта
+### События контракта (Transfer, Approval токенов GND-st1)
+
+Токены стандарта GND-st1 при вызове `transfer()`, `transferFrom()` и `approve()` эмитируют события **Transfer** и **Approval** (совместимые с ERC-20). Они сохраняются в таблицу БД `events` и рассылаются всем подключённым клиентам WebSocket в виде сообщения с `type: "event"` и полями `contract`, `type`, `from`, `to`, `amount`.
+
 ```json
 {
     "type": "subscribe",
@@ -114,23 +117,21 @@ ws://31.128.41.155:8183/ws
 }
 ```
 
-Ответ:
+Ответ (сообщение типа `event`):
 ```json
 {
     "type": "event",
-    "event": {
-        "contract": "GND...",
-        "name": "Transfer",
-        "data": {
-            "from": "GND...",
-            "to": "GND...",
-            "value": "1000000000000000000"
-        },
-        "blockNumber": 123,
-        "transactionHash": "0x..."
+    "data": {
+        "contract": "GNDct...",
+        "type": "Transfer",
+        "from": "GND...",
+        "to": "GND...",
+        "amount": "1000000000000000000"
     }
 }
 ```
+
+Для Approval в `data` приходят поля `contract`, `type`: `"Approval"`, `from` (owner), `to` (spender), `amount`.
 
 ### Переводы токенов
 ```json

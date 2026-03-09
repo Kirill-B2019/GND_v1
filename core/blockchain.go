@@ -1042,7 +1042,7 @@ func generateContractAddress(bytecode []byte, creator string, nonce uint64) stri
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 	h.Write(nonceBuf[:])
 	sum := h.Sum(nil)
-	return "GNDct" + hex.EncodeToString(sum[:16]) // 16 байт = 32 hex-символа
+	return types.ContractAddressPrefix + hex.EncodeToString(sum[:16]) // 16 байт = 32 hex-символа
 }
 
 // GetContract returns contract information by address

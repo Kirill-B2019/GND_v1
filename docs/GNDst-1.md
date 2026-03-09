@@ -231,7 +231,7 @@ token.crossChainTransfer("ethereum", recipientAddress, amount);
 | **Пакет Go** | `tokens/standards/gndst1/gndst1.go` — структура `GNDst1`, все методы из разд. 3. |
 | **Регистрация** | `tokens/registry` хранит экземпляры по адресу; после деплоя вызывается `SetInitialBalance` для владельца. |
 | **Вызов методов** | Через `core.Token.UniversalCall`: поддерживаются `transfer`, `approve`, `balanceOf`. Остальные методы вызываются напрямую через экземпляр GNDst1. |
-| **События** | В стандарте определены Transfer, Approval, CrossChainTransfer, KycStatusChanged, SnapshotCreated, DividendClaimed, ModuleRegistered. В Go реализация `EmitTransfer` и `EmitApproval` — заглушки (TODO); запись в БД/шина событий при необходимости добавляется отдельно. |
+| **События** | В стандарте определены Transfer, Approval и др. В Go реализация **EmitTransfer** и **EmitApproval** записывает события в таблицу БД `events` (типы `Transfer`, `Approval`; поля contract, from_address, to_address, amount, timestamp) и опционально уведомляет подписчиков WebSocket API (порт 8183) через callback `TokenEventNotifier`, устанавливаемый при создании REST-сервера. Это позволяет фронтендам и индексаторам получать историю переводов и разрешений в реальном времени без опроса REST. |
 | **Доп. метод** | В Go реализован `BridgeTransfer(ctx, amount)` для перевода через мост (внутреннее использование). |
 | **Кроссчейн** | `CrossChainTransfer` в Go списывает средства с адреса контракта на указанный `to`; полная интеграция с мостом — в разработке. |
 

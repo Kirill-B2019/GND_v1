@@ -139,7 +139,7 @@ func (e *EVM) DeployContract(
 	nonceBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(nonceBuf, nonce)
 	data = append(data, nonceBuf...)
-	addr := fmt.Sprintf("GNDct%x", hashBytes(data))
+	addr := fmt.Sprintf("%s%x", types.ContractAddressPrefix, hashBytes(data))
 
 	// Check if contract already exists
 	if _, exists := ContractRegistry[core.Address(addr)]; exists {

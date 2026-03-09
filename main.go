@@ -277,8 +277,8 @@ func processTransactions(mempool *core.Mempool, maxWorkers int) {
 				return
 			}
 
-			consType := consensus.SelectConsensusForTx(string(tx.Recipient))
-			logger.Printf("Processing transaction %s through %s consensus", tx.ID, consType)
+			consType := consensus.SelectConsensus(tx.Type, string(tx.Recipient))
+			logger.Printf("Processing transaction %s (type=%s) through %s consensus", tx.ID, tx.Type, consType)
 
 			// Process transaction based on consensus type
 			switch consType {

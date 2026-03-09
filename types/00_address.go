@@ -9,6 +9,29 @@ import (
 	"strings"
 )
 
+// ContractAddressPrefix — префикс адреса смарт-контракта в сети ГАНИМЕД.
+// Используется для однозначного определения, что адрес относится к контракту (а не к переводу на кошелёк и т.д.).
+const ContractAddressPrefix = "GNDct"
+
+// ContractAddressSuffixLen — длина hex-суффикса адреса контракта (32 hex = 16 байт).
+const ContractAddressSuffixLen = 32
+
+// IsContractAddress возвращает true, если строка является адресом контракта:
+// префикс ContractAddressPrefix + ровно ContractAddressSuffixLen hex-символов (итоговая длина 5+32=37).
+func IsContractAddress(s string) bool {
+	if s == "" || len(s) != len(ContractAddressPrefix)+ContractAddressSuffixLen {
+		return false
+	}
+	if !strings.HasPrefix(s, ContractAddressPrefix) {
+		return false
+	}
+	rest := s[len(ContractAddressPrefix):]
+	if _, err := hex.DecodeString(rest); err != nil {
+		return false
+	}
+	return len(rest) == ContractAddressSuffixLen
+}
+
 // Address represents a blockchain address
 type Address string
 
@@ -35,12 +58,9 @@ func (a Address) IsValid() bool {
 	if strings.HasPrefix(s, "GND") && !strings.HasPrefix(s, "GNDct") && len(s) > 10 {
 		return true
 	}
-	// Контракты: GNDct + 32 hex
-	if strings.HasPrefix(s, "GNDct") && len(s) == 37 {
-		rest := s[5:]
-		if _, err := hex.DecodeString(rest); err == nil && len(rest) == 32 {
-			return true
-		}
+	// Контракты: префикс GNDct + 32 hex
+	if IsContractAddress(s) {
+		return true
 	}
 	return false
 }

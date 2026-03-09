@@ -117,7 +117,11 @@ GND_v1/
 │   │   │   ├── gndst1_test.go
 │   │   │   ├── gndst1.abi.json
 │   │   │   ├── IGNDst1.sol
-│   │   │   └── gndst1Base.sol
+│   │   │   ├── gndst1Base.sol
+│   │   │   └── modules/          # контракты-модули (расширения GNDst-1), README.md
+│   │   ├── gndrwa/               # стандарт GND-RWA (токен RWA под контроллером)
+│   │   │   ├── IGNDRWA.sol
+│   │   │   └── GND-RWA.sol
 │   │   ├── native/
 │   │   │   ├── INativeCoin.sol, IGND.sol, IGANI.sol
 │   │   │   ├── GNDToken.sol, GANIToken.sol

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"GND/types"
 )
 
 // Типы консенсуса
@@ -38,8 +40,10 @@ type ConsensusSettings struct {
 	PoA PoAConfig `json:"poa"`
 }
 
-// SelectionRule — правило выбора консенсуса по адресу (модульная конструкция, без хардфорка)
+// SelectionRule — правило выбора консенсуса: по типу транзакции и/или по адресу получателя.
+// PoA — действия с контрактами (contract_call, deploy), PoS — переводы и т.д.
 type SelectionRule struct {
+	TxType        string `json:"tx_type"`        // тип транзакции (например "contract_call", "deploy", "transfer")
 	AddressPrefix string `json:"address_prefix"` // префикс адреса получателя (например "GNDct")
 	Default       bool   `json:"default"`        // если true — правило по умолчанию
 	Consensus     string `json:"consensus"`      // "poa" или "pos"
@@ -88,9 +92,10 @@ func LoadConsensusSettings(path string) (*ConsensusSettings, error) {
 	return &cs, nil
 }
 
-// Автоматический выбор консенсуса по адресу назначения.
-// Если загружены selection_rules из конфига — используются они; иначе встроенная логика (GNDct → poa, иначе pos).
-func SelectConsensusForTx(toAddress string) ConsensusType {
+// SelectConsensus выбирает консенсус по типу транзакции и адресу получателя.
+// Порядок: правила из конфига (сначала по tx_type, затем по address_prefix), иначе встроенная логика.
+// PoA — для действий с контрактами (contract_call, deploy), PoS — для переводов и прочего.
+func SelectConsensus(txType, toAddress string) ConsensusType {
 	selectionRulesMu.RLock()
 	rules := selectionRules
 	selectionRulesMu.RUnlock()
@@ -102,6 +107,9 @@ func SelectConsensusForTx(toAddress string) ConsensusType {
 				defaultConsensus = ConsensusType(strings.ToLower(r.Consensus))
 				continue
 			}
+			if r.TxType != "" && strings.EqualFold(strings.TrimSpace(txType), r.TxType) {
+				return ConsensusType(strings.ToLower(r.Consensus))
+			}
 			if r.AddressPrefix != "" && strings.HasPrefix(toAddress, r.AddressPrefix) {
 				return ConsensusType(strings.ToLower(r.Consensus))
 			}
@@ -111,9 +119,21 @@ func SelectConsensusForTx(toAddress string) ConsensusType {
 		}
 	}
 
-	// Встроенная логика по умолчанию
-	if strings.HasPrefix(toAddress, "GNDct") {
+	// Встроенная логика: по типу — contract_call/deploy → PoA; transfer → PoS; иначе по адресу — GNDct → PoA
+	t := strings.TrimSpace(txType)
+	if t == "contract_call" || t == "deploy" {
+		return ConsensusPoA
+	}
+	if t == "transfer" {
+		return ConsensusPoS
+	}
+	if strings.HasPrefix(toAddress, types.ContractAddressPrefix) {
 		return ConsensusPoA
 	}
 	return ConsensusPoS
+}
+
+// SelectConsensusForTx выбирает консенсус только по адресу (обратная совместимость).
+func SelectConsensusForTx(toAddress string) ConsensusType {
+	return SelectConsensus("", toAddress)
 }

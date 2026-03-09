@@ -1,9 +1,12 @@
-{
+ {
   "consensus": [
     {"type": "pos", "average_block_delay": "30s", "initial_base_target": 153722867, "initial_balance": "10000000"},
     {"type": "poa", "round_duration": "30s", "sync_duration": "3s", "ban_duration_blocks": 100, "warnings_for_ban": 3, "max_bans_percentage": 40}
   ],
   "selection_rules": [
+    {"tx_type": "contract_call", "consensus": "poa"},
+    {"tx_type": "deploy", "consensus": "poa"},
+    {"tx_type": "transfer", "consensus": "pos"},
     {"address_prefix": "GNDct", "consensus": "poa"},
     {"default": true, "consensus": "pos"}
   ]

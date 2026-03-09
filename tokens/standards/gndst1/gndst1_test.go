@@ -115,3 +115,55 @@ func TestGNDst1Modules(t *testing.T) {
 		t.Error("Expected error when calling unimplemented module")
 	}
 }
+
+// TestEmitTransfer_withoutPool проверяет, что EmitTransfer при pool=nil не паникует и возвращает nil.
+func TestEmitTransfer_withoutPool(t *testing.T) {
+	token := NewGNDst1("GNDct_emit", "E", "E", 18, big.NewInt(1000), nil)
+	err := token.EmitTransfer(context.Background(), "from", "to", big.NewInt(100))
+	if err != nil {
+		t.Errorf("EmitTransfer при pool=nil должен возвращать nil, получено: %v", err)
+	}
+}
+
+// TestEmitApproval_withoutPool проверяет, что EmitApproval при pool=nil не паникует и возвращает nil.
+func TestEmitApproval_withoutPool(t *testing.T) {
+	token := NewGNDst1("GNDct_emit", "E", "E", 18, big.NewInt(1000), nil)
+	err := token.EmitApproval(context.Background(), "owner", "spender", big.NewInt(50))
+	if err != nil {
+		t.Errorf("EmitApproval при pool=nil должен возвращать nil, получено: %v", err)
+	}
+}
+
+// TestEmitTransfer_callsNotifier проверяет, что при установленном TokenEventNotifier он вызывается.
+func TestEmitTransfer_callsNotifier(t *testing.T) {
+	var gotContract, gotType, gotFrom, gotTo, gotAmount string
+	old := TokenEventNotifier
+	TokenEventNotifier = func(contract, eventType, from, to, amount string) {
+		gotContract, gotType, gotFrom, gotTo, gotAmount = contract, eventType, from, to, amount
+	}
+	defer func() { TokenEventNotifier = old }()
+
+	token := NewGNDst1("GNDct_n", "N", "N", 18, big.NewInt(1000), nil)
+	_ = token.EmitTransfer(context.Background(), "alice", "bob", big.NewInt(100))
+	if gotType != "Transfer" || gotFrom != "alice" || gotTo != "bob" || gotAmount != "100" || gotContract != "GNDct_n" {
+		t.Errorf("TokenEventNotifier не вызван или неверные данные: contract=%q type=%q from=%q to=%q amount=%q",
+			gotContract, gotType, gotFrom, gotTo, gotAmount)
+	}
+}
+
+// TestEmitApproval_callsNotifier проверяет, что при установленном TokenEventNotifier он вызывается для Approval.
+func TestEmitApproval_callsNotifier(t *testing.T) {
+	var gotContract, gotType, gotFrom, gotTo, gotAmount string
+	old := TokenEventNotifier
+	TokenEventNotifier = func(contract, eventType, from, to, amount string) {
+		gotContract, gotType, gotFrom, gotTo, gotAmount = contract, eventType, from, to, amount
+	}
+	defer func() { TokenEventNotifier = old }()
+
+	token := NewGNDst1("GNDct_a", "A", "A", 18, big.NewInt(1000), nil)
+	_ = token.EmitApproval(context.Background(), "owner", "spender", big.NewInt(200))
+	if gotType != "Approval" || gotFrom != "owner" || gotTo != "spender" || gotAmount != "200" || gotContract != "GNDct_a" {
+		t.Errorf("TokenEventNotifier не вызван или неверные данные: contract=%q type=%q from=%q to=%q amount=%q",
+			gotContract, gotType, gotFrom, gotTo, gotAmount)
+	}
+}

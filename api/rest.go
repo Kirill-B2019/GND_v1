@@ -9,6 +9,7 @@ import (
 	"GND/tokens/deployer"
 	"GND/tokens/interfaces"
 	"GND/tokens/registry"
+	"GND/tokens/standards/gndst1"
 	tokentypes "GND/tokens/types"
 	"GND/types"
 	"GND/vm"
@@ -107,6 +108,16 @@ func NewServer(db *pgxpool.Pool, blockchain *core.Blockchain, mempool *core.Memp
 		mempool:  mempool,
 		deployer: tokenDeployer,
 		cfg:      cfg,
+	}
+	// События Transfer/Approval токенов GND-st1 рассылаются подписчикам WebSocket (порт 8183).
+	gndst1.TokenEventNotifier = func(contract, eventType, from, to, amount string) {
+		NotifyContractEvent(map[string]interface{}{
+			"contract": contract,
+			"type":     eventType,
+			"from":     from,
+			"to":       to,
+			"amount":   amount,
+		})
 	}
 	server.setupRoutes()
 	return server

@@ -15,6 +15,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TokenEventNotifierFunc — опциональный callback для уведомления о событиях токена (Transfer/Approval) через WebSocket.
+// Устанавливается из api при инициализации (см. api.SetGNDst1EventNotifier).
+type TokenEventNotifierFunc func(contract, eventType, from, to, amount string)
+
+// TokenEventNotifier вызывается из EmitTransfer/EmitApproval после записи в БД; при nil не вызывается.
+var TokenEventNotifier TokenEventNotifierFunc
+
 // Tokens — реестр метаданных токенов по адресу (для расширения; основной реестр в tokens/registry).
 var Tokens = map[string]*tokens.TokenInfo{}
 
@@ -306,15 +313,47 @@ func (t *GNDst1) BridgeTransfer(ctx context.Context, amount *big.Int) error {
 	return nil
 }
 
-// EmitTransfer эмитит событие перевода токенов
-func (t *GNDst1) EmitTransfer(_ context.Context, _, _ string, _ *big.Int) error {
-	// TODO: Реализовать эмиссию события
+// EmitTransfer эмитит событие Transfer (ERC-20 совместимое): запись в таблицу events и опционально уведомление через WebSocket.
+func (t *GNDst1) EmitTransfer(ctx context.Context, from, to string, amount *big.Int) error {
+	if amount == nil {
+		return nil
+	}
+	amountStr := amount.String()
+	if t.pool != nil {
+		_, err := t.pool.Exec(ctx, `
+			INSERT INTO events (type, contract, from_address, to_address, amount, "timestamp", tx_hash, error, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			"Transfer", t.address, from, to, amountStr, time.Now().UTC(), "", "", nil,
+		)
+		if err != nil {
+			return fmt.Errorf("EmitTransfer: запись в БД: %w", err)
+		}
+	}
+	if TokenEventNotifier != nil {
+		TokenEventNotifier(t.address, "Transfer", from, to, amountStr)
+	}
 	return nil
 }
 
-// EmitApproval эмитит событие разрешения расходования токенов
-func (t *GNDst1) EmitApproval(_ context.Context, _, _ string, _ *big.Int) error {
-	// TODO: Реализовать эмиссию события
+// EmitApproval эмитит событие Approval (ERC-20 совместимое): запись в таблицу events и опционально уведомление через WebSocket.
+func (t *GNDst1) EmitApproval(ctx context.Context, owner, spender string, amount *big.Int) error {
+	if amount == nil {
+		return nil
+	}
+	amountStr := amount.String()
+	if t.pool != nil {
+		_, err := t.pool.Exec(ctx, `
+			INSERT INTO events (type, contract, from_address, to_address, amount, "timestamp", tx_hash, error, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			"Approval", t.address, owner, spender, amountStr, time.Now().UTC(), "", "", nil,
+		)
+		if err != nil {
+			return fmt.Errorf("EmitApproval: запись в БД: %w", err)
+		}
+	}
+	if TokenEventNotifier != nil {
+		TokenEventNotifier(t.address, "Approval", owner, spender, amountStr)
+	}
 	return nil
 }
 
