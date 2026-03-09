@@ -60,6 +60,7 @@ func NewBlock(prevHash string, height uint64, miner string) *Block {
 	return &Block{
 		PrevHash:    prevHash,
 		Height:      height,
+		Index:       height, // номер в цепи = height для совпадения с API/explorer (block number)
 		Version:     1,
 		Timestamp:   now,
 		Miner:       miner,
@@ -423,14 +424,14 @@ func (b *Block) CalculateHashWithoutNonce() string {
 	return hex.EncodeToString(hash[:])
 }
 
-// GetBlockByNumber returns a block by its number
+// GetBlockByNumber returns a block by its number (chain height). API/explorer use "block number" as height.
 func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	var n blockNullables
-	// nonce в БД — varchar; явно приводим к text, чтобы сканировать в nonceStr (не в *uint64).
+	// Ищем по height: в сканере и API "номер блока" = высота в цепи (0, 1, 2, …). Поле index может не совпадать с height при старых данных.
 	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE index = $1",
+		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE height = $1",
 		number,
 	).Scan(
 		&block.ID,
