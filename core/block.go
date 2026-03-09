@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -429,11 +431,8 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 	var block Block
 	var rewardStr, nonceStr string
 	var n blockNullables
-	// Ищем по height: в сканере и API "номер блока" = высота в цепи (0, 1, 2, …). Поле index может не совпадать с height при старых данных.
-	err := pool.QueryRow(context.Background(),
-		"SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks WHERE height = $1",
-		number,
-	).Scan(
+	sel := "SELECT id, hash, prev_hash, merkle_root, timestamp, height, version, size, tx_count, gas_used, gas_limit, difficulty, nonce::text, miner, reward, extra_data, created_at, updated_at, status, parent_id, is_orphaned, is_finalized, index, consensus FROM blocks"
+	err := pool.QueryRow(context.Background(), sel+" WHERE height = $1", number).Scan(
 		&block.ID,
 		&block.Hash,
 		&block.PrevHash,
@@ -460,9 +459,43 @@ func GetBlockByNumber(pool *pgxpool.Pool, number uint64) (*Block, error) {
 		&n.consensus,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block by number: %v", err)
+		// Старые строки могли быть записаны без height (только index). Пробуем по index.
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = pool.QueryRow(context.Background(), sel+" WHERE index = $1", number).Scan(
+				&block.ID,
+				&block.Hash,
+				&block.PrevHash,
+				&n.merkleRoot,
+				&block.Timestamp,
+				&n.height,
+				&n.version,
+				&n.size,
+				&n.txCount,
+				&n.gasUsed,
+				&n.gasLimit,
+				&n.difficulty,
+				&nonceStr,
+				&block.Miner,
+				&rewardStr,
+				&block.ExtraData,
+				&block.CreatedAt,
+				&block.UpdatedAt,
+				&n.status,
+				&block.ParentID,
+				&block.IsOrphaned,
+				&block.IsFinalized,
+				&block.Index,
+				&n.consensus,
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to get block by number: %v", err)
+		}
 	}
 	applyBlockNullables(&block, n)
+	if !n.height.Valid && block.Index > 0 {
+		block.Height = block.Index
+	}
 	block.Nonce, _ = parseBlockNonce(nonceStr)
 
 	block.Reward = new(big.Int)

@@ -359,14 +359,15 @@ func (bc *Blockchain) storeBlock(block *Block) error {
 	block.UpdatedAt = BlockchainNow()
 
 	// nonce в БД — varchar, передаём строку. is_finalized = true для финализированных блоков.
+	// height записываем для GET /api/v1/block/:number (поиск по height в цепи).
 	isFinalized := block.Status == "finalized"
 	nonceStr := strconv.FormatUint(block.Nonce, 10)
 	err := bc.Pool.QueryRow(ctx, `
-		INSERT INTO blocks (index, hash, prev_hash, merkle_root, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at, is_finalized)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		ON CONFLICT (index) DO UPDATE SET tx_count = EXCLUDED.tx_count, merkle_root = EXCLUDED.merkle_root, updated_at = EXCLUDED.updated_at, is_finalized = EXCLUDED.is_finalized
+		INSERT INTO blocks (index, height, hash, prev_hash, merkle_root, timestamp, miner, gas_used, gas_limit, consensus, nonce, tx_count, created_at, updated_at, is_finalized)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT (index) DO UPDATE SET height = EXCLUDED.height, tx_count = EXCLUDED.tx_count, merkle_root = EXCLUDED.merkle_root, updated_at = EXCLUDED.updated_at, is_finalized = EXCLUDED.is_finalized
 		RETURNING id`,
-		block.Index, block.Hash, block.PrevHash, block.MerkleRoot, block.Timestamp,
+		block.Index, block.Height, block.Hash, block.PrevHash, block.MerkleRoot, block.Timestamp,
 		block.Miner, block.GasUsed, block.GasLimit, block.Consensus, nonceStr,
 		block.TxCount, block.CreatedAt, block.UpdatedAt, isFinalized,
 	).Scan(&block.ID)
