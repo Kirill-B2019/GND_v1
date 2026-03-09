@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -52,9 +53,30 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 	}
 	defer func() { _ = removeDir(tmpDir) }()
 
+	// Нормализация: если исходник пришёл с HTML-сущностями (например из админки), восстанавливаем кавычки
+	source = []byte(strings.ReplaceAll(string(source), "&quot;", `"`))
+
 	srcFile := filepath.Join(tmpDir, "contract.sol")
 	if err := ioutil.WriteFile(srcFile, source, 0644); err != nil {
 		return nil, err
+	}
+
+	// Если в исходнике есть локальные импорты (./), копируем зависимости из deploy_order в temp
+	if strings.Contains(string(source), `import "./`) {
+		deployOrderPath := os.Getenv("GND_DEPLOY_ORDER_PATH")
+		if deployOrderPath == "" {
+			if wd, err := os.Getwd(); err == nil {
+				deployOrderPath = filepath.Join(wd, "tokens", "standards", "deploy_order")
+			}
+		}
+		for _, name := range []string{"IGNDst1.sol", "gndst1Base.sol"} {
+			src := filepath.Join(deployOrderPath, name)
+			data, err := ioutil.ReadFile(src)
+			if err != nil {
+				continue
+			}
+			_ = ioutil.WriteFile(filepath.Join(tmpDir, name), data, 0644)
+		}
 	}
 
 	// Запускаем solc для получения байткода и ABI
@@ -81,11 +103,17 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 		return nil, errors.New("no contracts found in solc output")
 	}
 
-	// Берем первый контракт (или ищем по имени)
+	// Выбираем контракт по имени из метаданных (например GNDToken), иначе первый
 	var contractData map[string]interface{}
-	for _, v := range contracts {
-		contractData, _ = v.(map[string]interface{})
-		break
+	wantName := strings.TrimSpace(metadata.Name)
+	for key, v := range contracts {
+		if wantName != "" && strings.HasSuffix(key, ":"+wantName) {
+			contractData, _ = v.(map[string]interface{})
+			break
+		}
+		if contractData == nil {
+			contractData, _ = v.(map[string]interface{})
+		}
 	}
 	if contractData == nil {
 		return nil, errors.New("failed to parse contract data")
