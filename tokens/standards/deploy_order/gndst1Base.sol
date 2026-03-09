@@ -35,14 +35,8 @@ contract GNDst1Token is IGNDst1 {
     }
     mapping(bytes32 => ModuleInfo) public registeredModules;
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event CrossChainTransfer(address indexed from, string targetChain, address indexed to, uint256 value);
-    event KycStatusChanged(address indexed user, bool status);
+    /// События Transfer, Approval, CrossChainTransfer, KycStatusChanged, SnapshotCreated, DividendClaimed, ModuleRegistered объявлены в IGNDst1
     event ModuleCall(bytes32 indexed moduleId, address indexed caller);
-    event SnapshotCreated(uint256 indexed snapshotId, uint256 timestamp);
-    event DividendClaimed(address indexed user, uint256 amount, uint256 snapshotId);
-    event ModuleRegistered(bytes32 indexed moduleId, address indexed moduleAddress, string name);
 
     error MintingDisabled();
 
@@ -159,14 +153,14 @@ contract GNDst1Token is IGNDst1 {
         return bytes("module call placeholder");
     }
 
-    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external override onlyController {
+    function registerModule(bytes32 moduleId, address moduleAddress, string calldata moduleName) external override onlyController {
         require(moduleAddress != address(0), "Invalid address");
         require(registeredModules[moduleId].moduleAddress == address(0), "Module already exists");
         registeredModules[moduleId] = ModuleInfo({
             moduleAddress: moduleAddress,
-            name: name
+            name: moduleName
         });
-        emit ModuleRegistered(moduleId, moduleAddress, name);
+        emit ModuleRegistered(moduleId, moduleAddress, moduleName);
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
