@@ -973,10 +973,20 @@ func (bc *Blockchain) GetTransaction(hash string) (*Transaction, error) {
 
 // DeployContract deploys a new contract
 func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
-	// Convert bytecode from hex string to bytes
-	bytecode, err := hex.DecodeString(params.Bytecode)
-	if err != nil {
-		return "", fmt.Errorf("invalid bytecode: %v", err)
+	// При наличии params и ABI дополняем bytecode ABI-кодированными аргументами конструктора
+	var bytecode []byte
+	if len(params.Params) > 0 && len(params.ABI) > 0 {
+		full, err := AppendConstructorArgs(params.Bytecode, params.ABI, params.Params)
+		if err != nil {
+			return "", fmt.Errorf("constructor args: %w", err)
+		}
+		bytecode = full
+	} else {
+		var err error
+		bytecode, err = hex.DecodeString(params.Bytecode)
+		if err != nil {
+			return "", fmt.Errorf("invalid bytecode: %v", err)
+		}
 	}
 
 	// Уникальный адрес контракта: hash(bytecode, from, nonce). При nonce=0 подставляем UnixNano, чтобы один кошелёк мог деплоить несколько контрактов без дубликата contracts_address_key
