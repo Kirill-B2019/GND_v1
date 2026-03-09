@@ -103,20 +103,28 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 		return nil, errors.New("no contracts found in solc output")
 	}
 
-	// Выбираем контракт по имени из метаданных (например GNDToken), иначе первый
+	// Выбираем контракт с непустым bytecode: приоритет — по имени из метаданных (например GNDToken), иначе первый с ненулевым bin (интерфейсы дают пустой bin)
 	var contractData map[string]interface{}
 	wantName := strings.TrimSpace(metadata.Name)
 	for key, v := range contracts {
+		data, _ := v.(map[string]interface{})
+		if data == nil {
+			continue
+		}
+		binVal, _ := data["bin"].(string)
+		if binVal == "" {
+			continue
+		}
 		if wantName != "" && strings.HasSuffix(key, ":"+wantName) {
-			contractData, _ = v.(map[string]interface{})
+			contractData = data
 			break
 		}
 		if contractData == nil {
-			contractData, _ = v.(map[string]interface{})
+			contractData = data
 		}
 	}
 	if contractData == nil {
-		return nil, errors.New("failed to parse contract data")
+		return nil, errors.New("no contract with bytecode found (only interfaces or empty)")
 	}
 
 	// solc --combined-json abi,bin отдаёт abi как массив [], а не строку; приводим к JSON-строке
