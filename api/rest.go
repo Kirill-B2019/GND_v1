@@ -587,7 +587,13 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		if pool != nil {
 			tx, err = core.LoadTransactionByHash(c.Request.Context(), pool, hash)
 			if err == nil && tx != nil {
-				c.JSON(http.StatusOK, APIResponse{Success: true, Data: transactionResponse(tx)})
+				data := transactionResponse(tx)
+				if tx.BlockID > 0 {
+					if n, errBlock := core.GetBlockNumberByID(pool, tx.BlockID); errBlock == nil {
+						data["block_number"] = n
+					}
+				}
+				c.JSON(http.StatusOK, APIResponse{Success: true, Data: data})
 				return
 			}
 		}
@@ -602,9 +608,21 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		})
 		return
 	}
+	data := transactionResponse(tx)
+	if tx.BlockID > 0 {
+		pool := s.db
+		if s.core != nil && s.core.Pool != nil {
+			pool = s.core.Pool
+		}
+		if pool != nil {
+			if n, errBlock := core.GetBlockNumberByID(pool, tx.BlockID); errBlock == nil {
+				data["block_number"] = n
+			}
+		}
+	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    transactionResponse(tx),
+		Data:    data,
 	})
 }
 
@@ -1869,7 +1887,7 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 		if blockIDNull.Valid {
 			blockID = int(blockIDNull.Int64)
 		}
-		list = append(list, gin.H{
+		item := gin.H{
 			"id":        id,
 			"block_id":  blockID,
 			"hash":      hash,
@@ -1881,7 +1899,13 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 			"type":      txType,
 			"status":    status,
 			"timestamp": ts.Format(time.RFC3339),
-		})
+		}
+		if blockID > 0 {
+			if n, errBlock := core.GetBlockNumberByID(pool, blockID); errBlock == nil {
+				item["block_number"] = n
+			}
+		}
+		list = append(list, item)
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"list": list, "total": total}})
 }
