@@ -684,8 +684,13 @@ func (s *Server) GetBlockByNumber(c *gin.Context) {
 		})
 		return
 	}
-	if s.db != nil {
-		txs, _ := core.LoadTransactionsForBlock(c.Request.Context(), s.db, block.ID)
+	// Загружаем транзакции по номеру блока (height/index), а не по block.ID — чтобы всегда отдавать транзакции именно этого блока в цепи
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool != nil {
+		txs, _ := core.LoadTransactionsForBlockByNumber(c.Request.Context(), pool, number)
 		if txs != nil {
 			block.Transactions = txs
 		} else {
