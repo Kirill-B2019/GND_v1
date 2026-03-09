@@ -9,7 +9,7 @@ import "./IGNDst1.sol";
 /// @title GNDst-1: Мультистандартный токен для блокчейна ГАНИМЕД
 /// @notice Совместим с ERC-20, TRC-20 и расширен новыми функциями.
 /// @dev Управление только через контракт-контроллер; прямое управление с EOA заблокировано.
-
+/// @dev Invariants: _totalSupply <= TOTAL_SUPPLY, рост только в конструкторе; onlyController/onlyKyc. См. INVARIANTS.md.
 contract GNDst1Token is IGNDst1 {
     /// @notice Максимальное/целевое предложение: 1e27 (1 млрд GND с 18 decimals)
     uint256 public constant TOTAL_SUPPLY = 1000000000000000000000000000;
@@ -103,6 +103,7 @@ contract GNDst1Token is IGNDst1 {
     }
 
     function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external override onlyKyc returns (bool) {
+        require(bridge != address(0), "Bridge not set");
         _transfer(msg.sender, bridge, amount);
         emit CrossChainTransfer(msg.sender, targetChain, to, amount);
         return true;

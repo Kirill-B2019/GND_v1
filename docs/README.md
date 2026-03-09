@@ -58,6 +58,8 @@
 
 ## Безопасность
 
+- **Токены и комплаенс:** KYC, RWA, роли и off-chain процедуры — [COMPLIANCE_KYC_RWA.md](COMPLIANCE_KYC_RWA.md). Операционные процедуры вызовов контрактов и ротация ключей — [SOP_TOKEN_OPERATIONS.md](SOP_TOKEN_OPERATIONS.md). Инварианты контрактов deploy_order — [tokens/standards/deploy_order/INVARIANTS.md](../tokens/standards/deploy_order/INVARIANTS.md).
+
 ### 1. Аутентификация
 - API ключи
 - JWT токены

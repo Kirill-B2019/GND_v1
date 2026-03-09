@@ -1,6 +1,8 @@
 # Подробная инструкция админу: деплой контрактов GND-st1 через админку
 
-Пошаговое развёртывание контроллера, GND и GANI (стандарт GND-st1) через админ-панель и настройка ноды.
+Пошаговое развёртывание контроллера, GND и GANI (стандарт GND-st1) через админ-панель и настройка ноды. Опционально — RWA-токен (шаг 4а).
+
+**Связанные документы:** порядок файлов и параметры — `tokens/standards/deploy_order/README.md`; инварианты — `tokens/standards/deploy_order/INVARIANTS.md`; операции и комплаенс — [SOP_TOKEN_OPERATIONS.md](SOP_TOKEN_OPERATIONS.md), [COMPLIANCE_KYC_RWA.md](COMPLIANCE_KYC_RWA.md).
 
 ---
 
@@ -9,7 +11,8 @@
 - Доступ в админ-панель (логин/пароль; при включённой 2FA — код).
 - Нода GND_v1 запущена, API доступен.
 - Кошелёк с балансом GND для газа (или настроен gndself_address).
-- Исходники в репозитории: `01_NativeTokensController.sol`, `02_GNDToken.sol`, `03_GANIToken.sol` (каталог `tokens/standards/deploy_order/`).
+- **Адрес владельца контроллера** — взять из `config/native_contracts.json` поле **gndself_address** (используется в конструкторе NativeTokensController). Транзакции setGndToken, setGaniToken, mintGANI, setKyc* должны отправляться с этого адреса.
+- Исходники в репозитории: `01_NativeTokensController.sol`, `02_GNDToken.sol`, `03_GANIToken.sol`, при необходимости `04_GNDRWAToken.sol` (каталог `tokens/standards/deploy_order/`).
 
 ---
 
@@ -25,7 +28,7 @@
 
 1. Нажать **«Создать контракт»** / **«Деплой»**.
 2. Выбрать контракт: **NativeTokensController** (файл `01_NativeTokensController.sol`).
-3. Параметры конструктора: **нет**.
+3. **Параметр конструктора:** **owner_** (address) — адрес владельца. Указать **gndself_address** из `config/native_contracts.json` (системный кошелёк ГАНИМЕД). С этого адреса в дальнейшем вызываются setGndToken, setGaniToken, mintGANI, setKycGnd, setKycGani.
 4. Указать кошелёк для оплаты газа, отправить транзакцию деплоя.
 5. После успеха сохранить **адрес контракта** (формат `GNDct` + 32 hex-символа). Обозначить как **ADDR_CONTROLLER**.
 
@@ -37,7 +40,7 @@
 2. Выбрать контракт: **GNDToken** (GND-st1), файл `02_GNDToken.sol`.
 3. Параметры конструктора (порядок и типы по коду):
    - **initialSupply** (uint256): `1000000000000000000000000000` (1e27).
-   - **bridgeAddress** (address): `0x0000000000000000000000000000000000000000` (или адрес моста, если есть).
+   - **bridgeAddress** (address): `0x0000000000000000000000000000000000000000` (или адрес моста, если есть). При bridge=0 вызов crossChainTransfer на GND будет ревертиться с "Bridge not set" до установки моста.
    - **controllerContract** (address): **ADDR_CONTROLLER** из шага 2.
 4. Указать кошелёк для газа, отправить транзакцию деплоя.
 5. Сохранить адрес контракта GND — **ADDR_GND**.
@@ -49,7 +52,7 @@
 1. Открыть **«Создать контракт»** / **«Деплой»**.
 2. Выбрать контракт: **GANIToken** (GND-st1), файл `03_GANIToken.sol`.
 3. Параметры конструктора:
-   - **controllerContract** (address): **ADDR_CONTROLLER** (тот же, что в шаге 3).
+   - **controllerContract** (address): **ADDR_CONTROLLER** (тот же, что в шаге 2).
 4. Отправить транзакцию деплоя.
 5. Сохранить адрес контракта GANI — **ADDR_GANI**.
 
@@ -58,11 +61,12 @@
 ## Шаг 5. Привязка GND и GANI к контроллеру
 
 1. В разделе **«Контракты»** открыть контракт по адресу **ADDR_CONTROLLER** (NativeTokensController).
-2. Вызвать метод **setGndToken(address)** с аргументом **ADDR_GND**. Отправить транзакцию.
-3. Вызвать метод **setGaniToken(address)** с аргументом **ADDR_GANI**. Отправить транзакцию.
-4. Убедиться, что обе транзакции успешны.
+2. Транзакции отправлять **от имени gndself_address** (owner).
+3. Вызвать метод **setGndToken(address)** с аргументом **ADDR_GND**. Отправить транзакцию.
+4. Вызвать метод **setGaniToken(address)** с аргументом **ADDR_GANI**. Отправить транзакцию.
+5. Убедиться, что обе транзакции успешны.
 
-После этого владелец может вызывать `mintGANI(to, amount)` и `setKycGnd(user, status)`, `setKycGani(user, status)`.
+**Важно:** setGndToken и setGaniToken вызываются **только один раз**; повторная смена адреса контрактом не допускается (revert TokenAlreadySet). После привязки владелец может вызывать `mintGANI(to, amount)` и `setKycGnd(user, status)`, `setKycGani(user, status)`.
 
 ---
 
@@ -72,7 +76,8 @@
 2. Заполнить:
    - **gnd_contract_address**: ADDR_GND
    - **gani_contract_address**: ADDR_GANI
-   - при необходимости **fee_collector_address**, **gndself_address**
+   - **gndself_address** — не менять (адрес владельца контроллера, задаётся при деплое контроллера)
+   - при необходимости **fee_collector_address**
 3. Пример:
 
 ```json
@@ -80,7 +85,7 @@
   "gnd_contract_address": "GNDct...",
   "gani_contract_address": "GNDct...",
   "fee_collector_address": "",
-  "gndself_address": ""
+  "gndself_address": "GN_BSP..."
 }
 ```
 
@@ -110,10 +115,21 @@
 
 ## Шаг 9. Проверка работы
 
-1. **Балансы:** Запросить балансы кошелька контроллера по ADDR_GND и ADDR_GANI — должны быть начальные supply (1e27 GND и 100M*10^6 GANI).
+1. **Балансы:** Запросить балансы кошелька контроллера по ADDR_GND и ADDR_GANI — должны быть: GND = 1e27 (initialSupply), GANI = 20M (первая эмиссия FIRST_EMISSION; всего лимит 100M).
 2. **Эмиссия GANI:** На контроллере вызвать **mintGANI(to, amount)** (to — тестовый адрес). Проверить рост баланса GANI у `to`.
-3. **Перевод GND:** Для кошелька с KYC вызвать на контракте GND **transfer(to, amount)**. Проверить изменение балансов.
+3. **Перевод GND:** Для кошелька с KYC вызвать на контракте GND **transfer(to, amount)**. Проверить изменение балансов. Перевод на адрес `0x0` запрещён (revert).
 4. **Дивиденды (опционально):** На GND от controller вызвать snapshot(), затем setSnapshotBalance(snapshotId, user, amount) и setDividendsPerShare(snapshotId, amount). От имени user вызвать claimDividends(snapshotId) и проверить перевод с controller на user.
+
+---
+
+## Шаг 4а. (Опционально) Деплой RWA-токена (04_GNDRWAToken)
+
+Если нужен токен по стандарту RWA (GND-st1 + RWA):
+
+1. Открыть **«Создать контракт»** / **«Деплой»**.
+2. Выбрать контракт **GNDRWAToken** (файл `04_GNDRWAToken.sol`). Убедиться, что в каталоге deploy_order есть `IGNDRWA.sol`.
+3. Параметры конструктора (порядок по коду): **controllerContract** (ADDR_CONTROLLER), **bridgeAddress**, **name**, **symbol**, **decimals**, **maxSupply** — по регламенту проекта.
+4. Сохранить адрес RWA-контракта при необходимости; зарегистрировать в БД как токен с нужным standard.
 
 ---
 
@@ -121,13 +137,13 @@
 
 | Шаг | Действие | Контракт | Параметры конструктора |
 |-----|----------|----------|-------------------------|
-| 1 | Деплой | NativeTokensController | — |
+| 1 | Деплой | NativeTokensController | **owner_** = gndself_address из config |
 | 2 | Сохранить адрес | — | ADDR_CONTROLLER |
 | 3 | Деплой | GNDToken (GND-st1) | initialSupply=1e27, bridge=0…0, controller=ADDR_CONTROLLER |
 | 4 | Сохранить адрес | — | ADDR_GND |
 | 5 | Деплой | GANIToken (GND-st1) | controller=ADDR_CONTROLLER |
 | 6 | Сохранить адрес | — | ADDR_GANI |
-| 7 | Вызовы на контроллере | setGndToken(ADDR_GND), setGaniToken(ADDR_GANI) | — |
+| 7 | Вызовы на контроллере (от gndself) | setGndToken(ADDR_GND), setGaniToken(ADDR_GANI) — один раз | — |
 | 8 | Конфиг ноды | native_contracts.json | gnd_contract_address, gani_contract_address |
 | 9 | БД/админка | contracts + tokens | standard = GND-st1 |
 | 10 | По необходимости | setKycGnd(user, true), setKycGani(user, true) | от owner |

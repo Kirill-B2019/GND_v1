@@ -5,10 +5,13 @@ import "./IGNDst1.sol";
 
 /// @title GANIToken — governance-токен GANI (Ganimed Governance) по стандарту GND-st1
 /// @notice Деплой: шаг 3. Конструктор: controllerContract (адрес из шага 1). Минт только с контроллера (mintGANI).
-/// @dev Реализует IGNDst1; mint(address,uint256) вызывается только контроллером, лимит TOTAL_SUPPLY.
+/// @dev Реализует IGNDst1. Всего объём 100M; первая циркулирующая эмиссия 20M; следующие эмиссии — через контроллер (логика дорабатывается).
+/// @dev Invariants: _totalSupply <= TOTAL_SUPPLY; mint только onlyController; onlyKyc для переводов. См. INVARIANTS.md.
 contract GANIToken is IGNDst1 {
-    /// @notice Фиксированное предложение: 100M при 6 decimals
+    /// @notice Максимальное предложение: 100M при 6 decimals
     uint256 public constant TOTAL_SUPPLY = 100_000_000 * 10**6;
+    /// @notice Первая циркулирующая эмиссия: 20M при 6 decimals (выпускается в конструкторе на контроллер)
+    uint256 public constant FIRST_EMISSION = 20_000_000 * 10**6;
 
     string public name = "Ganimed Governance";
     string public symbol = "GANI";
@@ -50,14 +53,15 @@ contract GANIToken is IGNDst1 {
     }
 
     /// @param controllerContract Адрес контракта из шага 1 (NativeTokensController)
+    /// @dev В первую эмиссию выпускается FIRST_EMISSION (20M) на контроллер. Доп. эмиссии — через mint() с контроллера (заглушка, логика дорабатывается).
     constructor(address controllerContract) {
         require(controllerContract != address(0), "Zero controller");
         require(_isContract(controllerContract), "Controller must be a contract");
         controller = controllerContract;
         bridge = address(0);
-        _totalSupply = TOTAL_SUPPLY;
-        _balances[controllerContract] = TOTAL_SUPPLY;
-        emit Transfer(address(0), controllerContract, TOTAL_SUPPLY);
+        _totalSupply = FIRST_EMISSION;
+        _balances[controllerContract] = FIRST_EMISSION;
+        emit Transfer(address(0), controllerContract, FIRST_EMISSION);
     }
 
     function _isContract(address account) private view returns (bool) {
@@ -92,6 +96,7 @@ contract GANIToken is IGNDst1 {
     }
 
     function transferFrom(address from, address to, uint256 amount) public override onlyKyc returns (bool) {
+        require(to != address(0), "Transfer to zero");
         require(_allowances[from][msg.sender] >= amount, "Allowance exceeded");
         _allowances[from][msg.sender] -= amount;
         _transfer(from, to, amount);
@@ -99,6 +104,7 @@ contract GANIToken is IGNDst1 {
     }
 
     function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external override onlyKyc returns (bool) {
+        require(bridge != address(0), "Bridge not set");
         _transfer(msg.sender, bridge, amount);
         emit CrossChainTransfer(msg.sender, targetChain, to, amount);
         return true;
@@ -157,7 +163,7 @@ contract GANIToken is IGNDst1 {
         emit ModuleRegistered(moduleId, moduleAddress, name_);
     }
 
-    /// @notice Минт только с адреса контроллера (вызов из NativeTokensController.mintGANI).
+    /// @notice Минт только с адреса контроллера (вызов из NativeTokensController.mintGANI). Следующие эмиссии после первой — управляются контрактом (логика дорабатывается).
     function mint(address to, uint256 amount) external onlyController {
         if (to == address(0)) revert ZeroAddress();
         if (_totalSupply + amount > TOTAL_SUPPLY) revert ExceedsTotalSupply();

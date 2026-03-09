@@ -100,6 +100,7 @@ contract GNDst1Token is IGNDst1 {
     }
 
     function crossChainTransfer(string calldata targetChain, address to, uint256 amount) external override onlyKyc returns (bool) {
+        require(bridge != address(0), "Bridge not set");
         _transfer(msg.sender, bridge, amount);
         emit CrossChainTransfer(msg.sender, targetChain, to, amount);
         return true;

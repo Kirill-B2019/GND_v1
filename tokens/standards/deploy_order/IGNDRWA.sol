@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "../gndst1/IGNDst1.sol";
+import "./IGNDst1.sol";
 
 /// @title IGNDRWA — RWA поверх стандарта GND-st1
 /// @notice Токен реальных активов: полный интерфейс GND-st1 плюс пауза, заморозка, mint/burn, maxSupply.

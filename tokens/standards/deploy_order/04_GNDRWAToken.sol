@@ -3,17 +3,19 @@ pragma solidity ^0.8.16;
 
 import "./IGNDRWA.sol";
 
-/// @title GND-RWA: токен реальных активов для блокчейна ГАНИМЕД (стандарт GND-st1 + RWA)
-/// @notice Управляется контрактом-контроллером; пауза, заморозка, cap; KYC, snapshot/дивиденды, модули, crossChain.
-/// @dev Реализует IGNDRWA (расширение IGNDst1): полный GND-st1 плюс mint/burn, паузы, заморозка.
+// Копия tokens/standards/gndrwa/GND-RWA.sol для автономной компиляции deploy_order (стандарт GND-st1 + RWA).
+// Деплой: после 01–03; параметры: controller, bridgeAddress, name, symbol, decimals, maxSupply.
 
+/// @title GND-RWA: токен реальных активов (стандарт GND-st1 + RWA)
+/// @notice Управляется контроллером; пауза, заморозка, cap; KYC, snapshot/дивиденды, модули, crossChain.
+/// @dev Invariants: _totalSupply <= _maxSupply при _maxSupply > 0; паузы/заморозка в переводах; только onlyController для админ-функций. См. INVARIANTS.md.
 contract GNDRWAToken is IGNDRWA {
     string public name;
     string public symbol;
     uint8 public decimals;
 
     uint256 private _totalSupply;
-    uint256 private _maxSupply; // 0 = без лимита
+    uint256 private _maxSupply;
     address public immutable controller;
     address public bridge;
 
@@ -61,9 +63,6 @@ contract GNDRWAToken is IGNDRWA {
         _;
     }
 
-    /// @param controllerContract Адрес контракта управления (контроллер).
-    /// @param bridgeAddress Адрес моста для crossChainTransfer (GND-st1); 0 — отключено.
-    /// @param maxSupply_ Лимит эмиссии (0 = без лимита).
     constructor(
         address controllerContract,
         address bridgeAddress,
@@ -168,12 +167,10 @@ contract GNDRWAToken is IGNDRWA {
         return _snapshotBalances[snapshotId][user];
     }
 
-    /// @notice Фиксирует баланс пользователя в снимке (вызывается контроллером после snapshot).
     function setSnapshotBalance(uint256 snapshotId, address user, uint256 amount) external onlyController {
         _snapshotBalances[snapshotId][user] = amount;
     }
 
-    /// @notice Устанавливает дивиденды на снимок (вызывается контроллером).
     function setDividendsPerShare(uint256 snapshotId, uint256 amount) external onlyController {
         dividendsPerShare[snapshotId] = amount;
     }
@@ -199,7 +196,6 @@ contract GNDRWAToken is IGNDRWA {
     function moduleCall(bytes32 moduleId, bytes calldata data) external override returns (bytes memory) {
         require(registeredModules[moduleId].moduleAddress != address(0), "Module not registered");
         emit ModuleCall(moduleId, msg.sender);
-        // placeholder: при интеграции — делегирование вызова в moduleAddress
         return data;
     }
 
