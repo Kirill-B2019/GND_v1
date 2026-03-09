@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
+// Копия tokens/standards/gndst1/gndst1Base.sol для автономной компиляции deploy_order.
+// Синхронизировать при изменении канонической реализации.
+
 import "./IGNDst1.sol";
 
-/// @title GANIToken — governance-токен GANI (Ganimed Governance) по стандарту GND-st1
-/// @notice Деплой: шаг 3. Конструктор: controllerContract (адрес из шага 1). Минт только с контроллера (mintGANI).
-/// @dev Реализует IGNDst1; mint(address,uint256) вызывается только контроллером, лимит TOTAL_SUPPLY.
-contract GANIToken is IGNDst1 {
-    /// @notice Фиксированное предложение: 100M при 6 decimals
-    uint256 public constant TOTAL_SUPPLY = 100_000_000 * 10**6;
+/// @title GNDst-1: Мультистандартный токен для блокчейна ГАНИМЕД
+/// @notice Совместим с ERC-20, TRC-20 и расширен новыми функциями.
+/// @dev Управление только через контракт-контроллер; прямое управление с EOA заблокировано.
 
-    string public name = "Ganimed Governance";
-    string public symbol = "GANI";
-    uint8 public decimals = 6;
+contract GNDst1Token is IGNDst1 {
+    /// @notice Максимальное/целевое предложение: 1e27 (1 млрд GND с 18 decimals)
+    uint256 public constant TOTAL_SUPPLY = 1000000000000000000000000000;
 
+    string public name = "Ganimed";
+    string public symbol = "GND";
+    uint8 public decimals = 18;
     uint256 private _totalSupply;
     address public immutable controller;
     address public bridge;
@@ -32,11 +35,16 @@ contract GANIToken is IGNDst1 {
     }
     mapping(bytes32 => ModuleInfo) public registeredModules;
 
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event CrossChainTransfer(address indexed from, string targetChain, address indexed to, uint256 value);
+    event KycStatusChanged(address indexed user, bool status);
     event ModuleCall(bytes32 indexed moduleId, address indexed caller);
+    event SnapshotCreated(uint256 indexed snapshotId, uint256 timestamp);
+    event DividendClaimed(address indexed user, uint256 amount, uint256 snapshotId);
+    event ModuleRegistered(bytes32 indexed moduleId, address indexed moduleAddress, string name);
 
-    error OnlyController();
-    error ExceedsTotalSupply();
-    error ZeroAddress();
+    error MintingDisabled();
 
     modifier onlyController() {
         require(msg.sender == controller, "Only controller");
@@ -49,15 +57,17 @@ contract GANIToken is IGNDst1 {
         _;
     }
 
-    /// @param controllerContract Адрес контракта из шага 1 (NativeTokensController)
-    constructor(address controllerContract) {
+    constructor(
+        uint256 initialSupply,
+        address bridgeAddress,
+        address controllerContract
+    ) {
         require(controllerContract != address(0), "Zero controller");
         require(_isContract(controllerContract), "Controller must be a contract");
+        require(initialSupply <= TOTAL_SUPPLY && initialSupply > 0, "Invalid initial supply");
         controller = controllerContract;
-        bridge = address(0);
-        _totalSupply = TOTAL_SUPPLY;
-        _balances[controllerContract] = TOTAL_SUPPLY;
-        emit Transfer(address(0), controllerContract, TOTAL_SUPPLY);
+        bridge = bridgeAddress;
+        _mint(controllerContract, initialSupply);
     }
 
     function _isContract(address account) private view returns (bool) {
@@ -125,10 +135,12 @@ contract GANIToken is IGNDst1 {
         return _snapshotBalances[snapshotId][user];
     }
 
+    /// @notice Фиксирует баланс пользователя в снимке (вызывается контроллером после snapshot).
     function setSnapshotBalance(uint256 snapshotId, address user, uint256 amount) external onlyController {
         _snapshotBalances[snapshotId][user] = amount;
     }
 
+    /// @notice Устанавливает дивиденды на снимок (вызывается контроллером).
     function setDividendsPerShare(uint256 snapshotId, uint256 amount) external onlyController {
         dividendsPerShare[snapshotId] = amount;
     }
@@ -147,23 +159,14 @@ contract GANIToken is IGNDst1 {
         return bytes("module call placeholder");
     }
 
-    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name_) external override onlyController {
+    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external override onlyController {
         require(moduleAddress != address(0), "Invalid address");
         require(registeredModules[moduleId].moduleAddress == address(0), "Module already exists");
         registeredModules[moduleId] = ModuleInfo({
             moduleAddress: moduleAddress,
-            name: name_
+            name: name
         });
-        emit ModuleRegistered(moduleId, moduleAddress, name_);
-    }
-
-    /// @notice Минт только с адреса контроллера (вызов из NativeTokensController.mintGANI).
-    function mint(address to, uint256 amount) external onlyController {
-        if (to == address(0)) revert ZeroAddress();
-        if (_totalSupply + amount > TOTAL_SUPPLY) revert ExceedsTotalSupply();
-        _totalSupply += amount;
-        _balances[to] += amount;
-        emit Transfer(address(0), to, amount);
+        emit ModuleRegistered(moduleId, moduleAddress, name);
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
@@ -171,5 +174,16 @@ contract GANIToken is IGNDst1 {
         _balances[from] -= amount;
         _balances[to] += amount;
         emit Transfer(from, to, amount);
+    }
+
+    /// @notice Минтинг отключён: эмиссия только в конструкторе.
+    function mint(address /* to */, uint256 /* amount */) external pure {
+        revert MintingDisabled();
+    }
+
+    function _mint(address to, uint256 amount) internal {
+        _totalSupply += amount;
+        _balances[to] += amount;
+        emit Transfer(address(0), to, amount);
     }
 }

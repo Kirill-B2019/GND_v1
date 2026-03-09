@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-import "../gndst1/gndst1Base.sol";
+import "./gndst1Base.sol";
 
 /// @title GNDToken — утилитарная монета GND (Ganimed) по стандарту GND-st1
 /// @notice Деплой: шаг 2. Параметры конструктора: initialSupply (1e27), bridgeAddress, controllerContract (адрес из шага 1).
