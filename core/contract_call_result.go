@@ -6,9 +6,11 @@ import (
 )
 
 // Селекторы записи storage (первые 4 байта keccak256(signature)):
-// - setGaniToken(address) = 0xc7d9116f, слот 0
-// - setOwner(address)     = 0x13af4035, слот 1
+// - setGndToken(address)  = 0x89d9b190, слот 0 (gndToken)
+// - setGaniToken(address) = 0xc7d9116f, слот 1 (ganiToken)
+// - setOwner(address)     = 0x13af4035, слот 2 (если есть в контракте)
 const (
+	selectorSetGndToken  = "\x89\xd9\xb1\x90"
 	selectorSetGaniToken = "\xc7\xd9\x11\x6f"
 	selectorSetOwner     = "\x13\xaf\x40\x35"
 )
@@ -18,16 +20,17 @@ type storageWriter func(tx *Transaction) []*types.StateChange
 
 // writeStorageSelectors — таблица селектор → функция формирования storage changes для applyBlock.
 var writeStorageSelectors = map[string]storageWriter{
+	selectorSetGndToken:  writeSetGndToken,
 	selectorSetGaniToken: writeSetGaniToken,
 	selectorSetOwner:     writeSetOwner,
 }
 
-// writeSetGaniToken: setGaniToken(address) — слот 0 = address (32 байта, right-padded).
-func writeSetGaniToken(tx *Transaction) []*types.StateChange {
+// writeSetGndToken: setGndToken(address) — слот 0 = gndToken (32 байта, right-padded).
+func writeSetGndToken(tx *Transaction) []*types.StateChange {
 	if tx == nil || len(tx.Data) < 36 {
 		return nil
 	}
-	addr20 := tx.Data[16:36] // последние 20 байт первого аргумента ABI
+	addr20 := tx.Data[16:36]
 	slotKey := make([]byte, 32)
 	slotValue := make([]byte, 32)
 	copy(slotValue[12:], addr20)
@@ -36,14 +39,29 @@ func writeSetGaniToken(tx *Transaction) []*types.StateChange {
 	}
 }
 
-// writeSetOwner: setOwner(address) — слот 1 = address (32 байта, right-padded).
+// writeSetGaniToken: setGaniToken(address) — слот 1 = ganiToken (32 байта, right-padded).
+func writeSetGaniToken(tx *Transaction) []*types.StateChange {
+	if tx == nil || len(tx.Data) < 36 {
+		return nil
+	}
+	addr20 := tx.Data[16:36]
+	slotKey := make([]byte, 32)
+	slotKey[31] = 1
+	slotValue := make([]byte, 32)
+	copy(slotValue[12:], addr20)
+	return []*types.StateChange{
+		types.NewStorageChange(types.Address(tx.Recipient.String()), slotKey, slotValue),
+	}
+}
+
+// writeSetOwner: setOwner(address) — слот 2 = address (32 байта, right-padded). Для контрактов с owner в storage.
 func writeSetOwner(tx *Transaction) []*types.StateChange {
 	if tx == nil || len(tx.Data) < 36 {
 		return nil
 	}
 	addr20 := tx.Data[16:36]
 	slotKey := make([]byte, 32)
-	slotKey[31] = 1 // слот 1
+	slotKey[31] = 2
 	slotValue := make([]byte, 32)
 	copy(slotValue[12:], addr20)
 	return []*types.StateChange{
@@ -53,7 +71,7 @@ func writeSetOwner(tx *Transaction) []*types.StateChange {
 
 // buildContractCallExecutionResult по calldata вызова контракта строит ExecutionResult с изменениями storage,
 // чтобы ApplyExecutionResult записал слоты в contract_storage при SaveToDB.
-// Поддерживаемые селекторы: setGaniToken(address) — слот 0; setOwner(address) — слот 1.
+// Поддерживаемые селекторы: setGndToken(address) — слот 0; setGaniToken(address) — слот 1; setOwner(address) — слот 2.
 func buildContractCallExecutionResult(tx *Transaction) *types.ExecutionResult {
 	if tx == nil || len(tx.Data) < 4 {
 		return nil
