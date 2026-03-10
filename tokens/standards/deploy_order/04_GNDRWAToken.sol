@@ -38,18 +38,8 @@ contract GNDRWAToken is IGNDRWA {
     }
     mapping(bytes32 => ModuleInfo) public registeredModules;
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Mint(address indexed to, uint256 value);
-    event Burn(address indexed from, uint256 value);
-    event TransfersPausedChanged(bool paused);
-    event MintPausedChanged(bool paused);
-    event BurnPausedChanged(bool paused);
-    event FrozenChanged(address indexed account, bool frozen);
-    event KycStatusChanged(address indexed user, bool status);
-    event SnapshotCreated(uint256 indexed snapshotId, uint256 timestamp);
-    event DividendClaimed(address indexed user, uint256 amount, uint256 snapshotId);
-    event ModuleRegistered(bytes32 indexed moduleId, address indexed moduleAddress, string name);
+    // События Transfer, Approval, Mint, Burn, TransfersPausedChanged, MintPausedChanged, BurnPausedChanged,
+    // FrozenChanged, KycStatusChanged, SnapshotCreated, DividendClaimed, ModuleRegistered — в IGNDst1/IGNDRWA
     event ModuleCall(bytes32 indexed moduleId, address indexed caller);
 
     modifier onlyController() {
@@ -183,14 +173,14 @@ contract GNDRWAToken is IGNDRWA {
         emit DividendClaimed(msg.sender, dividendAmount, snapshotId);
     }
 
-    function registerModule(bytes32 moduleId, address moduleAddress, string calldata name) external override onlyController {
+    function registerModule(bytes32 moduleId, address moduleAddress, string calldata moduleName) external override onlyController {
         require(moduleAddress != address(0), "Invalid address");
         require(registeredModules[moduleId].moduleAddress == address(0), "Module already exists");
         registeredModules[moduleId] = ModuleInfo({
             moduleAddress: moduleAddress,
-            name: name
+            name: moduleName
         });
-        emit ModuleRegistered(moduleId, moduleAddress, name);
+        emit ModuleRegistered(moduleId, moduleAddress, moduleName);
     }
 
     function moduleCall(bytes32 moduleId, bytes calldata data) external override returns (bytes memory) {
