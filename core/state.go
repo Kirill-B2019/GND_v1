@@ -930,12 +930,16 @@ func (s *State) ValidateAddress(address types.Address) bool {
 var slotZeroKey = make([]byte, 32)
 
 // viewSelectorToSlot — маппинг селектор (4 байта) → номер слота для view без аргументов.
-// При len(calldata)==4 неизвестный селектор даёт слот 0 (обратная совместимость ganiToken() и т.п.).
+// При len(calldata)==4 неизвестный селектор даёт слот 0 (обратная совместимость).
 var viewSelectorToSlot = map[string]uint64{
-	// owner() = 0x8da5cb5b — слот 1 (если контракт хранит owner в storage)
-	"\x8d\xa5\xcb\x5b": 1,
 	// totalSupply() = 0x18160ddd — слот 0 (_totalSupply в ERC-20)
 	"\x18\x16\x0d\xdd": 0,
+	// owner() = 0x8da5cb5b — слот 2 (если контракт хранит owner в storage; NativeTokensController: owner immutable — не в storage, вернётся 0)
+	"\x8d\xa5\xcb\x5b": 2,
+	// NativeTokensController: gndToken() = 0xa3931e79 — слот 0
+	"\xa3\x93\x1e\x79": 0,
+	// NativeTokensController: ganiToken() = 0xe588828c — слот 1
+	"\xe5\x88\x82\x8c": 1,
 }
 
 // slotKeyFromIndex формирует 32-байтный ключ слота по индексу (Solidity: слот N = right-aligned big-endian).

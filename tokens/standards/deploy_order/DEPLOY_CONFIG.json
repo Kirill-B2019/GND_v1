@@ -1,0 +1,67 @@
+{
+  "comment": "Конфигурация деплоя нативных токенов GND и GANI. Использовать при деплое через GND_admin или API ноды.",
+  "metadata_common": {
+    "license": "CORP",
+    "author": "KB - Nexus Team",
+    "version": "1.0"
+  },
+  "01_NativeTokensController": {
+    "name": "GanimedNativeTokensController",
+    "description": "Контроллер нативных токенов GND и GANI по стандарту GND-st1",
+    "params": {
+      "owner_": "GN_BSP32eTfEeRq4V9ZXVVsCmHEW2ZFNo8Ab"
+    },
+    "note": "owner_ = gndself_address из config/native_contracts.json"
+  },
+  "02_GNDToken": {
+    "name": "GND (Ganimed)",
+    "symbol": "GND",
+    "description": "Контракт GND (Ganimed) по стандарту GND-st1",
+    "license": "CORP",
+    "metadata": {
+      "author": "KB - Nexus Team",
+      "version": "1.0"
+    },
+    "params": {
+      "initialSupply": "1000000000000000000000000000",
+      "bridgeAddress": "0x0000000000000000000000000000000000000000",
+      "controllerContract": "СЮДА_АДРЕС_КОНТРОЛЛЕРА_ИЗ_ШАГА_1"
+    }
+  },
+  "03_GANIToken": {
+    "name": "GANI (Ganimed Governance)",
+    "symbol": "GANI",
+    "description": "Контракт GANI (Ganimed Governance) по стандарту GND-st1",
+    "license": "CORP",
+    "metadata": {
+      "author": "KB - Nexus Team",
+      "version": "1.0"
+    },
+    "params": {
+      "controllerContract": "СЮДА_АДРЕС_КОНТРОЛЛЕРА_ИЗ_ШАГА_1"
+    }
+  },
+  "04_GNDRWAToken": {
+    "name": "GND-RWA",
+    "symbol": "RWA",
+    "description": "RWA-токен по стандарту GND-st1 + RWA",
+    "license": "CORP",
+    "metadata": {
+      "author": "KB - Nexus Team",
+      "version": "1.0"
+    },
+    "params": {
+      "controllerContract": "СЮДА_АДРЕС_КОНТРОЛЛЕРА",
+      "bridgeAddress": "0x0000000000000000000000000000000000000000",
+      "name_": "Project RWA",
+      "symbol_": "RWA",
+      "decimals_": 6,
+      "maxSupply_": "1000000000000000"
+    }
+  },
+  "post_deploy": {
+    "setGndToken": "Вызвать на контроллере setGndToken(адрес_GND) после шага 2",
+    "setGaniToken": "Вызвать на контроллере setGaniToken(адрес_GANI) после шага 3",
+    "native_contracts_json": "Обновить config/native_contracts.json: gnd_contract_address, gani_contract_address"
+  }
+}

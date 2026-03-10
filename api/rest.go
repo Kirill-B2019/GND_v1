@@ -1792,7 +1792,9 @@ func (s *Server) GetContractStorage(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"address": address, "block_id": blockID, "slots": slots}})
 }
 
-// AdminWriteContractStorageSlot записывает слот storage контракта. POST /api/v1/admin/state/contract/:address/storage. Body: {"block_id": 1, "slot_key": "0x...", "slot_value": "0x..."}
+// AdminWriteContractStorageSlot записывает слот storage контракта. POST /api/v1/admin/state/contract/:address/storage
+// Body: {"block_id": 1, "slot_key": "0x...", "slot_value": "0x..."} ИЛИ {"block_id": 1, "slot_index": 0, "slot_value": "0x..."}
+// slot_index (0, 1, 2...) — для NativeTokensController: 0=gndToken, 1=ganiToken.
 func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
 	address := strings.TrimSpace(c.Param("address"))
 	if address == "" {
@@ -1802,17 +1804,30 @@ func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
 	var req struct {
 		BlockID   int64  `json:"block_id"`
 		SlotKey   string `json:"slot_key"`
+		SlotIndex *int64 `json:"slot_index"` // опционально: 0=gndToken, 1=ganiToken
 		SlotValue string `json:"slot_value"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Ожидается JSON: block_id, slot_key, slot_value", Code: http.StatusBadRequest})
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Ожидается JSON: block_id, slot_key или slot_index, slot_value", Code: http.StatusBadRequest})
 		return
 	}
-	if s.db == nil {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
 		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
 		return
 	}
-	if err := core.WriteContractStorageSlot(c.Request.Context(), s.db, req.BlockID, address, req.SlotKey, req.SlotValue); err != nil {
+	slotKey := req.SlotKey
+	if req.SlotIndex != nil {
+		slotKey = "0x" + hex.EncodeToString(core.SlotKeyFromIndex(uint64(*req.SlotIndex)))
+	}
+	if slotKey == "" {
+		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите slot_key или slot_index", Code: http.StatusBadRequest})
+		return
+	}
+	if err := core.WriteContractStorageSlot(c.Request.Context(), pool, req.BlockID, address, slotKey, req.SlotValue); err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: err.Error(), Code: http.StatusBadRequest})
 		return
 	}
@@ -1821,11 +1836,7 @@ func (s *Server) AdminWriteContractStorageSlot(c *gin.Context) {
 	if s.core != nil && s.core.Genesis != nil {
 		genesisID = s.core.Genesis.ID
 	}
-	pool := s.core.Pool
-	if pool == nil {
-		pool = s.db
-	}
-	payload := req.SlotKey
+	payload := slotKey
 	if payload == "" {
 		payload = "storage_slot"
 	}

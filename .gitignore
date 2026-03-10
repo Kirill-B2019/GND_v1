@@ -25,7 +25,7 @@ env/
 *.pem
 /api/rest_contract_test.go
 /gnd_node_emulate.exe
-/scripts/emulate_restart.ps1
+/scripts/
 /db/old DB/
 .idea
 test_output.txt
@@ -34,3 +34,4 @@ test_output.txt
 /tokens/standards/deploy_order/README.md
 /scripts/check_contract_28.go
 /scripts/check_db.go
+/scripts/call_controller_views.go

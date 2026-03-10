@@ -151,6 +151,16 @@ func GetCurrentAccountState(ctx context.Context, pool *pgxpool.Pool, address str
 	return nil, err
 }
 
+// SlotKeyFromIndex формирует 32-байтный ключ слота по индексу (Solidity: слот N = right-aligned big-endian).
+func SlotKeyFromIndex(slotIndex uint64) []byte {
+	key := make([]byte, 32)
+	for i := 31; i >= 0 && slotIndex > 0; i-- {
+		key[i] = byte(slotIndex & 0xff)
+		slotIndex >>= 8
+	}
+	return key
+}
+
 // WriteContractStorageSlot записывает один слот storage контракта для указанного блока (админ/импорт).
 // slotKeyHex и slotValueHex — hex-строки (с 0x или без), по 32 байта после декодирования.
 func WriteContractStorageSlot(ctx context.Context, pool *pgxpool.Pool, blockID int64, address, slotKeyHex, slotValueHex string) error {
