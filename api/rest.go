@@ -908,12 +908,19 @@ func (s *Server) ContractCall(c *gin.Context) {
 	}
 	returnHex := ""
 	success := result != nil && result.Error == nil
+	dataMap := gin.H{"return_data": returnHex, "success": success}
 	if result != nil && len(result.ReturnData) > 0 {
 		returnHex = "0x" + hex.EncodeToString(result.ReturnData)
+		dataMap["return_data"] = returnHex
+		// Для uint256 (32 байта) добавляем десятичное значение для отображения (totalSupply, balanceOf и т.п.)
+		if len(result.ReturnData) == 32 {
+			val := new(big.Int).SetBytes(result.ReturnData)
+			dataMap["return_data_decoded"] = val.String()
+		}
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    gin.H{"return_data": returnHex, "success": success},
+		Data:    dataMap,
 	})
 }
 
