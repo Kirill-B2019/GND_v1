@@ -1911,7 +1911,7 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 		if blockIDNull.Valid {
 			blockID = int(blockIDNull.Int64)
 		}
-		list = append(list, gin.H{
+		item := gin.H{
 			"id":        id,
 			"block_id":  blockID,
 			"hash":      hash,
@@ -1923,7 +1923,14 @@ func (s *Server) GetTransactionsFromDB(c *gin.Context) {
 			"type":      txType,
 			"status":    status,
 			"timestamp": ts.Format(time.RFC3339),
-		})
+		}
+		// block_number — номер в цепи (для сканера: GET /block/:number ищет по index, не по id)
+		if blockID > 0 {
+			if blockNum, err := core.GetBlockIndexByID(ctx, pool, int64(blockID)); err == nil {
+				item["block_number"] = blockNum
+			}
+		}
+		list = append(list, item)
 	}
 	c.JSON(http.StatusOK, APIResponse{Success: true, Data: gin.H{"list": list, "total": total}})
 }
