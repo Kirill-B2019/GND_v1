@@ -1029,9 +1029,14 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	)
 	contract.Creator = params.From
 	contract.Name = params.Name
-	contract.Symbol = params.Standard
+	if params.Symbol != "" {
+		contract.Symbol = params.Symbol
+	} else {
+		contract.Symbol = params.Standard
+	}
 	contract.Standard = params.Standard
 	contract.Description = params.Description
+	contract.License = params.License
 	contract.MetadataCID = params.MetadataCID
 	if params.Owner != "" {
 		contract.Owner = params.Owner

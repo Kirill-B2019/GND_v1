@@ -706,10 +706,12 @@ func (s *Server) DeployContract(c *gin.Context) {
 		Bytecode    string                 `json:"bytecode"`
 		ABI         json.RawMessage        `json:"abi"`
 		Name        string                 `json:"name"`
+		Symbol      string                 `json:"symbol"`
 		Standard    string                 `json:"standard"`
 		Owner       string                 `json:"owner"`
 		Compiler    string                 `json:"compiler"`
 		Version     string                 `json:"version"`
+		License     string                 `json:"license"`
 		Params      map[string]interface{} `json:"params"`
 		Description string                 `json:"description"`
 		MetadataCID string                 `json:"metadata_cid"`
@@ -734,10 +736,12 @@ func (s *Server) DeployContract(c *gin.Context) {
 		Bytecode:    paramsData.Bytecode,
 		ABI:         paramsData.ABI,
 		Name:        paramsData.Name,
+		Symbol:      paramsData.Symbol,
 		Standard:    paramsData.Standard,
 		Owner:       paramsData.Owner,
 		Compiler:    paramsData.Compiler,
 		Version:     paramsData.Version,
+		License:     paramsData.License,
 		Params:      paramsData.Params,
 		Description: paramsData.Description,
 		MetadataCID: paramsData.MetadataCID,

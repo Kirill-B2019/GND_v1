@@ -14,7 +14,7 @@ contract GNDst1Token is IGNDst1 {
     /// @notice Максимальное/целевое предложение: 1e27 (1 млрд GND с 18 decimals)
     uint256 public constant TOTAL_SUPPLY = 1000000000000000000000000000;
 
-    string public name = "Ganimed";
+    string public name = "GND (Ganimed)";
     string public symbol = "GND";
     uint8 public decimals = 18;
     uint256 private _totalSupply;

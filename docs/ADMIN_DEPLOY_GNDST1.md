@@ -38,12 +38,13 @@
 
 1. Открыть **«Создать контракт»** / **«Деплой»**.
 2. Выбрать контракт: **GNDToken** (GND-st1), файл `02_GNDToken.sol`.
-3. Параметры конструктора (порядок и типы по коду):
+3. **Метаданные:** Name = `GND (Ganimed)`, Symbol = `GND`, Description = `Контракт GND (Ganimed) по стандарту GND-st1`, License = `CORP`, Metadata = `{"author":"KB - Nexus Team","version":"1.0"}`.
+4. Параметры конструктора (порядок и типы по коду):
    - **initialSupply** (uint256): `1000000000000000000000000000` (1e27).
    - **bridgeAddress** (address): `0x0000000000000000000000000000000000000000` (или адрес моста, если есть). При bridge=0 вызов crossChainTransfer на GND будет ревертиться с "Bridge not set" до установки моста.
    - **controllerContract** (address): **ADDR_CONTROLLER** из шага 2.
-4. Указать кошелёк для газа, отправить транзакцию деплоя.
-5. Сохранить адрес контракта GND — **ADDR_GND**.
+5. Указать кошелёк для газа, отправить транзакцию деплоя.
+6. Сохранить адрес контракта GND — **ADDR_GND**.
 
 ---
 
@@ -51,7 +52,8 @@
 
 1. Открыть **«Создать контракт»** / **«Деплой»**.
 2. Выбрать контракт: **GANIToken** (GND-st1), файл `03_GANIToken.sol`.
-3. Параметры конструктора:
+3. **Метаданные:** Name = `GANI (Ganimed Governance)`, Symbol = `GANI`, Description = `Контракт GANI (Ganimed Governance) по стандарту GND-st1`, License = `CORP`, Metadata = `{"author":"KB - Nexus Team","version":"1.0"}`.
+4. Параметры конструктора:
    - **controllerContract** (address): **ADDR_CONTROLLER** (тот же, что в шаге 2).
 4. Отправить транзакцию деплоя.
 5. Сохранить адрес контракта GANI — **ADDR_GANI**.
@@ -139,9 +141,9 @@
 |-----|----------|----------|-------------------------|
 | 1 | Деплой | NativeTokensController | **owner_** = gndself_address из config |
 | 2 | Сохранить адрес | — | ADDR_CONTROLLER |
-| 3 | Деплой | GNDToken (GND-st1) | initialSupply=1e27, bridge=0…0, controller=ADDR_CONTROLLER |
+| 3 | Деплой | GNDToken (GND-st1) | Name: GND (Ganimed), Desc: Контракт GND (Ganimed) по стандарту GND-st1, License: CORP; initialSupply=1e27, bridge=0…0, controller=ADDR_CONTROLLER |
 | 4 | Сохранить адрес | — | ADDR_GND |
-| 5 | Деплой | GANIToken (GND-st1) | controller=ADDR_CONTROLLER |
+| 5 | Деплой | GANIToken (GND-st1) | Name: GANI (Ganimed Governance), Desc: Контракт GANI (Ganimed Governance) по стандарту GND-st1, License: CORP; controller=ADDR_CONTROLLER |
 | 6 | Сохранить адрес | — | ADDR_GANI |
 | 7 | Вызовы на контроллере (от gndself) | setGndToken(ADDR_GND), setGaniToken(ADDR_GANI) — один раз | — |
 | 8 | Конфиг ноды | native_contracts.json | gnd_contract_address, gani_contract_address |

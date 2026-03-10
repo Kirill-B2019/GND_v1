@@ -51,12 +51,14 @@ type Contract struct {
 type ContractParams struct {
 	From        string                 `json:"from"`
 	Bytecode    string                 `json:"bytecode"`
-	ABI         json.RawMessage       `json:"abi"` // ABI контракта (JSON-массив) — сохраняется в contracts.abi для GetContractView
+	ABI         json.RawMessage        `json:"abi"` // ABI контракта (JSON-массив) — сохраняется в contracts.abi для GetContractView
 	Name        string                 `json:"name"`
+	Symbol      string                 `json:"symbol"` // Символ токена (GND, GANI и т.д.)
 	Standard    string                 `json:"standard"`
 	Owner       string                 `json:"owner"`
 	Compiler    string                 `json:"compiler"`
 	Version     string                 `json:"version"`
+	License     string                 `json:"license"` // Тип лицензии (CORP, MIT и т.д.)
 	Params      map[string]interface{} `json:"params"`
 	Description string                 `json:"description"`
 	MetadataCID string                 `json:"metadata_cid"`

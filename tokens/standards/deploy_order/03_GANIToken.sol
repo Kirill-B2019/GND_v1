@@ -13,7 +13,7 @@ contract GANIToken is IGNDst1 {
     /// @notice Первая циркулирующая эмиссия: 20M при 6 decimals (выпускается в конструкторе на контроллер)
     uint256 public constant FIRST_EMISSION = 20_000_000 * 10**6;
 
-    string public name = "Ganimed Governance";
+    string public name = "GANI (Ganimed Governance)";
     string public symbol = "GANI";
     uint8 public decimals = 6;
 
