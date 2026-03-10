@@ -32,14 +32,11 @@ func (a *evmAdapter) CallContract(
 	gasPrice, value *big.Int,
 	signature []byte,
 ) ([]byte, error) {
-	gp, val := uint64(0), uint64(0)
-	if gasPrice != nil {
-		gp = gasPrice.Uint64()
-	}
+	val := uint64(0)
 	if value != nil {
 		val = value.Uint64()
 	}
-	res, err := a.evm.CallContract(string(from), string(to), data, gasLimit, gp, val)
+	res, err := a.evm.CallContractStatic(string(from), string(to), data, gasLimit, val)
 	if err != nil {
 		return nil, err
 	}

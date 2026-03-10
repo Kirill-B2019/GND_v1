@@ -146,7 +146,7 @@ func CallContractHandler(evm *vm.EVM) func(http.ResponseWriter, *http.Request) {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
-		result, err := evm.CallContract(params.From, params.To, params.Data, params.GasLimit, params.GasPrice, params.Value)
+		result, err := evm.CallContractStatic(params.From, params.To, params.Data, params.GasLimit, params.Value)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

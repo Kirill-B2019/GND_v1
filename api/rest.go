@@ -901,7 +901,7 @@ func (s *Server) ContractCall(c *gin.Context) {
 		from = "0x0000000000000000000000000000000000000000"
 	}
 	gasLimit := uint64(300000)
-	result, err := s.evm.CallContract(from, address, data, gasLimit, 0, 0)
+	result, err := s.evm.CallContractStatic(from, address, data, gasLimit, 0)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Вызов контракта: " + err.Error(), Code: http.StatusBadRequest})
 		return
@@ -1711,11 +1711,15 @@ func (s *Server) GetAccountStateCurrent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, APIResponse{Success: false, Error: "Укажите address", Code: http.StatusBadRequest})
 		return
 	}
-	if s.db == nil {
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool == nil {
 		c.JSON(http.StatusServiceUnavailable, APIResponse{Success: false, Error: "БД недоступна", Code: http.StatusServiceUnavailable})
 		return
 	}
-	st, err := core.GetCurrentAccountState(c.Request.Context(), s.db, address)
+	st, err := core.GetCurrentAccountState(c.Request.Context(), pool, address)
 	if err != nil {
 		c.JSON(http.StatusNotFound, APIResponse{Success: false, Error: err.Error(), Code: http.StatusNotFound})
 		return

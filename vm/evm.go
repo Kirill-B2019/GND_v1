@@ -174,7 +174,8 @@ func (e *EVM) DeployContract(
 	return addr, nil
 }
 
-// CallContract выполняет функцию контракта
+// CallContract выполняет функцию контракта (создаёт транзакцию и добавляет в mempool).
+// Используется для state-changing вызовов (transfer, approve и т.д.).
 func (e *EVM) CallContract(from string, to string, data []byte, gasLimit uint64, gasPrice uint64, value uint64) (*types.ExecutionResult, error) {
 	// Создаем транзакцию
 	tx := &core.Transaction{
@@ -188,6 +189,20 @@ func (e *EVM) CallContract(from string, to string, data []byte, gasLimit uint64,
 
 	// Выполняем транзакцию
 	return e.ExecuteTransaction(tx)
+}
+
+// CallContractStatic выполняет read-only вызов контракта (view/constant) без добавления в mempool.
+// Используется для balanceOf, totalSupply и т.п. — не создаёт транзакцию и не меняет nonce.
+func (e *EVM) CallContractStatic(from string, to string, data []byte, gasLimit uint64, value uint64) (*types.ExecutionResult, error) {
+	tx := &core.Transaction{
+		Sender:    types.Address(from),
+		Recipient: types.Address(to),
+		Data:      data,
+		GasLimit:  gasLimit,
+		GasPrice:  big.NewInt(0),
+		Value:     big.NewInt(int64(value)),
+	}
+	return e.config.State.CallStatic(tx)
 }
 
 // GetBalance возвращает баланс GND для адреса

@@ -934,6 +934,8 @@ var slotZeroKey = make([]byte, 32)
 var viewSelectorToSlot = map[string]uint64{
 	// owner() = 0x8da5cb5b — слот 1 (если контракт хранит owner в storage)
 	"\x8d\xa5\xcb\x5b": 1,
+	// totalSupply() = 0x18160ddd — слот 0 (_totalSupply в ERC-20)
+	"\x18\x16\x0d\xdd": 0,
 }
 
 // slotKeyFromIndex формирует 32-байтный ключ слота по индексу (Solidity: слот N = right-aligned big-endian).

@@ -32,3 +32,5 @@ test_output.txt
 /db/
 /.lingma/rules/CommitMessange.md
 /tokens/standards/deploy_order/README.md
+/scripts/check_contract_28.go
+/scripts/check_db.go

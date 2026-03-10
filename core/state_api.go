@@ -116,6 +116,8 @@ func GetContractStorageLatest(ctx context.Context, pool *pgxpool.Pool, address s
 }
 
 // GetCurrentAccountState возвращает текущее состояние аккаунта из таблицы accounts.
+// Для контрактов, которых ещё нет в accounts (только что задеплоены через POST /contract),
+// возвращает состояние по умолчанию (nonce=0, balance=0) вместо 404.
 func GetCurrentAccountState(ctx context.Context, pool *pgxpool.Pool, address string) (*AccountStateAtBlock, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("pool is nil")
@@ -128,15 +130,25 @@ func GetCurrentAccountState(ctx context.Context, pool *pgxpool.Pool, address str
 		WHERE address = $1`,
 		address,
 	).Scan(&nonce, &balanceGnd)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return &AccountStateAtBlock{
+			BlockID:    0,
+			Address:    address,
+			Nonce:      uint64(nonce),
+			BalanceGND: balanceGnd,
+		}, nil
 	}
-	return &AccountStateAtBlock{
-		BlockID:    0,
-		Address:    address,
-		Nonce:      uint64(nonce),
-		BalanceGND: balanceGnd,
-	}, nil
+	// Не найден в accounts — для контракта возвращаем состояние по умолчанию (избегаем 404)
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM contracts WHERE address = $1)`, address).Scan(&exists); err == nil && exists {
+		return &AccountStateAtBlock{
+			BlockID:    0,
+			Address:    address,
+			Nonce:      0,
+			BalanceGND: "0",
+		}, nil
+	}
+	return nil, err
 }
 
 // WriteContractStorageSlot записывает один слот storage контракта для указанного блока (админ/импорт).
