@@ -21,6 +21,8 @@ contract NativeTokensController {
     event GndTokenSet(address indexed token);
     event GaniTokenSet(address indexed token);
     event GANIMinted(address indexed to, uint256 amount);
+    event GndTransferred(address indexed to, uint256 amount);
+    event GndBatchTransferred(uint256 count);
     event KycGndSet(address indexed user, bool status);
     event KycGaniSet(address indexed user, bool status);
 
@@ -69,6 +71,30 @@ contract NativeTokensController {
         (bool ok, ) = ganiToken.call(abi.encodeWithSelector(0x40c10f19, to, amount));
         require(ok, "GANI mint failed");
         emit GANIMinted(to, amount);
+    }
+
+    /// @notice Перевести GND с контроллера на адрес to (только владелец). Перед первым вызовом — setKycGnd(address(this), true).
+    /// @custom:security onlyOwner — вызов разрешён только владельцу контракта.
+    function transferGnd(address to, uint256 amount) external onlyOwner {
+        if (gndToken == address(0)) revert GndTokenNotSet();
+        require(to != address(0), "Zero address");
+        (bool ok, ) = gndToken.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
+        require(ok, "GND transfer failed");
+        emit GndTransferred(to, amount);
+    }
+
+    /// @notice Пакетное распределение GND по адресам (только владелец). Перед первым вызовом — setKycGnd(address(this), true).
+    /// @custom:security onlyOwner — вызов разрешён только владельцу контракта.
+    function transferGndBatch(address[] calldata recipients, uint256[] calldata amounts) external onlyOwner {
+        if (gndToken == address(0)) revert GndTokenNotSet();
+        require(recipients.length == amounts.length, "Length mismatch");
+        for (uint256 i = 0; i < recipients.length; i++) {
+            if (recipients[i] != address(0) && amounts[i] > 0) {
+                (bool ok, ) = gndToken.call(abi.encodeWithSignature("transfer(address,uint256)", recipients[i], amounts[i]));
+                require(ok, "GND transfer failed");
+            }
+        }
+        emit GndBatchTransferred(recipients.length);
     }
 
     /// @notice Включить/выключить KYC для адреса user на токене GND (только владелец).

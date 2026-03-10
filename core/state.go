@@ -211,13 +211,14 @@ type ContractStorageChange struct {
 // State представляет состояние блокчейна. Состояния хранятся в памяти и кэшируются,
 // при сохранении пишутся в accounts, account_states и contract_storage.
 type State struct {
-	balances         map[types.Address]map[string]*big.Int
-	nonces           map[types.Address]uint64
-	pool             *pgxpool.Pool
-	mutex            sync.RWMutex
-	gndContractAddr  string // если задан — GND берётся из token_balances по token_id
-	ganiContractAddr string
-	gndselfAddress   string // системный владелец; при owner == gndself комиссии не взимаются
+	balances            map[types.Address]map[string]*big.Int
+	nonces              map[types.Address]uint64
+	pool                *pgxpool.Pool
+	mutex               sync.RWMutex
+	gndContractAddr     string // если задан — GND берётся из token_balances по token_id
+	ganiContractAddr    string
+	gndselfAddress      string // системный владелец; при owner == gndself комиссии не взимаются
+	feeCollectorAddress string // адрес сборщика комиссий; газ зачисляется на него при списании с отправителя
 	// Для записи снимков по блоку и слотов контрактов
 	touchedInBlock map[types.Address]struct{}
 	storageChanges []ContractStorageChange
@@ -254,6 +255,13 @@ func (s *State) SetGndselfAddress(addr string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.gndselfAddress = strings.TrimSpace(addr)
+}
+
+// SetFeeCollectorAddress задаёт адрес сборщика комиссий; газ при списании с отправителя зачисляется на этот адрес (из config/native_contracts.json).
+func (s *State) SetFeeCollectorAddress(addr string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.feeCollectorAddress = strings.TrimSpace(addr)
 }
 
 // WillSkipGasForTx возвращает true, если для данной транзакции газ не будет списан (вызов контракта, владелец которого = gndself).
@@ -773,10 +781,13 @@ func (s *State) LoadFromDB(ctx context.Context) error {
 }
 
 // ApplyExecutionResult применяет результат выполнения контракта. Газ списывается в GND, кроме случая системного владельца контракта.
+// Если задан fee_collector_address, списанный газ зачисляется на него.
 func (s *State) ApplyExecutionResult(tx *Transaction, result *types.ExecutionResult) error {
 	var skipGas bool
+	var feeCollector string
 	s.mutex.RLock()
 	gndself, pool := s.gndselfAddress, s.pool
+	feeCollector = s.feeCollectorAddress
 	s.mutex.RUnlock()
 	if gndself != "" && pool != nil && tx.Recipient != "" {
 		var owner string
@@ -790,6 +801,13 @@ func (s *State) ApplyExecutionResult(tx *Transaction, result *types.ExecutionRes
 		if err := s.SubBalance(types.Address(tx.Sender), GasSymbol, gasUsed); err != nil {
 			return err
 		}
+		if feeCollector != "" {
+			if err := s.AddBalance(types.Address(feeCollector), GasSymbol, gasUsed); err != nil {
+				s.AddBalance(types.Address(tx.Sender), GasSymbol, gasUsed)
+				return err
+			}
+			s.MarkTouched(types.Address(feeCollector))
+		}
 	}
 
 	for _, change := range result.StateChanges {
@@ -798,6 +816,9 @@ func (s *State) ApplyExecutionResult(tx *Transaction, result *types.ExecutionRes
 			if err := s.AddBalance(types.Address(change.Address), change.Symbol, change.Amount); err != nil {
 				if !skipGas && gasUsed.Sign() > 0 {
 					s.AddBalance(types.Address(tx.Sender), GasSymbol, gasUsed)
+					if feeCollector != "" {
+						s.SubBalance(types.Address(feeCollector), GasSymbol, gasUsed)
+					}
 				}
 				return err
 			}

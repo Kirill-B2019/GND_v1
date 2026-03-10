@@ -63,6 +63,9 @@ func LoadBlockchainFromDB(pool *pgxpool.Pool, configOptional ...*Config) (*Block
 		if nc.GndselfAddress != "" {
 			state.SetGndselfAddress(nc.GndselfAddress)
 		}
+		if nc.FeeCollectorAddress != "" {
+			state.SetFeeCollectorAddress(nc.FeeCollectorAddress)
+		}
 	}
 	if err := state.LoadFromDB(ctx); err != nil {
 		return nil, fmt.Errorf("failed to load state from DB: %w", err)

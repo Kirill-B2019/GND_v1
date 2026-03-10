@@ -79,7 +79,7 @@
    - **gnd_contract_address**: ADDR_GND
    - **gani_contract_address**: ADDR_GANI
    - **gndself_address** — не менять (адрес владельца контроллера, задаётся при деплое контроллера)
-   - при необходимости **fee_collector_address**
+   - **fee_collector_address** — адрес, на который зачисляется газ при списании с отправителя (если задан)
 3. Пример:
 
 ```json
@@ -115,11 +115,23 @@
 
 ---
 
+## Шаг 8а. Распределение GND с контроллера по кошелькам
+
+Чтобы переводить GND с контроллера на другие адреса (системный кошелёк, казначейство, инвесторов и т.д.):
+
+1. **Включить KYC для контроллера** (один раз): вызвать **setKycGnd(ADDR_CONTROLLER, true)** от owner. Без этого вызовы transferGnd/transferGndBatch будут ревертиться.
+2. **Одиночный перевод:** вызвать **transferGnd(to, amount)** — to = адрес получателя (EOA или контракт), amount = сумма в wei (18 decimals).
+3. **Пакетное распределение:** вызвать **transferGndBatch(recipients, amounts)** — массивы адресов и сумм одинаковой длины. Адреса с amount=0 пропускаются.
+
+Все вызовы — от owner (gndself_address). GND списывается с баланса контроллера.
+
+---
+
 ## Шаг 9. Проверка работы
 
 1. **Балансы:** Запросить балансы кошелька контроллера по ADDR_GND и ADDR_GANI — должны быть: GND = 1e27 (initialSupply), GANI = 20M (первая эмиссия FIRST_EMISSION; всего лимит 100M).
 2. **Эмиссия GANI:** На контроллере вызвать **mintGANI(to, amount)** (to — тестовый адрес). Проверить рост баланса GANI у `to`.
-3. **Перевод GND:** Для кошелька с KYC вызвать на контракте GND **transfer(to, amount)**. Проверить изменение балансов. Перевод на адрес `0x0` запрещён (revert).
+3. **Перевод GND:** Для кошелька с KYC вызвать на контракте GND **transfer(to, amount)**. Либо с контроллера — **transferGnd(to, amount)** / **transferGndBatch** (после setKycGnd(ADDR_CONTROLLER, true)). Проверить изменение балансов. Перевод на адрес `0x0` запрещён (revert).
 4. **Дивиденды (опционально):** На GND от controller вызвать snapshot(), затем setSnapshotBalance(snapshotId, user, amount) и setDividendsPerShare(snapshotId, amount). От имени user вызвать claimDividends(snapshotId) и проверить перевод с controller на user.
 
 ---
@@ -149,3 +161,4 @@
 | 8 | Конфиг ноды | native_contracts.json | gnd_contract_address, gani_contract_address |
 | 9 | БД/админка | contracts + tokens | standard = GND-st1 |
 | 10 | По необходимости | setKycGnd(user, true), setKycGani(user, true) | от owner |
+| 11 | Распределение GND | setKycGnd(ADDR_CONTROLLER, true), затем transferGnd(to, amount) или transferGndBatch(recipients, amounts) | от owner |

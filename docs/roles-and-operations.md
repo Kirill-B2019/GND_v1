@@ -34,7 +34,7 @@
 | Операция            | Кто инициирует | Где выполняется | Защита / Условие |
 |---------------------|----------------|-----------------|------------------|
 | Перевод GND/GANI     | Пользователь/админка | Нода (ApplyTransaction, processTransfer) | Подпись, проверка баланса и nonce, symbol ∈ {GND, GANI} |
-| Списание газа       | Нода (при вызове контракта) | Нода (ApplyExecutionResult) | Только в GND |
+| Списание газа       | Нода (при вызове контракта) | Нода (ApplyExecutionResult) | Только в GND; при заданном fee_collector_address — зачисление на него |
 | Начисление при первом запуске | Нода (InitFirstRun) | Нода + запись в native_balances | Один раз при инициализации генезиса |
 | Чтение баланса      | Админка/клиент | Нода (GET /wallet/:address/balance) | Данные из state (native_balances + token_balances) |
 
@@ -46,6 +46,7 @@
 - **Валидация транзакций:** проверка символа (только GND/GANI), суммы, достаточности баланса отправителя и (для газа) баланса GND; проверка nonce и подписи.
 - **Сохранность при перезагрузке:** нативные балансы хранятся в PostgreSQL (`native_balances`); текущее состояние аккаунтов — в `accounts` (nonce, balance_gnd); снимки по блоку — в `account_states`; слоты storage контрактов — в `contract_storage`. Состояния хранятся в памяти и кэшируются. После применения каждого блока вызывается `State.SaveToDB(blockID)`: запись в `native_balances`, `accounts`, а при blockID > 0 — также в `account_states` и `contract_storage`. При старте ноды `LoadFromDB` загружает состояние из `native_balances`, `token_balances` и `accounts`.
 - **Системный владелец контракта:** если в конфиге задан `gndself_address` и владелец контракта (`contracts.owner`) совпадает с ним, комиссия за газ при вызове контракта не взимается (см. config/native_contracts.json).
+- **Сборщик комиссий:** если задан `fee_collector_address` в config/native_contracts.json, списанный с отправителя газ (GND) зачисляется на этот адрес в ApplyExecutionResult.
 - **Рекомендации:** резервное копирование БД; мониторинг ошибок записи при `SaveToDB`; не логировать и не возвращать в API приватные ключи.
 
 ---

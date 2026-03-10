@@ -9,7 +9,8 @@
 - **INVARIANT:** `owner == constructor(owner_)` и `owner != address(0)`; `owner` immutable, не меняется.
 - **INVARIANT:** `setGndToken` вызывается не более одного раза: до вызова `gndToken == address(0)`, после — запись запрещена (TokenAlreadySet).
 - **INVARIANT:** Аналогично для `setGaniToken` и `ganiToken`.
-- **INVARIANT:** Единственные функции, меняющие состояние: `setGndToken`, `setGaniToken`, `mintGANI`, `setKycGnd`, `setKycGani`; все защищены `onlyOwner`.
+- **INVARIANT:** Единственные функции, меняющие состояние: `setGndToken`, `setGaniToken`, `mintGANI`, `transferGnd`, `transferGndBatch`, `setKycGnd`, `setKycGani`; все защищены `onlyOwner`.
+- **INVARIANT:** `transferGnd` и `transferGndBatch` вызывают `gndToken.transfer(to, amount)`; для успешного вызова контроллер должен быть в KYC (`setKycGnd(address(controller), true)`).
 - **REENTRANCY:** Нет пользовательских callback'ов; только низкоуровневые `call` в известные адреса токенов (gndToken, ganiToken). После вызова — только emit; опасного reentrancy нет.
 
 ---

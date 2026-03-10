@@ -13,6 +13,8 @@
 | `setGndToken(address)` | Установить адрес контракта GND (один раз) | owner (gndself_address) | После деплоя GNDToken; повторный вызов запрещён |
 | `setGaniToken(address)` | Установить адрес контракта GANI (один раз) | owner | После деплоя GANIToken; повторный вызов запрещён |
 | `mintGANI(to, amount)` | Выпустить GANI на адрес | owner | Доп. эмиссии в рамках лимита 100M; процедура и лимиты — внутренний регламент |
+| `transferGnd(to, amount)` | Перевести GND с контроллера на адрес | owner | Распределение эмиссии; перед первым вызовом — `setKycGnd(ADDR_CONTROLLER, true)` |
+| `transferGndBatch(recipients, amounts)` | Пакетное распределение GND | owner | Массовое распределение по кошелькам/контрактам; предварительно KYC контроллера |
 | `setKycGnd(user, status)` | Включить/выключить KYC для user на GND | owner | По результатам off-chain KYC-процедуры |
 | `setKycGani(user, status)` | Включить/выключить KYC для user на GANI | owner | Аналогично |
 
@@ -29,7 +31,15 @@
 
 ---
 
-## 2. Ротация ключей owner
+## 2. Зачисление газа на fee_collector_address
+
+- **Конфиг:** `config/native_contracts.json` — поле `fee_collector_address`. Если задано, нода при списании газа с отправителя транзакции зачисляет его (в GND) на этот адрес.
+- **Условие:** зачисление происходит только при фактическом списании газа (не при skipGas для контрактов с owner = gndself).
+- **Получатель:** EOA или контракт; для переводов GND с fee_collector нужен KYC (`setKycGnd(fee_collector_address, true)`).
+
+---
+
+## 3. Ротация ключей owner
 
 - **owner** контроллера задаётся при деплое из `config/native_contracts.json` (поле `gndself_address`) и в текущей реализации **не меняется** (immutable).
 - **Ротация ключей EOA:** Если gndself_address — это адрес кошелька с одним приватным ключом, процедура ротации должна включать: генерацию нового ключа, сохранение нового адреса в конфиге для **следующих деплоев**, и при необходимости миграцию на новый контроллер (текущий контракт не поддерживает смену owner).
@@ -44,7 +54,7 @@
 
 ---
 
-## 4. Связанные документы
+## 5. Связанные документы
 
 - Инварианты контрактов: `tokens/standards/deploy_order/INVARIANTS.md`
 - KYC и регуляторика: `docs/COMPLIANCE_KYC_RWA.md`
