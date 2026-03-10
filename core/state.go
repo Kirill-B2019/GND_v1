@@ -1016,11 +1016,12 @@ func (s *State) CallStatic(tx *Transaction) (*types.ExecutionResult, error) {
 			}
 		}
 	}
-	// Заглушка: нет БД или слот не найден
-	balance := s.GetBalance(tx.Recipient, "GND")
+	// Заглушка: слот не найден — возвращаем ABI-encoded uint256(0) вместо текста "balance: 0",
+	// чтобы фронт получал валидный hex и мог декодировать как 0 (для totalSupply и т.п.).
+	zeroUint256 := make([]byte, 32)
 	return &types.ExecutionResult{
 		GasUsed:    0,
-		ReturnData: []byte(fmt.Sprintf("balance: %s", balance.String())),
+		ReturnData: zeroUint256,
 		Error:      nil,
 	}, nil
 }

@@ -223,6 +223,8 @@ Response:
 }
 ```
 
+**GET /api/v1/transaction/:hash** — возвращает данные транзакции в `data`. Поля: `id`, `sender`, `recipient`, `value`, `data`, `nonce`, `gas_limit`, `gas_price`, `signature`, `hash`, `fee`, `type`, `status`, `timestamp`, `block_id` (внутренний ID блока в БД), **`block_number`** (номер блока в цепи, `blocks.index`; для сканера/explorer использовать именно `block_number` при отображении и ссылке на блок).
+
 ### Блоки
 
 Эндпоинты **GET /api/v1/block/latest** и **GET /api/v1/block/:number** возвращают блок в `data`. В блоке присутствуют поля: `id`, `hash`, `prev_hash`, `merkle_root` (корень Меркла от хешей транзакций; может быть пустой для старых блоков), `state_root` (корень состояния после блока; может быть пустым), `height`/`index`, `timestamp`, `tx_count`, `miner`, `consensus`, `status`, `is_finalized`, массив **transactions** (транзакции блока загружаются из БД; при отсутствии — `[]`). Поля `merkle_root` и `state_root` в БД допускают NULL — в ответе приходят как строка (в т.ч. пустая).

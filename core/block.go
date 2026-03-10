@@ -550,6 +550,20 @@ func GetBlockByHash(pool *pgxpool.Pool, hash string) (*Block, error) {
 	return &block, nil
 }
 
+// GetBlockIndexByID возвращает номер блока в цепи (blocks.index) по внутреннему id.
+// Используется в API транзакции, чтобы сканер показывал block number (номер в цепи), а не block_id.
+func GetBlockIndexByID(ctx context.Context, pool *pgxpool.Pool, blockID int64) (uint64, error) {
+	if pool == nil || blockID <= 0 {
+		return 0, nil
+	}
+	var index uint64
+	err := pool.QueryRow(ctx, `SELECT index FROM blocks WHERE id = $1`, blockID).Scan(&index)
+	if err != nil {
+		return 0, err
+	}
+	return index, nil
+}
+
 // GetBlocks returns a list of blocks with pagination
 func GetBlocks(pool *pgxpool.Pool, limit, offset int) ([]*Block, error) {
 	rows, err := pool.Query(context.Background(),

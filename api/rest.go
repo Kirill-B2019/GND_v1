@@ -559,7 +559,7 @@ func transactionResponse(tx *core.Transaction) gin.H {
 	if tx.GasPrice != nil {
 		gasPrice = tx.GasPrice.Int64()
 	}
-	return gin.H{
+	data := gin.H{
 		"id": tx.ID, "sender": tx.Sender.String(), "recipient": tx.Recipient.String(),
 		"value": value, "data": dataHex, "nonce": tx.Nonce,
 		"gas_limit": tx.GasLimit, "gas_price": gasPrice,
@@ -568,6 +568,22 @@ func transactionResponse(tx *core.Transaction) gin.H {
 		"block_id": tx.BlockID, "contract_id": contractID, "payload": payloadHex,
 		"symbol": tx.Symbol, "is_verified": tx.IsVerified,
 	}
+	return data
+}
+
+// transactionResponseWithBlockNumber возвращает ответ по транзакции и добавляет block_number (номер в цепи) по block_id для сканера.
+func (s *Server) transactionResponseWithBlockNumber(c *gin.Context, tx *core.Transaction) gin.H {
+	data := transactionResponse(tx)
+	pool := s.db
+	if s.core != nil && s.core.Pool != nil {
+		pool = s.core.Pool
+	}
+	if pool != nil && tx != nil && tx.BlockID > 0 {
+		if blockNum, err := core.GetBlockIndexByID(c.Request.Context(), pool, int64(tx.BlockID)); err == nil {
+			data["block_number"] = blockNum
+		}
+	}
+	return data
 }
 
 // GetTransaction возвращает информацию о транзакции (сначала в памяти/мемпуле, затем в gnd_db.transactions).
@@ -587,7 +603,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 		if pool != nil {
 			tx, err = core.LoadTransactionByHash(c.Request.Context(), pool, hash)
 			if err == nil && tx != nil {
-				c.JSON(http.StatusOK, APIResponse{Success: true, Data: transactionResponse(tx)})
+				c.JSON(http.StatusOK, APIResponse{Success: true, Data: s.transactionResponseWithBlockNumber(c, tx)})
 				return
 			}
 		}
@@ -604,7 +620,7 @@ func (s *Server) GetTransaction(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, APIResponse{
 		Success: true,
-		Data:    transactionResponse(tx),
+		Data:    s.transactionResponseWithBlockNumber(c, tx),
 	})
 }
 
