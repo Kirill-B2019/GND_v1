@@ -403,8 +403,9 @@ func (bc *Blockchain) applyBlock(block *Block) {
 			result := buildContractCallExecutionResult(tx)
 			if result != nil {
 				if st, ok := bc.State.(*State); ok {
-					if int64(tx.Nonce) != bc.State.GetNonce(types.Address(tx.Sender)) {
-						fmt.Printf("Транзакция %s: неверный nonce, пропущена\n", tx.Hash)
+					expected := bc.State.GetNonce(types.Address(tx.Sender))
+					if int64(tx.Nonce) != expected {
+						fmt.Printf("Транзакция %s: неверный nonce (expected %d, got %d), пропущена\n", tx.Hash, expected, tx.Nonce)
 						continue
 					}
 					symbol := "GND"
@@ -430,7 +431,8 @@ func (bc *Blockchain) applyBlock(block *Block) {
 			}
 		}
 		if err := bc.State.ApplyTransaction(tx); err != nil {
-			fmt.Printf("Транзакция %s не прошла, пропущена: %v\n", tx.Hash, err)
+			exp := bc.State.GetNonce(types.Address(tx.Sender))
+			fmt.Printf("Транзакция %s не прошла, пропущена: %v (sender nonce в tx: %d, expected: %d)\n", tx.Hash, err, tx.Nonce, exp)
 		}
 	}
 }
@@ -513,7 +515,17 @@ func (bc *Blockchain) ProduceNextBlock(mempool *Mempool, miner string, maxTxs in
 	block.Status = "finalized"
 	block.IsFinalized = true
 
-	txs := mempool.TakePending(maxTxs)
+	rawTxs := mempool.TakePending(maxTxs)
+	// Фильтруем транзакции с неверным nonce — не включаем в блок, чтобы не спамить "invalid nonce" при каждом applyBlock
+	var txs []*Transaction
+	for _, tx := range rawTxs {
+		expected := bc.State.GetNonce(types.Address(tx.Sender))
+		if int64(tx.Nonce) != expected {
+			fmt.Printf("[Mempool] Транзакция %s не включена в блок: invalid nonce (expected %d, got %d)\n", tx.Hash, expected, tx.Nonce)
+			continue
+		}
+		txs = append(txs, tx)
+	}
 	block.Transactions = txs
 	block.TxCount = uint32(len(txs))
 	block.MerkleRoot = ComputeMerkleRoot(txs)

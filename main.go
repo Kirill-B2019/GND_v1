@@ -171,13 +171,23 @@ func main() {
 	// 10. Мемпул и привязка к блокчейну (API добавляет в bc.Mempool, блок-продюсер забирает из того же мемпула)
 	mempool := core.NewMempool()
 	blockchain.Mempool = mempool
-	// Загружаем ожидающие транзакции из БД в мемпул, чтобы после перезапуска они попали в следующий блок
+	// Загружаем ожидающие транзакции из БД в мемпул, чтобы после перезапуска они попали в следующий блок.
+	// Проверяем nonce — если состояние изменилось (другая tx от того же отправителя уже применена), не добавляем.
 	if pool != nil {
 		if pending, err := core.LoadPendingTransactionsFromDB(ctx, pool); err == nil && len(pending) > 0 {
+			added := 0
 			for _, tx := range pending {
+				expected := blockchain.State.GetNonce(types.Address(tx.Sender))
+				if int64(tx.Nonce) != expected {
+					fmt.Printf("[Mempool] Транзакция %s пропущена при загрузке: неверный nonce (ожидается %d, в tx %d)\n", tx.Hash, expected, tx.Nonce)
+					continue
+				}
 				_ = mempool.Add(tx)
+				added++
 			}
-			fmt.Printf("Загружено %d ожидающих транзакций из БД в мемпул\n", len(pending))
+			if added > 0 {
+				fmt.Printf("Загружено %d ожидающих транзакций из БД в мемпул\n", added)
+			}
 		}
 	}
 
