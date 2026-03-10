@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -173,4 +174,44 @@ func WriteContractStorageSlot(ctx context.Context, pool *pgxpool.Pool, blockID i
 		blockID, address, keyBytes, valueBytes,
 	)
 	return err
+}
+
+// WriteInitialStorageForDeployedContract записывает начальные слоты storage для только что задеплоенного контракта (GNDToken/GANIToken-подобный).
+// Параметр initialSupply из params пишется в слот 0 (_totalSupply), чтобы totalSupply() при чтении через CallStatic возвращал верное значение.
+func WriteInitialStorageForDeployedContract(ctx context.Context, pool *pgxpool.Pool, blockID int64, contractAddress string, params map[string]interface{}) error {
+	if pool == nil || blockID <= 0 || contractAddress == "" {
+		return nil
+	}
+	var initialSupply *big.Int
+	if v, ok := params["initialSupply"]; ok && v != nil {
+		switch val := v.(type) {
+		case string:
+			initialSupply = new(big.Int)
+			if _, ok := initialSupply.SetString(val, 10); !ok {
+				return nil
+			}
+		case float64:
+			initialSupply = big.NewInt(int64(val))
+		default:
+			return nil
+		}
+	}
+	if initialSupply == nil || initialSupply.Sign() <= 0 {
+		return nil
+	}
+	// Слот 0 = _totalSupply (32 байта, big-endian ABI)
+	slot0Key := "0x" + hex.EncodeToString(make([]byte, 32))
+	slot0Value := "0x" + hex.EncodeToString(abiUint256(initialSupply))
+	return WriteContractStorageSlot(ctx, pool, blockID, contractAddress, slot0Key, slot0Value)
+}
+
+// abiUint256 кодирует *big.Int в 32 байта big-endian (ABI uint256).
+func abiUint256(n *big.Int) []byte {
+	b := n.Bytes()
+	if len(b) > 32 {
+		return b[len(b)-32:]
+	}
+	out := make([]byte, 32)
+	copy(out[32-len(b):], b)
+	return out
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"strconv"
 	"strings"
@@ -1039,6 +1040,21 @@ func (bc *Blockchain) DeployContract(params *ContractParams) (string, error) {
 	// Save contract to database
 	if err := contract.SaveToDB(context.Background(), bc.Pool); err != nil {
 		return "", fmt.Errorf("failed to save contract: %v", err)
+	}
+
+	// Записываем начальный storage (слот 0 = _totalSupply) для корректного чтения totalSupply() через CallStatic
+	ctx := context.Background()
+	blockID := int64(0)
+	if bc.Genesis != nil {
+		blockID = bc.Genesis.ID
+	}
+	if blockID <= 0 && bc.Pool != nil {
+		_ = bc.Pool.QueryRow(ctx, `SELECT id FROM blocks WHERE index = 0 LIMIT 1`).Scan(&blockID)
+	}
+	if blockID > 0 && bc.Pool != nil && len(params.Params) > 0 {
+		if errInit := WriteInitialStorageForDeployedContract(ctx, bc.Pool, blockID, contract.Address, params.Params); errInit != nil {
+			log.Printf("[DeployContract] запись начального storage для %s: %v", contract.Address, errInit)
+		}
 	}
 
 	return contract.Address, nil
