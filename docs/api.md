@@ -160,7 +160,7 @@ Response:
 ```http
 GET /api/v1/token/:address/balance/:owner
 ```
-Возвращает баланс контрактного токена с адресом `address` для владельца `owner`. Для **нативных монет (GND, GANI)** используйте **GET /api/v1/coin/:symbol/balance/:owner** (например `GET /api/v1/coin/GND/balance/GND...`) или общий список **GET /api/v1/wallet/:address/balance**.
+Возвращает баланс контрактного токена с адресом `address` для владельца `owner`. Для **нативных монет (GND, GANI)** используйте **GET /api/v1/coin/:symbol/balance/:owner** (например `GET /api/v1/coin/GND/balance/GND...`) или общий список **GET /api/v1/wallet/:address/balance**. В режиме «всё на контрактах» (`config/native_contracts.json`) этот эндпоинт также работает для адресов контрактов GND и GANI.
 
 ### Состояния аккаунтов и контрактов (для GND_admin и клиентов)
 

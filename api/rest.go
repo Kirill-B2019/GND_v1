@@ -1645,6 +1645,32 @@ func (s *Server) setupRoutes() {
 		tokenAddress := c.Param("address")
 		owner := c.Param("owner")
 
+		// Fallback для нативных контрактов GND/GANI (режим «всё на контрактах»): если токен не в registry, но адрес совпадает с конфигом
+		if s.core != nil && s.core.State != nil && s.cfg != nil && s.cfg.NativeContracts != nil {
+			nc := s.cfg.NativeContracts
+			var symbol string
+			if nc.GndContractAddress != "" && tokenAddress == nc.GndContractAddress {
+				symbol = core.GasSymbol
+			} else if nc.GaniContractAddress != "" && tokenAddress == nc.GaniContractAddress {
+				symbol = "GANI"
+			}
+			if symbol != "" {
+				bal := s.core.State.GetBalance(types.Address(owner), symbol)
+				if bal == nil {
+					bal = big.NewInt(0)
+				}
+				c.JSON(http.StatusOK, APIResponse{
+					Success: true,
+					Data: gin.H{
+						"address": tokenAddress,
+						"owner":   owner,
+						"balance": bal.String(),
+					},
+				})
+				return
+			}
+		}
+
 		token, err := registry.GetToken(tokenAddress)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, APIResponse{
