@@ -69,7 +69,7 @@ func (c *DefaultSolidityCompiler) Compile(source []byte, metadata ContractMetada
 				deployOrderPath = filepath.Join(wd, "tokens", "standards", "deploy_order")
 			}
 		}
-		for _, name := range []string{"IGNDst1.sol", "gndst1Base.sol"} {
+		for _, name := range []string{"IGNDst1.sol", "gndst1Base.sol", "IGNDRWA.sol"} {
 			src := filepath.Join(deployOrderPath, name)
 			data, err := ioutil.ReadFile(src)
 			if err != nil {
