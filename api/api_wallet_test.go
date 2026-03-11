@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 //api/api_wallet_test.go
 
 package api

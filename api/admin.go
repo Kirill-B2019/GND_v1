@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 // api/admin.go — админские маршруты: выдача/отзыв API-ключей, имена и роли кошельков.
 
 package api

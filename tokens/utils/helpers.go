@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 // tokens/utils/helpers.go
 
 package utils

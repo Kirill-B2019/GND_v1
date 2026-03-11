@@ -44,4 +44,4 @@
 3. При развёртывании по миграциям: 001 → 002 → 004–009 → 010 → **011_tokens_logo_url.sql** → **012_native_balances.sql** (таблица нативных балансов GND/GANI).
 4. **Без полного сброса:** после 012 выполнить **013_native_balances_backfill.sql** — перенос текущих балансов GND/GANI из `token_balances` в `native_balances`; затем перезапустить ноду.
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

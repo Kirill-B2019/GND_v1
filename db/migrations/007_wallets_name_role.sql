@@ -1,4 +1,4 @@
--- KB @CerbeRus - Nexus Invest Team
+-- KB @CerberRus00 - Nexus Invest Team
 -- Имена и роли для кошельков (в т.ч. системных: validator, treasury).
 
 ALTER TABLE public.wallets ADD COLUMN IF NOT EXISTS name VARCHAR(255);

@@ -76,4 +76,4 @@
 - [services.md](services.md) — перечень сервисов.
 - [integration/bridges.go](../integration/bridges.go) — интерфейс моста и FederatedBridge.
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

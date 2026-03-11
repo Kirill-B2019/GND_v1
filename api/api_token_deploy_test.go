@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 // api/api_token_deploy_test.go
 
 package api

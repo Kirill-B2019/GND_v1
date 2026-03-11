@@ -1,4 +1,4 @@
--- KB @CerbeRus - Nexus Invest Team
+-- KB @CerberRus00 - Nexus Invest Team
 -- Мягкое удаление кошелька (скрытие из списка, запись остаётся).
 
 ALTER TABLE public.wallets ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT false;

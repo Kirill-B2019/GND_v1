@@ -1,4 +1,4 @@
--- KB @CerbeRus - Nexus Invest Team
+-- KB @CerberRus00 - Nexus Invest Team
 -- Разрешить NULL в wallets.private_key для кошельков, созданных через signing_service.
 -- Добавить ссылку на signer_wallets для подписи сервером.
 

@@ -94,4 +94,4 @@
 
 ---
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

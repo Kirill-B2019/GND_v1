@@ -1,6 +1,6 @@
 -- Нативные монеты GND и GANI: отдельная таблица для L1-балансов.
 -- Изменяются только нодой (транзакции, газ, консенсус). Защита от кражи и сохранность при перезагрузке.
--- | KB @CerbeRus - Nexus Invest Team 2026
+-- | KB @CerberRus00 - Nexus Invest Team 2026
 
 CREATE TABLE IF NOT EXISTS public.native_balances (
     address   VARCHAR(128) NOT NULL,

@@ -1,4 +1,4 @@
--- KB @CerbeRus - Nexus Invest Team
+-- KB @CerberRus00 - Nexus Invest Team
 -- Таблица signer_wallets для кастодиальных ключей (встроенный signing_service).
 -- Применять после db.sql (таблица accounts уже должна существовать).
 

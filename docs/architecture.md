@@ -291,4 +291,4 @@ GANYMED (ГАНИМЕД) — блокчейн-платформа с гибрид
 3. Улучшения UX
 4. Экосистема
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

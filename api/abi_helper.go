@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 // api/abi_helper.go — разбор ABI контракта для разделения view- и write-функций.
 
 package api

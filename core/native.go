@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team 2026
+// | KB @CerberRus00 - Nexus Invest Team 2026
 // core/native.go — нативные монеты L1 (GND, GANI). Список символов и проверки.
 
 package core

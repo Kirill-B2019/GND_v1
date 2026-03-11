@@ -57,4 +57,4 @@
 
 - `signing_service/crypto`: `encrypt_test.go` (LoadMasterKey, Encrypt/Decrypt, ZeroBytes), `secp256k1_test.go` (генерация ключа, подпись).
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

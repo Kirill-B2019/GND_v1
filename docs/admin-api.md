@@ -1,6 +1,6 @@
 # Админское API GND_v1
 
-**KB @CerbeRus - Nexus Invest Team**
+**KB @CerberRus00 - Nexus Invest Team**
 
 Инструкция по настройке и использованию админских маршрутов: выдача и отзыв API-ключей, управление именами и ролями кошельков.
 
@@ -378,4 +378,4 @@ $data = $response->json('data');
 
 Все маршруты требуют заголовок **X-Admin-Token** равный **GND_ADMIN_SECRET**.
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

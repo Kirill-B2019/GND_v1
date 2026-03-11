@@ -1,6 +1,6 @@
 -- Перенос балансов GND и GANI из token_balances в native_balances без полного сброса блокчейна.
 -- Выполнять после 012_native_balances.sql. Идемпотентно: можно запускать повторно.
--- | KB @CerbeRus - Nexus Invest Team 2026
+-- | KB @CerberRus00 - Nexus Invest Team 2026
 
 INSERT INTO public.native_balances (address, symbol, balance, updated_at)
 SELECT

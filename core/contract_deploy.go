@@ -1,4 +1,4 @@
-// | KB @CerbeRus - Nexus Invest Team
+// | KB @CerberRus00 - Nexus Invest Team
 // Пакет core: склейка bytecode с ABI-кодированными аргументами конструктора при деплое.
 
 package core

@@ -90,4 +90,4 @@ go test ./consensus/... ./api/... -run "TestSelectConsensus|TestHealthCheck_Retu
 - [Развертывание](deployment-server.md) — раздел «Перед продом: запуск тестов»
 - [services.md](services.md) — описание сервисов
 
-<div style="text-align: center">| KB @CerbeRus - Nexus Invest Team 2026</div>
+<div style="text-align: center">| KB @CerberRus00 - Nexus Invest Team 2026</div>

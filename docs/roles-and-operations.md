@@ -1,6 +1,6 @@
 # Роли и операции в экосистеме GND
 
-| KB @CerbeRus - Nexus Invest Team 2026
+| KB @CerberRus00 - Nexus Invest Team 2026
 
 ## 1. Роли
 
