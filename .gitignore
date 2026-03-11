@@ -15,6 +15,8 @@ env/
 .installed.cfg
 *.egg
 /docs/GND_v1.code-workspace
+/docs/ADMIN_DEPLOY_GNDST1.md
+/docs/SOP_TOKEN_OPERATIONS.md
 /config/db.json
 /docs/SigningService.code-workspace
 
