@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -93,12 +94,19 @@ func main() {
 		log.Fatalf("Ошибка проверки генезис-блока: %v", err)
 	}
 
-	// 5. Генерация или загрузка кошелька валидатора. Кошелёк не создаём автоматически — только загрузка при наличии аккаунта, иначе системный адрес.
+	// 5. Генерация или загрузка кошелька валидатора. При отсутствии кошелька с private_key
+	// используется gndself_address из native_contracts.json (для тестирования без ключа).
 	var minerWallet *core.Wallet
 	if existingAccount {
 		minerWallet, err = core.LoadWallet(pool)
 		if err != nil {
-			log.Fatalf("Ошибка загрузки существующего кошелька: %v", err)
+			// Fallback: валидатор из конфига (без private_key)
+			validatorAddr := "GND_GENESIS"
+			if cfg.NativeContracts != nil && cfg.NativeContracts.GndselfAddress != "" {
+				validatorAddr = strings.TrimSpace(cfg.NativeContracts.GndselfAddress)
+			}
+			minerWallet = &core.Wallet{Address: core.Address(validatorAddr)}
+			log.Printf("Кошелёк с private_key не найден, валидатор: %s (из native_contracts.json)", validatorAddr)
 		}
 	} else {
 		minerWallet = &core.Wallet{Address: core.Address("GND_GENESIS")}
